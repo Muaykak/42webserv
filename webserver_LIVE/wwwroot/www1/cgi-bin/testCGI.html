@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CGI test</title>
+    <link rel="stylesheet" href="CGI-style.css">
+	
+</head>
+<body>
+    <div class="form-container">
+        <h1>POST method</h1>
+        <h1>Player Registration</h1>
+        <form action="processPlayer.py" method="POST" enctype="multipart/form-data">
+            <label for="playerName">Player Name:</label>
+            <input type="text" id="playerName" name="playerName" required 
+                   placeholder="Enter your player name" minlength="2" maxlength="20">
+
+            <h3>Choose Your Avatar</h3>
+            <div class="avatar-options">
+                <div class="avatar-option">
+                    <input type="radio" id="avatar1" name="avatar" value="avatar1.jpg" checked>
+                    <label for="avatar1">
+                        <img src="assets/avatar1.jpg" alt="Avatar 1">
+                    </label>
+                </div>
+                <div class="avatar-option">
+                    <input type="radio" id="avatar2" name="avatar" value="avatar2.jpg">
+                    <label for="avatar2">
+                        <img src="assets/avatar2.jpg" alt="Avatar 2">
+                    </label>
+                </div>
+                <div class="avatar-option">
+                    <input type="radio" id="avatar3" name="avatar" value="avatar3.jpg">
+                    <label for="avatar3">
+                        <img src="assets/avatar3.jpg" alt="Avatar 3">
+                    </label>
+                </div>
+            </div>
+            <input type="submit" value="Register Player">
+        </form>
+    </div>
+    <div class="form-container">
+        <h1>GET method</h1>
+        <h1>Table Generator Form</h1>
+        <form action="generateTable.py" method="GET">
+            <label for="rows">Number of Rows:</label>
+            <input type="number" id="rows" name="rows" min="1" required><br><br>
+
+            <label for="columns">Number of Columns:</label>
+            <input type="number" id="columns" name="columns" min="1" required><br><br>
+
+            <label for="color">Cell Color:</label>
+            <input type="color" id="color" name="color" required><br><br>
+
+            <input type="submit" value="Generate Table">
+        </form>
+    </div>
+    <script>
+        
+        let isColorPickerOpen = false;
+
+        document.addEventListener("DOMContentLoaded", function() {
+            const colorPicker = document.getElementById('color');
+            const allSubmitButtons = document.querySelectorAll('input[type="submit"]');
+
+            colorPicker.addEventListener("mousedown", function() {
+                isColorPickerOpen = true;
+                allSubmitButtons.forEach(button => {
+                    button.disabled = true;
+                });
+                console.log("Dialog opened");
+            });
+
+            colorPicker.addEventListener("change", function() {
+                isColorPickerOpen = false;
+                allSubmitButtons.forEach(button => {
+                    button.disabled = false;
+                });
+            });
+        });
+    </script>
+</body>
+</html>
