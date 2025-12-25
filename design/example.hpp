@@ -35,6 +35,11 @@
 
 # include <exception>
 # include <unistd.h>
+# include <sys/socket.h>
+# include <netinet/in.h>
+# include <cstring>
+# include <cstdlib>
+# include <fcntl.h>
 # include <iostream>
 # include <sstream>
 # include <string>
@@ -71,11 +76,36 @@
 # define  	LC_CON_FAIL  			"\033[31m"
 # define  	LC_CONN_LOG  			"\033[35m"
 
+/*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
+/*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
+/*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
+/*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
+
+// exception class
+class WebservException : public std::exception {
+	protected:
+		std::string _message;
+	public:
+		WebservException(const std::string& message) throw() : _message(message){
+		};
+		virtual ~WebservException() throw(){
+		};
+
+		virtual const char *what() const throw(){
+			return (_message.c_str());
+		};
+};
+
+/*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
+/*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
+/*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
+/*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
+
 
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
 
-class FileDescriptor{
+class FileFD{
 /*
 	This is a wrapper class
 	Normally we need to close our fd by close() after we finished using it
@@ -84,42 +114,48 @@ class FileDescriptor{
 */
 
 	private:
-		int	_fd;
+		const int	_fd;
 		// the actual int that store file descriptor number
 	public:
-		FileDescriptor(int fd) : _fd(fd){
+		FileFD(int fd) : _fd(fd){
 			if (_fd < 0 || _fd > MAX_FD - 1){
-				throw FileDescriptor::OutOfRangeException();
+				throw WebservException("FileDesctiptor::fd is out of range!");
 			}
 		};
 
-		~FileDescriptor(){
+		~FileFD(){
 			close(_fd);
 		};
 
 		//operator overload
-		bool operator==(const FileDescriptor& rhs){
+		bool operator==(const FileFD& rhs){
 			return _fd == rhs._fd;
 		}
-		bool operator!=(const FileDescriptor& rhs){
+		bool operator!=(const FileFD& rhs){
 			return _fd != rhs._fd;
 		}
+		bool operator==(const int& rhs){
+			return _fd == rhs;
+		}
+		bool operator!=(const int& rhs){
+			return _fd != rhs;
+		}
+
 
 		int	getFd(void) const{
 			return _fd;
 		}
 
-		// Exception
-		class OutOfRangeException : public std::exception {
-			virtual const char	*what() const throw(){
-				return ("fd is out of range!");
-			}
-		};
 };
 
-std::ostream& operator<<(std::ostream &os, const FileDescriptor& obj){
+std::ostream& operator<<(std::ostream &os, const FileFD& obj){
 	os << obj.getFd();
 }
+
+/*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
+/*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
+
+class
 
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
@@ -190,46 +226,120 @@ std::string Logger::getTimestamp()
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
 
-class ConfigData {
-	// Required
-	const unsigned int 	clientMaxBodySize;
-
-	// Optional
-	std::map<int, std::string>	errorPages;
-};
-
-/*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
-/*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
-
-class ServerLocationConfigData : {
-
-};
-
-
-/*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
-/*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
+typedef	std::map<std::string, std::string>	t_config_map;
+typedef	std::map<std::string, t_config_map>	t_location_map;
 
 class ServerConfigData {
+	private:
+		const t_config_map	serverConfig;
+		const t_location_map locationConfigs;
+		const int			listenPort;
+
+	public:
+	
+		ServerConfigData(const t_config_map& configServer,const t_location_map& configLocations) :
+			serverConfig(configServer), locationConfigs(configLocations),
+		{
+			// Check if got all required things
+		};
+		ServerConfigData(const ServerConfigData& obj): serverConfig(obj.serverConfig), locationConfigs(obj.locationConfigs), listenPort(obj.listenPort)
+		{
+			// Check if got all required things
+		}
+		~ServerConfigData(){}
+
+
+		std::string	getLocationData(const std::string& locationPath,  const std::string& keyToFind) const {
+			const t_location_map::const_iterator currentLocationConfig = locationConfigs.find(locationPath);
+			if (currentLocationConfig == locationConfigs.end()){
+				return ("");
+			}
+			const t_config_map::const_iterator keyFound = currentLocationConfig->second.find(keyToFind);
+			if (keyFound != currentLocationConfig->second.end()){
+				return (keyFound->second);
+			}
+			const t_config_map::const_iterator serverFoundKey = serverConfig.find(keyToFind);
+			if (serverFoundKey != serverConfig.end()){
+				return (serverFoundKey->second);
+			}
+			return ("");
+		};
+
+		std::string	getServerData(const std::string& keyToFind) const {
+			const t_config_map::const_iterator keyFound = serverConfig.find(keyToFind);
+			if (keyFound != serverConfig.end()){
+				return (keyFound->second);
+			}
+			return ("");
+		}
+		
+};
+
+/*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
+/*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
+
+class ServerSockets {
+	private:
+		ServerConfigData	configData;
+
+		std::string	serverName;
+		int			port;
+		FileDescriptor		socketFD;
+
+		void createServerSocket(const ServerConfigData& servConfData) {
+
+			std::string server_name = servConfData.getServerData("server_name");
+
+			// AF_INET   is  ipv4  
+			// SOCK_STREAM is connection with no data loss (TCP)
+			int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+
+
+			if (socket_fd < 0){
+				throw WebservException("Server[" + server_name + "]::createListeningSocket::socket() failed");
+			}
+
+			// Non blocking mode need to be enable to prevent freezing
+			if (fcntl(socket_fd, F_SETFL, O_NONBLOCK) == -1) {
+				close(socket_fd);
+				throw WebservException("Server[" + server_name + "]::createListeningSocket::fcntl() failed");
+			}
+
+			int opt = 1;
+			if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
+				Logger::log(LC_NOTE, "Fail to set socket#%d for reuse socket", socket_fd);
+			S
+			
+
+			sockaddr_in sv_addr;
+			std::memset(&sv_addr, 0, sizeof(sockaddr_in));
+			sv_addr.sin_family = AF_INET;
+			sv_addr.sin_addr.s_addr = INADDR_ANY;
+			sv_addr.sin_port = htons(std::atoi(servConfData.getServerData("listen").c_str()));
+		};
+		static int	getPort(const ServerConfigData& servConfData){
+			std::string	portString = servConfData.getServerData("listen");
+			
+			std::stringstream ss(portString);
+			if (!(ss >> portString)){
+				throw WebservException("Server");
+			}
+		}
+		static std::string getServerName(const ServerConfigData& servConfData){
+			std::string server_name = servConfData.getServerData("server_name");
+			if (server_name.empty()){
+				throw WebservException("Server::getServerName() failed");
+			}
+			return (server_name);
+		}
 	public:
 
-		// Required
-		const std::string	listeningPort;
-		const std::string	hostAddress;
-		const std::string	serverName;
-		const unsigned int 	clientMaxBodySize;
-		std::vector<ServerLocationConfigData> locationDatas;
-
-		// Optional
-		std::map<int, std::string>	errorPages;
-
-
-		ServerConfigData(const std::string& listen_port, const std::string& host_ip,
-		const std::string& server_name, const unsigned int& client_max_body_size) :
-			listeningPort(listen_port), hostAddress(host_ip), serverName(server_name),
-			clientMaxBodySize(client_max_body_size)
+		Server(const ServerConfigData& serverConfigData) : configData(serverConfigData)
 		{
+
 		}
-		virtual ~ServerConfigData()
+
+
 };
 
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
