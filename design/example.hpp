@@ -37,10 +37,13 @@
 # include <unistd.h>
 # include <sys/socket.h>
 # include <netinet/in.h>
+# include <sys/stat.h>
+# include <cerrno>
 # include <cstring>
 # include <cstdlib>
 # include <fcntl.h>
 # include <iostream>
+# include <fstream>
 # include <sstream>
 # include <string>
 # include <map>
@@ -101,62 +104,10 @@ class WebservException : public std::exception {
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
 
+// Utility Functions
 
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
-
-class FileFD{
-/*
-	This is a wrapper class
-	Normally we need to close our fd by close() after we finished using it
-
-	we can use destructor of c++ to handle the close()
-*/
-
-	private:
-		const int	_fd;
-		// the actual int that store file descriptor number
-	public:
-		FileFD(int fd) : _fd(fd){
-			if (_fd < 0 || _fd > MAX_FD - 1){
-				throw WebservException("FileDesctiptor::fd is out of range!");
-			}
-		};
-
-		~FileFD(){
-			close(_fd);
-		};
-
-		//operator overload
-		bool operator==(const FileFD& rhs){
-			return _fd == rhs._fd;
-		}
-		bool operator!=(const FileFD& rhs){
-			return _fd != rhs._fd;
-		}
-		bool operator==(const int& rhs){
-			return _fd == rhs;
-		}
-		bool operator!=(const int& rhs){
-			return _fd != rhs;
-		}
-
-
-		int	getFd(void) const{
-			return _fd;
-		}
-
-};
-
-std::ostream& operator<<(std::ostream &os, const FileFD& obj){
-	os << obj.getFd();
-}
-
-/*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
-/*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
-
-class
-
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
 
@@ -226,120 +177,70 @@ std::string Logger::getTimestamp()
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
 
-typedef	std::map<std::string, std::string>	t_config_map;
-typedef	std::map<std::string, t_config_map>	t_location_map;
+typedef std::map<std::string, std::string>	t_config_map;
+typedef std::map<std::string, t_config_map>	t_location_map;
 
-class ServerConfigData {
+class ServerConfig {
 	private:
-		const t_config_map	serverConfig;
-		const t_location_map locationConfigs;
-		const int			listenPort;
-
-	public:
-	
-		ServerConfigData(const t_config_map& configServer,const t_location_map& configLocations) :
-			serverConfig(configServer), locationConfigs(configLocations),
-		{
-			// Check if got all required things
-		};
-		ServerConfigData(const ServerConfigData& obj): serverConfig(obj.serverConfig), locationConfigs(obj.locationConfigs), listenPort(obj.listenPort)
-		{
-			// Check if got all required things
-		}
-		~ServerConfigData(){}
-
-
-		std::string	getLocationData(const std::string& locationPath,  const std::string& keyToFind) const {
-			const t_location_map::const_iterator currentLocationConfig = locationConfigs.find(locationPath);
-			if (currentLocationConfig == locationConfigs.end()){
-				return ("");
-			}
-			const t_config_map::const_iterator keyFound = currentLocationConfig->second.find(keyToFind);
-			if (keyFound != currentLocationConfig->second.end()){
-				return (keyFound->second);
-			}
-			const t_config_map::const_iterator serverFoundKey = serverConfig.find(keyToFind);
-			if (serverFoundKey != serverConfig.end()){
-				return (serverFoundKey->second);
-			}
-			return ("");
-		};
-
-		std::string	getServerData(const std::string& keyToFind) const {
-			const t_config_map::const_iterator keyFound = serverConfig.find(keyToFind);
-			if (keyFound != serverConfig.end()){
-				return (keyFound->second);
-			}
-			return ("");
-		}
-		
+		t_config_map	_serverConfig;
+		t_location_map	_locationConfig;
 };
 
-/*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
-/*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
-
-class ServerSockets {
+class ConfigData {
 	private:
-		ServerConfigData	configData;
+		std::map<std::string, ServerConfig>	_serversConfigs;
 
-		std::string	serverName;
-		int			port;
-		FileDescriptor		socketFD;
+		std::vector<std::string>	splitToken(std::string& readBuffer)
+		{
+			std::vector<std::string>	tokens;
 
-		void createServerSocket(const ServerConfigData& servConfData) {
+			size_t	indexFound;
+			while (!readBuffer.empty()){
 
-			std::string server_name = servConfData.getServerData("server_name");
+			indexFound = readBuffer.find_first_not_of(" \f\n\r\t\v#;");
 
-			// AF_INET   is  ipv4  
-			// SOCK_STREAM is connection with no data loss (TCP)
-			int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-
-
-			if (socket_fd < 0){
-				throw WebservException("Server[" + server_name + "]::createListeningSocket::socket() failed");
 			}
-
-			// Non blocking mode need to be enable to prevent freezing
-			if (fcntl(socket_fd, F_SETFL, O_NONBLOCK) == -1) {
-				close(socket_fd);
-				throw WebservException("Server[" + server_name + "]::createListeningSocket::fcntl() failed");
-			}
-
-			int opt = 1;
-			if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
-				Logger::log(LC_NOTE, "Fail to set socket#%d for reuse socket", socket_fd);
-			S
-			
-
-			sockaddr_in sv_addr;
-			std::memset(&sv_addr, 0, sizeof(sockaddr_in));
-			sv_addr.sin_family = AF_INET;
-			sv_addr.sin_addr.s_addr = INADDR_ANY;
-			sv_addr.sin_port = htons(std::atoi(servConfData.getServerData("listen").c_str()));
-		};
-		static int	getPort(const ServerConfigData& servConfData){
-			std::string	portString = servConfData.getServerData("listen");
-			
-			std::stringstream ss(portString);
-			if (!(ss >> portString)){
-				throw WebservException("Server");
-			}
-		}
-		static std::string getServerName(const ServerConfigData& servConfData){
-			std::string server_name = servConfData.getServerData("server_name");
-			if (server_name.empty()){
-				throw WebservException("Server::getServerName() failed");
-			}
-			return (server_name);
 		}
 	public:
-
-		Server(const ServerConfigData& serverConfigData) : configData(serverConfigData)
+		ConfigData(const std::string& configPath)
 		{
+			// Checking File extention (.conf)
+			if (configPath.empty() || configPath.substr(configPath.size() - 5) != ".conf"){
+				throw WebservException("Wrong file extension!");
+			}
+			// Check file type
+			{
+				struct stat statbuf;
+				std::string errorMsg = "Checking file type <" + configPath + ">";
+				if (stat(configPath.c_str(), &statbuf) == -1){
+					errorMsg += "::stat() failed";
+					errorMsg += std::strerror(errno);
+					throw WebservException(errorMsg);
+				}
+				if (S_ISDIR(statbuf.st_mode) == true){
+					errorMsg += "::Is A Directory";
+					throw WebservException(errorMsg);
+				}
+			}
 
+			std::ifstream	configFile(configPath.c_str());
+			if (!configFile.is_open()){
+				std::string errorMsg = "Cannot Open Config File!::";
+				errorMsg += std::strerror(errno);
+				throw WebservException(errorMsg);
+			}
+
+			// The actual read 
+			{
+				std::string readBuffer;
+
+				while (configFile.good()){
+					std::getline(configFile, readBuffer);
+					std::cout << readBuffer;
+				}
+			}
+			// throw SomeExceptions Error when something wrong
 		}
-
-
 };
 
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
@@ -348,23 +249,13 @@ class ServerSockets {
 class WebServ {
 	private:
 		// the .conf file that we passed to the program
-		const std::string _webservConfigPath;
-
-		std::map<int, std::vector<ServerConfigData>> _serversByPort;
-
-
-		// loads all config data into proper structure
-		void configFileParser(){
-
-
-			// throw SomeExceptions Error when something wrong
-		};
+		const std::string	_webservConfigPath;
+		ConfigData			_configData;
 
 	public:
-		WebServ(const std::string& configPath) : _webservConfigPath(configPath)
+		WebServ(const std::string& configPath) : _webservConfigPath(configPath), _configData(_webservConfigPath)
 		{
 			// Handle ConfigPath here or
-			configFileParser();
 		}
 };
 
