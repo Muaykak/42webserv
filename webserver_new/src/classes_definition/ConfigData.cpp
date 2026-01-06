@@ -27,7 +27,7 @@ ConfigData::ConfigData(const std::string &configPath)
 		std::string errorMsg = "Checking file type <" + configPath + ">";
 		if (stat(configPath.c_str(), &statbuf) == -1)
 		{
-			errorMsg += "::stat() failed";
+			errorMsg += "::stat() failed::";
 			errorMsg += std::strerror(errno);
 			throw WebservException(errorMsg);
 		}

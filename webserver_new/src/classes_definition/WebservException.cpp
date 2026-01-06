@@ -1,7 +1,7 @@
 #include "../../include/classes/WebservException.hpp"
 
 
-WebservException::WebservException(const std::string &message) throw()
+WebservException::WebservException(const std::string &message) throw() : _message(message)
 {
 
 }
