@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CGI test</title>
+    <link rel="stylesheet" href="cgi-bin/CGI-style.css">
+	
+</head>
+<body>
+    <div class="form-container">
+		<h1> Upload form </h1>
+	    <form method="post" action="/uploads" enctype="multipart/form-data" target="_blank" onsubmit="return false;">
+			<div class="section">
+				<input type="file" name="file1" id="file1">
+			</div>
+			<div class="section">
+				<input type="submit" onclick="uploadFIle()">
+			</div>
+		</form>
+
+		<div id="divOutput">
+
+		</div>
+	</div>
+</body>
+<script type="text/javascript">
+
+	const uploadFIle = async () => {
+		const fileInput = document.getElementById('file1')
+		const formData = new FormData()
+		if(!fileInput.files || fileInput.files.length == 0)
+		{
+			alert("Please select some file");
+			return ; 
+		}
+		formData.append('file1', fileInput.files[0])
+		try 
+		{
+			const response = await fetch('/uploads', {
+				method: 'POST',
+				body: formData, 
+			})
+			const text = await response.text()
+			if(text == "")
+			{
+				document.getElementById("divOutput").innerHTML = "Created"
+				if(confirm("Seems OK, open uploads/ folder?"))
+					window.open("/uploads/")
+			}
+			else
+				document.getElementById("divOutput").innerHTML = text
+			
+		}
+		catch (error)
+		{
+			alert("Fail")
+		}
+	}
+</script>
+</html>
