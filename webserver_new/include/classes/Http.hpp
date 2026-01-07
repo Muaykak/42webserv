@@ -13,7 +13,7 @@ class Http {
 		std::list<HttpRequest>	_requestData;
 		std::string	_responseBuffer;
 		HttpCgiData	_cgiData;
-		char		_recvBuffer[HTTP_RECV_BUFFER];
+		std::string	_readBuffer;
 
 	public:
 		Http();
@@ -23,11 +23,11 @@ class Http {
 
 		// return bool to indicate whether server should remove this client connection from the sockets
 		// false means to close connection
-		bool request(const Socket& clientSocket, std::map<int, Socket>& socketMap);
+		bool	readFromClient(const Socket& clientSocket, std::map<int, Socket>& socketMap);
 
 		// return bool to indicate whether server should remove this client connection from the sockets
 		// false means to close connection
-		bool response(const Socket& clientSocket, std::map<int, Socket>& socketMap);
+		bool	writeToClient(const Socket& clientSocket, std::map<int, Socket>& socketMap);
 };
 
 #endif

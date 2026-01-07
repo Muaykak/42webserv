@@ -1,6 +1,9 @@
 #ifndef DEFINED_VALUE_HPP
 # define DEFINED_VALUE_HPP
 
+# include <string>
+# include <map>
+# include <vector>
 
 // CONSTANT VALUE
 
@@ -33,5 +36,7 @@
 #define LC_CON_FAIL "\033[31m"
 #define LC_CONN_LOG "\033[35m"
 
+typedef std::map<std::string, std::vector<std::string> > t_config_map;
+typedef std::map<std::string, const t_config_map> t_location_map;
 
 #endif

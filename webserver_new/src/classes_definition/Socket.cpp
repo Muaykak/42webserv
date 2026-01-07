@@ -260,10 +260,10 @@ bool Socket::handleEvent(const epoll_event &event, std::map<int, Socket> &socket
 				return false;
 			}
 			else if (event.events & EPOLLOUT){
-				http.response(*this, socketMap);
+				http.readFromClient(*this, socketMap);
 				// Handle http response
 			} else if (event.events & EPOLLIN){
-				http.request(*this, socketMap);
+				http.writeToClient(*this, socketMap);
 				// Handle http request
 
 			}

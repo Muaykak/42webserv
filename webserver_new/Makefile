@@ -18,7 +18,8 @@ CLASS_HEADER_FILE =	ConfigData.hpp \
 					ServerConfig.hpp \
 					Socket.hpp \
 					WebServ.hpp \
-					WebservException.hpp
+					WebservException.hpp \
+					CharTable.hpp
 
 MAIN_HEADER_FILE =	defined_value.hpp \
 					utility_function.hpp
@@ -41,7 +42,8 @@ SRC_CLASSES_FILE =	ConfigData.cpp \
 					ServerConfig.cpp \
 					Socket.cpp \
 					WebServ.cpp \
-					WebservException.cpp
+					WebservException.cpp \
+					CharTable.cpp
 
 SOURCE_MAIN_FILE = main.cpp
 

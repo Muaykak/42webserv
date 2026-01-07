@@ -219,7 +219,7 @@ void	testerFileDesciptor(){
 int	main(){
 	//testerFileDesciptor();
 	try {
-		ConfigData	test("default.conf");
+		ConfigData	test("./configs/default.conf");
 
 		test.printConfigData();
 	} catch (std::exception &e){
