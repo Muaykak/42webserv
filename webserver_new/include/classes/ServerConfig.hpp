@@ -6,9 +6,8 @@
 # include <vector>
 # include <iostream>
 # include "WebservException.hpp"
+# include "../defined_value.hpp"
 
-typedef std::map<std::string, std::vector<std::string> > t_config_map;
-typedef std::map<std::string, const t_config_map> t_location_map;
 
 class ServerConfig
 {

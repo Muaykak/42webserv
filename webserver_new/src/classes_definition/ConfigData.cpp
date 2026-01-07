@@ -19,7 +19,7 @@ ConfigData::ConfigData(const std::string &configPath)
 	// Checking File extention (.conf)
 	if (configPath.empty() || configPath.substr(configPath.size() - 5) != ".conf")
 	{
-		throw WebservException("Wrong file extension!");
+		throw WebservException("Wrong file extension! <" + configPath + ">");
 	}
 	// Check file type
 	{
@@ -70,6 +70,7 @@ ConfigData::ConfigData(const std::string &configPath)
 		t_location_map	tempLocationMap;
 		t_config_map	tempLocationConfig;
 		std::string		tempLocationName;
+		CharTable	allowChar("0123456789:.", true);
 
 		while (i < tokenListSize){
 			if (tokenList[i].token_type == OP_TOKEN){
@@ -126,24 +127,26 @@ ConfigData::ConfigData(const std::string &configPath)
 							int		port;
 							while (i < it->second.size()){
 								std::string currStr = it->second[i];
-								if (currStr.find_first_not_of("0123456789:."))
-									WebservException("ConfigData::\"listen\"::InvalidValue");
+								if (allowChar.checkString(currStr) == false){
+									throw WebservException("ConfigData::\"listen\"::InvalidValue = \"" + currStr + "\"");
+									std::cout << "FALSE" << std::endl;
+								}
 								portPos	= currStr.find_first_of(":");
 
 								if (portPos == currStr.npos){
 									if (currStr.size() > 5)
-										WebservException("ConfigData::\"listen\"::InvalidValue");
+										throw WebservException("ConfigData::\"listen\"::InvalidValue = \"" + currStr + "\"");
 									port = std::atoi(currStr.c_str());
 								}
 								else {
 									if (++portPos >= currStr.size())
-										WebservException("ConfigData::\"listen\"::InvalidValue");
+										throw WebservException("ConfigData::\"listen\"::InvalidValue = \"" + currStr + "\"");
 									if (currStr.size() - portPos > 5)
-										WebservException("ConfigData::\"listen\"::InvalidValue");
+										throw WebservException("ConfigData::\"listen\"::InvalidValue = \"" + currStr + "\"");
 									port = std::atoi(currStr.substr(portPos).c_str());
 								}
 								if (port > 65535 || port < 0)
-									WebservException("ConfigData::\"listen\"::InvalidValue");
+									throw WebservException("ConfigData::\"listen\"::InvalidValue = \"" + currStr + "\"");
 								_serversConfigs[port].push_back(ServerConfig(tempServerConfig, tempLocationMap, port));
 								++i;
 							}

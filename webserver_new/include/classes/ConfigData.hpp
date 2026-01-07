@@ -3,6 +3,7 @@
 
 # include "ServerConfig.hpp"
 # include "WebservException.hpp"
+# include "CharTable.hpp"
 # include <fstream>
 # include <cerrno>
 # include <cstring>
