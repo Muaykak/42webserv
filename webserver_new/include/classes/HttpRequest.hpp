@@ -8,6 +8,7 @@
 enum e_http_request_status {
 	NO_STATUS,
 	ERR_STATUS,
+	READING_REQUEST_LINE,
 	READING_HEADER,
 	READING_BODY,
 	COMPLETE

@@ -1,4 +1,5 @@
 #include "../../include/classes/CharTable.hpp"
+#include "../../include/classes/WebservException.hpp"
 
 CharTable::CharTable(){
 	std::memset(_allowchar, 0, 256 * sizeof(bool));
@@ -34,10 +35,158 @@ bool	CharTable::operator[](char c) const {
 	return (_allowchar[static_cast<unsigned char>(c)]);
 }
 
-bool	CharTable::checkString(const std::string& str) const {
-	for (size_t i = 0; i < str.size(); i++){
+bool	CharTable::isMatch(const std::string& str) const {
+	size_t	strSize = str.size();
+	for (size_t i = 0; i < strSize; i++){
 		if ((*this)[str[i]] == false)
 			return (false);
 	}
 	return (true);
+}
+
+bool	CharTable::isMatch(const std::string& str, size_t startPos) const {
+	size_t	strSize = str.size();
+	if (startPos >= strSize)
+		throw WebservException("CharTable::checkString(" + str + ") INVALID START POS");
+	for (size_t i = startPos; i < strSize; i++){
+		if ((*this)[str[i]] == false)
+			return (false);
+	}
+	return (true);
+}
+
+bool	CharTable::isNotMatch(const std::string& str) const {
+	size_t	strSize = str.size();
+	for (size_t i = 0; i < strSize; i++){
+		if ((*this)[str[i]] == true)
+			return (false);
+	}
+	return (true);
+}
+
+bool	CharTable::isNotMatch(const std::string& str, size_t startPos) const {
+	size_t	strSize = str.size();
+	if (startPos >= strSize)
+		throw WebservException("CharTable::checkString(" + str + ") INVALID START POS");
+	for (size_t i = startPos; i < strSize; i++){
+		if ((*this)[str[i]] == true)
+			return (false);
+	}
+	return (true);
+}
+
+// return npos of the input str if failed
+// return the position in the string of the match char in chartable 
+size_t CharTable::findFirstCharset(const std::string& strToFind) const{
+	size_t	strSize = strToFind.size();
+	for (size_t i = 0; i < strSize; i++){
+		if	((*this)[strToFind[i]] == true)
+			return (i);
+	}
+	return (strToFind.npos);
+}
+
+// return npos of the input str if failed
+// return the position in the string of the match char in chartable 
+size_t CharTable::findFirstCharset(const std::string& strToFind, size_t	startPos) const{
+	size_t	strSize = strToFind.size();
+	if (startPos >= strSize)
+		return (strToFind.npos);
+	for (size_t i = startPos; i < strSize; i++){
+		if	((*this)[strToFind[i]] == true)
+			return (i);
+	}
+	return (strToFind.npos);
+}
+
+// return npos of the input str if failed
+// return the position in the string of the not match char in chartable 
+size_t CharTable::findFirstNotCharset(const std::string& strToFind) const{
+	size_t	strSize = strToFind.size();
+	for (size_t i = 0; i < strSize; i++){
+		if	((*this)[strToFind[i]] == false)
+			return (i);
+	}
+	return (strToFind.npos);
+
+}
+
+// return npos of the input str if failed
+// return the position in the string of the not match char in chartable 
+size_t CharTable::findFirstNotCharset(const std::string& strToFind, size_t	startPos) const{
+	size_t	strSize = strToFind.size();
+	if (startPos >= strSize)
+		return (strToFind.npos);
+	for (size_t i = startPos; i < strSize; i++){
+		if	((*this)[strToFind[i]] == false)
+			return (i);
+	}
+	return (strToFind.npos);
+
+}
+
+// return npos of the input str if failed
+// return the position in the string of the match char in chartable 
+size_t CharTable::findLastCharset(const std::string& strToFind) const{
+	size_t	strSize = strToFind.size();
+	for (size_t i = strToFind.size() - 1; i > 0; i--){
+		if ((*this)[strToFind[i]] == true)
+			return (i);
+	}
+	if (!strToFind.empty()){
+		if ((*this)[strToFind[0]] == true)
+			return (0);
+	}
+	return (strToFind.npos);
+}
+
+// return npos of the input str if failed
+// return the position in the string of the match char in chartable 
+size_t CharTable::findLastCharset(const std::string& strToFind, size_t	startPos) const{
+	size_t	strSize = strToFind.size();
+	if (startPos >= strSize)
+		return (strToFind.npos);
+	for (size_t i = startPos; i > 0; i--){
+		if ((*this)[strToFind[i]] == true)
+			return (i);
+	}
+	if (!strToFind.empty()){
+		if ((*this)[strToFind[0]] == true)
+			return (0);
+	}
+	return (strToFind.npos);
+}
+
+// return npos of the input str if failed
+// return the position in the string of the not match char in chartable 
+size_t CharTable::findLastNotCharset(const std::string& strToFind) const{
+	size_t	strSize = strToFind.size();
+	for (size_t i = strToFind.size() - 1; i > 0; i--){
+		if ((*this)[strToFind[i]] == false)
+			return (i);
+	}
+	if (!strToFind.empty()){
+		if ((*this)[strToFind[0]] == false)
+			return (0);
+	}
+	return (strToFind.npos);
+
+}
+
+// return npos of the input str if failed
+// return the position in the string of the not match char in chartable 
+size_t CharTable::findLastNotCharset(const std::string& strToFind, size_t	startPos) const{
+	size_t	strSize = strToFind.size();
+	if (startPos >= strSize)
+		return (strToFind.npos);
+	for (size_t i = startPos; i > 0; i--){
+		if ((*this)[strToFind[i]] == false)
+			return (i);
+	}
+	if (!strToFind.empty()){
+		if ((*this)[strToFind[0]] == false)
+			return (0);
+	}
+	return (strToFind.npos);
+
 }

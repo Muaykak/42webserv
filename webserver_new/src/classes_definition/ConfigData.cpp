@@ -1,4 +1,5 @@
 #include "../../include/classes/ConfigData.hpp"
+#include "../../include/utility_function.hpp"
 
 ConfigData::ConfigData(const ConfigData& obj){
 	_serversConfigs = obj._serversConfigs;
@@ -127,7 +128,7 @@ ConfigData::ConfigData(const std::string &configPath)
 							int		port;
 							while (i < it->second.size()){
 								std::string currStr = it->second[i];
-								if (allowChar.checkString(currStr) == false){
+								if (allowChar.isMatch(currStr) == false){
 									throw WebservException("ConfigData::\"listen\"::InvalidValue = \"" + currStr + "\"");
 									std::cout << "FALSE" << std::endl;
 								}
@@ -225,13 +226,15 @@ void	ConfigData::splitToken(const std::string &readLine, std::vector<s_config_to
 	size_t indexCurrent = 0;
 	size_t indexNext;
 	size_t readLineSize = readLine.size();
+	CharTable configTokenTable(" \t\v\n\f\r#{};", true);
 	while (indexCurrent < readLineSize)
 	{
 		if (readLine[indexCurrent] == '#')
 			break ;
 
-		else if (std::isspace(readLine[indexCurrent])){
-			indexNext = readLine.find_first_not_of(" \t\v\n\f\r", indexCurrent);
+		else if (whiteSpaceTable().operator[](readLine[indexCurrent])){
+			//indexNext = readLine.find_first_not_of(" \t\v\n\f\r", indexCurrent);
+			indexNext = whiteSpaceTable().findFirstNotCharset(readLine, indexCurrent);
 			if (indexNext == readLine.npos)
 				break;
 			indexCurrent = indexNext;
@@ -252,7 +255,8 @@ void	ConfigData::splitToken(const std::string &readLine, std::vector<s_config_to
 		else {
 			s_config_token	temp_config_data;
 			temp_config_data.token_type = DATA_TOKEN;
-			indexNext = readLine.find_first_of(" \t\v\n\f\r#;{}", indexCurrent);
+			//indexNext = readLine.find_first_of(" \t\v\n\f\r#;{}", indexCurrent);
+			indexNext = configTokenTable.findFirstCharset(readLine, indexCurrent);
 			if (indexNext == readLine.npos){
 				temp_config_data.tokenString = readLine.substr(indexCurrent);
 				tokenList.push_back(temp_config_data);

@@ -27,10 +27,14 @@ MAIN_HEADER_FILE =	defined_value.hpp \
 # ========== SOURCE  FILES ===========
 
 SRC_MAIN =	${addprefix ${SRC_DIR}, ${SOURCE_MAIN_FILE}} \
-			${addprefix ${SRC_DIR}${SRC_CLASS_DIR}, ${SRC_CLASSES_FILE}}
+			${SRC_FILE}
 
 SRC_TEST =	${addprefix ${SRC_DIR}, ${SOURCE_TEST_FILE}} \
-			${addprefix ${SRC_DIR}${SRC_CLASS_DIR}, ${SRC_CLASSES_FILE}}
+			${SRC_FILE}
+
+SRC_FILE =	${addprefix ${SRC_DIR}${SRC_CLASS_DIR}, ${SRC_CLASSES_FILE}} \
+			${addprefix ${SRC_DIR}${SRC_FUNC_DIR}, ${SRC_FUNC_FILE}}
+
 
 SRC_CLASS_DIR = classes_definition/
 SRC_CLASSES_FILE =	ConfigData.cpp \
@@ -44,6 +48,11 @@ SRC_CLASSES_FILE =	ConfigData.cpp \
 					WebServ.cpp \
 					WebservException.cpp \
 					CharTable.cpp
+
+SRC_FUNC_DIR = functions/
+SRC_FUNC_FILE = chartables.cpp \
+				split.cpp
+				
 
 SOURCE_MAIN_FILE = main.cpp
 
