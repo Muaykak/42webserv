@@ -14,12 +14,21 @@ enum e_http_request_status {
 	COMPLETE
 };
 
+enum e_http_request_method {
+	NO_METHOD,
+	GET,
+	POST,
+	DELETE
+};
+
 class HttpRequest {
 	private:
 		std::string _requestBuffer;
 		e_http_request_status	_status;
 		int						_errorCode;
 		t_config_map _headerField;
+
+		e_http_request_method	_method;
 
 	public:
 		HttpRequest();

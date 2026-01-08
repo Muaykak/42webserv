@@ -2,6 +2,7 @@
 #include "../../include/classes/CharTable.hpp"
 #include "../../include/utility_function.hpp"
 
+#include <set>
 
 static const CharTable& headerFieldCharset(){
 	static CharTable allowedChar("", true);
@@ -15,7 +16,18 @@ static const CharTable& controlCharTable(){
 	return (allowedChar);
 }
 
-HttpRequest::HttpRequest(): _status(NO_STATUS), _errorCode(-1){
+const std::set<std::string>& allowMethod(){
+	static std::set<std::string> method;
+	if (method.empty()){
+		method.insert("GET");
+		method.insert("POST");
+		method.insert("DELETE");
+	}
+	return (method);
+}
+
+HttpRequest::HttpRequest():
+_status(NO_STATUS), _errorCode(-1), _method(NO_METHOD){
 }
 HttpRequest::HttpRequest(const HttpRequest& obj)
 : _requestBuffer(obj._requestBuffer), _status(obj._status){
@@ -44,18 +56,14 @@ void	HttpRequest::processingReadBuffer(const std::string& readBuffer, ssize_t re
 	if (_status = READING_REQUEST_LINE){
 		size_t	lineBreakPos = _requestBuffer.find_first_of("\r\n");
 
-		// wrong format, give bad request
 		if (lineBreakPos == _requestBuffer.npos){
-			_status = ERR_STATUS;
-			_errorCode = 400;
 			return ;
 		}
 
-		// split string to temporary vector
-		std::vector<std::string> tempVec;
-		splitString(_requestBuffer, linearWhiteSpaceTable(), tempVec, currIndex, lineBreakPos - currIndex);
-
-		if (tempVec.size() != 3){}
+		// get the method
+		if (_method == NO_METHOD){
+			std::string subStr;
+		}
 	}
 }
 

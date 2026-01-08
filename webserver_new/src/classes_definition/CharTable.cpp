@@ -55,6 +55,19 @@ bool	CharTable::isMatch(const std::string& str, size_t startPos) const {
 	return (true);
 }
 
+bool	CharTable::isMatch(const std::string& str, size_t startPos, size_t size) const {
+	size_t	endPos = startPos + size;
+	if (endPos >= str.size())
+		endPos = str.size();
+	if (startPos >= endPos)
+		throw WebservException("CharTable::checkString(" + str + ") INVALID START POS");
+	for (size_t i = startPos; i < endPos; i++){
+		if ((*this)[str[i]] == false)
+			return (false);
+	}
+	return (true);
+}
+
 bool	CharTable::isNotMatch(const std::string& str) const {
 	size_t	strSize = str.size();
 	for (size_t i = 0; i < strSize; i++){
@@ -69,6 +82,19 @@ bool	CharTable::isNotMatch(const std::string& str, size_t startPos) const {
 	if (startPos >= strSize)
 		throw WebservException("CharTable::checkString(" + str + ") INVALID START POS");
 	for (size_t i = startPos; i < strSize; i++){
+		if ((*this)[str[i]] == true)
+			return (false);
+	}
+	return (true);
+}
+
+bool	CharTable::isNotMatch(const std::string& str, size_t startPos, size_t size) const {
+	size_t	endPos = startPos + size;
+	if (endPos >= str.size())
+		endPos = str.size();
+	if (startPos >= endPos)
+		throw WebservException("CharTable::checkString(" + str + ") INVALID START POS");
+	for (size_t i = startPos; i < endPos; i++){
 		if ((*this)[str[i]] == true)
 			return (false);
 	}
@@ -100,6 +126,21 @@ size_t CharTable::findFirstCharset(const std::string& strToFind, size_t	startPos
 }
 
 // return npos of the input str if failed
+// return the position in the string of the match char in chartable 
+size_t CharTable::findFirstCharset(const std::string& strToFind, size_t	startPos, size_t size) const{
+	size_t endPos = startPos + size;
+	if (endPos > strToFind.size())
+		endPos = strToFind.size();
+	if (startPos >= endPos)
+		return (strToFind.npos);
+	for (size_t i = startPos; i < endPos; i++){
+		if	((*this)[strToFind[i]] == true)
+			return (i);
+	}
+	return (strToFind.npos);
+}
+
+// return npos of the input str if failed
 // return the position in the string of the not match char in chartable 
 size_t CharTable::findFirstNotCharset(const std::string& strToFind) const{
 	size_t	strSize = strToFind.size();
@@ -123,6 +164,20 @@ size_t CharTable::findFirstNotCharset(const std::string& strToFind, size_t	start
 	}
 	return (strToFind.npos);
 
+}
+// return npos of the input str if failed
+// return the position in the string of the match char in chartable 
+size_t CharTable::findFirstNotCharset(const std::string& strToFind, size_t	startPos, size_t size) const{
+	size_t endPos = startPos + size;
+	if (endPos > strToFind.size())
+		endPos = strToFind.size();
+	if (startPos >= endPos)
+		return (strToFind.npos);
+	for (size_t i = startPos; i < endPos; i++){
+		if	((*this)[strToFind[i]] == false)
+			return (i);
+	}
+	return (strToFind.npos);
 }
 
 // return npos of the input str if failed
@@ -151,6 +206,22 @@ size_t CharTable::findLastCharset(const std::string& strToFind, size_t	startPos)
 			return (i);
 	}
 	if (!strToFind.empty()){
+		if ((*this)[strToFind[0]] == true)
+			return (0);
+	}
+	return (strToFind.npos);
+}
+// return npos of the input str if failed
+// return the position in the string of the match char in chartable 
+size_t CharTable::findLastCharset(const std::string& strToFind, size_t	startPos, size_t size) const{
+	size_t endPos = size > startPos? 0: startPos - size;
+	if (startPos >= strToFind.size())
+		return (strToFind.npos);
+	for (size_t i = startPos; i > endPos; i--){
+		if ((*this)[strToFind[i]] == true)
+			return (i);
+	}
+	if (!strToFind.empty() && size > startPos){
 		if ((*this)[strToFind[0]] == true)
 			return (0);
 	}
@@ -189,4 +260,21 @@ size_t CharTable::findLastNotCharset(const std::string& strToFind, size_t	startP
 	}
 	return (strToFind.npos);
 
+}
+
+// return npos of the input str if failed
+// return the position in the string of the match char in chartable 
+size_t CharTable::findLastNotCharset(const std::string& strToFind, size_t	startPos, size_t size) const{
+	size_t endPos = size > startPos? 0: startPos - size;
+	if (startPos >= strToFind.size())
+		return (strToFind.npos);
+	for (size_t i = startPos; i > endPos; i--){
+		if ((*this)[strToFind[i]] == false)
+			return (i);
+	}
+	if (!strToFind.empty() && size > startPos){
+		if ((*this)[strToFind[0]] == false)
+			return (0);
+	}
+	return (strToFind.npos);
 }
