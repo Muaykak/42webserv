@@ -29,6 +29,8 @@ class HttpRequest {
 		t_config_map _headerField;
 
 		e_http_request_method	_method;
+		std::string				_requestTarget;
+		std::string				_protocol;			
 
 	public:
 		HttpRequest();

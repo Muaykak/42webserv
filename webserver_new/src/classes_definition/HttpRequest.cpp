@@ -54,15 +54,45 @@ void	HttpRequest::processingReadBuffer(const std::string& readBuffer, ssize_t re
 	if (_status == NO_STATUS)
 		_status = READING_REQUEST_LINE;
 	if (_status = READING_REQUEST_LINE){
-		size_t	lineBreakPos = _requestBuffer.find_first_of("\r\n");
-
-		if (lineBreakPos == _requestBuffer.npos){
-			return ;
+		if (reqBuffSize > MAX_REQUEST_BUFFER_SIZE){
+			_status = ERR_STATUS;
+			_errorCode = 400;
+			return;
 		}
 
 		// get the method
 		if (_method == NO_METHOD){
-			std::string subStr;
+
+			// skip any empty line '\r\n' before request line
+			while (currIndex + 1 < reqBuffSize
+			&& _requestBuffer[currIndex] == '\r'
+			&& _requestBuffer[currIndex + 1] == '\n'){
+				currIndex += 2;
+			}
+
+			if (currIndex >= reqBuffSize){
+				_requestBuffer.clear();
+				return ;
+			}
+			std::string methodStr;
+
+			size_t	pos = linearWhiteSpaceTable().findFirstCharset(_requestBuffer, currIndex);
+			methodStr = pos == _requestBuffer.npos ? _requestBuffer.substr(currIndex) : _requestBuffer.substr(currIndex, pos);
+
+			if (methodStr == "GET") {
+				_method = GET;
+			}
+			else if (methodStr == "POST") {
+				_method = POST;
+			}
+			else if (methodStr == "DELETE") {
+				_method = DELETE;
+			}
+			else {
+				_status = ERR_STATUS;
+				_errorCode = 400;
+				return ;
+			}
 		}
 	}
 }
