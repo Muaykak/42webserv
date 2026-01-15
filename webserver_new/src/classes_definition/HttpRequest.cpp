@@ -74,6 +74,26 @@ void	HttpRequest::processingReadBuffer(const std::string& readBuffer, ssize_t re
 				_requestBuffer.clear();
 				return ;
 			}
+			// now currIndex sits at the first char of the 
+			// request line
+
+			// I need the whole request line first
+			// before process anything
+			size_t	endLinePos = _requestBuffer.find("\r\n", currIndex);
+
+			// doesn't find any endline delimiter
+			// will process later
+			if (endLinePos == _requestBuffer.npos){
+				_requestBuffer = _requestBuffer.substr(currIndex);
+				return ;
+			}
+
+			// found endLinePos
+			// each error code we gave should respect the document RFC9112 (HTTP 1.1)
+			{
+
+			}
+
 			std::string methodStr;
 
 			size_t	pos = linearWhiteSpaceTable().findFirstCharset(_requestBuffer, currIndex);
