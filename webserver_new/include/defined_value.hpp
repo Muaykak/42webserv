@@ -14,6 +14,13 @@
 #define MAX_EPOLL_EVENT 300
 #define HTTP_RECV_BUFFER 4096
 
+// limit to prevent client sending too much request
+#define	MAX_REQUEST_BUFFER_SIZE 8192
+
+// number of char / byte on each element
+#define MAX_FIELDNAME_LENGTH 4096
+#define MAX_FIELDVALUE_LENGTH 4096
+
 // Color Text
 #define LC_RED "\033[31m"
 #define LC_YELLOW "\033[33m"

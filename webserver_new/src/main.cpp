@@ -1,6 +1,11 @@
 #include "../include/classes/WebServ.hpp"
 
+
+
 int main(int argc, char **argv){
+	signal(SIGPIPE, SIG_IGN);
+	signal(SIGINT, serverStopHandler);
+	signal(SIGQUIT, serverStopHandler);
 	if (argc == 2){
 		try {
 			WebServ	webserv(argv[1]);

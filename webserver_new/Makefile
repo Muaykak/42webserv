@@ -12,8 +12,7 @@ CLASS_HEADER_DIR = classes/
 CLASS_HEADER_FILE =	ConfigData.hpp \
 					FileDescriptor.hpp \
 					Http.hpp \
-					HttpCgiData.hpp \
-					HttpRequest.hpp \
+					CgiProcess.hpp \
 					Logger.hpp \
 					ServerConfig.hpp \
 					Socket.hpp \
@@ -40,8 +39,7 @@ SRC_CLASS_DIR = classes_definition/
 SRC_CLASSES_FILE =	ConfigData.cpp \
 					FileDescriptor.cpp \
 					Http.cpp \
-					HttpCgiData.cpp \
-					HttpRequest.cpp \
+					CgiProcess.cpp \
 					Logger.cpp \
 					ServerConfig.cpp \
 					Socket.cpp \
@@ -51,7 +49,8 @@ SRC_CLASSES_FILE =	ConfigData.cpp \
 
 SRC_FUNC_DIR = functions/
 SRC_FUNC_FILE = chartables.cpp \
-				split.cpp
+				split.cpp \
+				signal_handler.cpp
 				
 
 SOURCE_MAIN_FILE = main.cpp

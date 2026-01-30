@@ -24,28 +24,28 @@ class CharTable {
 		bool isNotMatch(const std::string& str, size_t startPos, size_t size) const;
 
 		// return npos of the input str if failed
-		size_t findFirstCharset(const std::string& charsetToFind) const;
+		size_t findFirstCharset(const std::string& strToFind) const;
 		// return npos of the input str if failed
-		size_t findFirstCharset(const std::string& charsetToFind, size_t startPos) const;
-		size_t findFirstCharset(const std::string& charsetToFind, size_t startPos, size_t size) const;
+		size_t findFirstCharset(const std::string& strToFind, size_t startPos) const;
+		size_t findFirstCharset(const std::string& strToFind, size_t startPos, size_t size) const;
 
 		// return npos of the input str if failed
-		size_t findFirstNotCharset(const std::string& charsetToFind) const;
+		size_t findFirstNotCharset(const std::string& strToFind) const;
 		// return npos of the input str if failed
-		size_t findFirstNotCharset(const std::string& charsetToFind, size_t	startPos) const;
-		size_t findFirstNotCharset(const std::string& charsetToFind, size_t startPos, size_t size) const;
+		size_t findFirstNotCharset(const std::string& strToFind, size_t	startPos) const;
+		size_t findFirstNotCharset(const std::string& strToFind, size_t startPos, size_t size) const;
 
 		// return npos of the input str if failed
-		size_t findLastCharset(const std::string& charsetToFind) const;
+		size_t findLastCharset(const std::string& strToFind) const;
 		// return npos of the input str if failed
-		size_t findLastCharset(const std::string& charsetToFind, size_t	startPos) const;
-		size_t findLastCharset(const std::string& charsetToFind, size_t	startPos, size_t size) const;
+		size_t findLastCharset(const std::string& strToFind, size_t	startPos) const;
+		size_t findLastCharset(const std::string& strToFind, size_t	startPos, size_t size) const;
 
 		// return npos of the input str if failed
-		size_t findLastNotCharset(const std::string& charsetToFind) const;
+		size_t findLastNotCharset(const std::string& strToFind) const;
 		// return npos of the input str if failed
-		size_t findLastNotCharset(const std::string& charsetToFind, size_t	startPos) const;
-		size_t findLastNotCharset(const std::string& charsetToFind, size_t	startPos, size_t size) const;
+		size_t findLastNotCharset(const std::string& strToFind, size_t	startPos) const;
+		size_t findLastNotCharset(const std::string& strToFind, size_t	startPos, size_t size) const;
 
 };
 

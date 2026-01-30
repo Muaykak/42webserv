@@ -26,7 +26,6 @@ public:
 	FileDescriptor &operator=(const FileDescriptor &obj);
 	FileDescriptor &operator=(int fd);
 	~FileDescriptor();
-	operator int() const;
 	int	getFd() const;
 };
 

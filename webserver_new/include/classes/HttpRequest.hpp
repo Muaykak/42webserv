@@ -23,20 +23,22 @@ enum e_http_request_method {
 
 class HttpRequest {
 	private:
-		std::string _requestBuffer;
 		e_http_request_status	_status;
 		int						_errorCode;
 		t_config_map _headerField;
 
 		e_http_request_method	_method;
+		std::string				_requestTarget;
+		std::string				_protocol;
 
+		void	httpError(int errorCode);
 	public:
 		HttpRequest();
 		HttpRequest(const HttpRequest& obj);
 		HttpRequest& operator=(const HttpRequest& obj);
 		~HttpRequest();
 
-		void	processingReadBuffer(const std::string& readBuffer, ssize_t readAmount);
+		void	processingReadBuffer( std::string& readBuffer);
 		e_http_request_status	getStatus() const;
 
 };

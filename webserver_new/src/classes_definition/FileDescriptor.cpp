@@ -70,10 +70,6 @@ FileDescriptor::~FileDescriptor()
 	release();
 }
 
-FileDescriptor::operator int() const
-{
-	return _fd;
-}
 int	FileDescriptor::getFd() const {
 	return (_fd);
 }

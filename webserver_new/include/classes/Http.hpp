@@ -1,33 +1,62 @@
 #ifndef HTTP_HPP
 # define HTTP_HPP
 
-# include "HttpCgiData.hpp"
-# include "HttpRequest.hpp"
 # include <list>
 # include <map>
+# include "../defined_value.hpp"
 
 class Socket;
 
+enum e_http_process_status {
+	NO_STATUS,
+	READING_REQUEST_LINE,
+	READING_HEADER,
+	PROCESSING_REQUEST
+};
+
+enum e_http_request_method {
+	NO_METHOD,
+	GET,
+	POST,
+	DELETE
+};
+
 class Http {
 	private:
-		std::list<HttpRequest>	_requestData;
-		std::string	_responseBuffer;
-		HttpCgiData	_cgiData;
-		std::string	_readBuffer;
+		std::vector<char>	_recvBuffer;
+		std::string _requestBuffer;
+
+		bool	_keepConnection;
+
+		std::string	_sendBuffer;
+
+
+
+		e_http_process_status	_processStatus;
+		bool	processingRequestBuffer(const Socket& clientSocket, std::map<int, Socket>& socketMap);
+		void	readingRequestBuffer();
+		void	validateRequestBufffer();
+
+		int	_errorStatusCode;
+		std::string	_throwMessageToClient; // so we know where it happen error
+		void	httpError(int errorCode, const std::string& throwToClient);
+		void	httpError(int errorCode);
+
+		e_http_request_method	_method;
+		std::string				_requestTarget;
+		std::string				_protocol;
+
+		void	printHeaderField() const;
+		t_config_map			_headerField;
 
 	public:
 		Http();
-		Http(const Http& obj);
-		Http& operator=(const Http& obj);
 		~Http();
 
-		// return bool to indicate whether server should remove this client connection from the sockets
-		// false means to close connection
-		bool	readFromClient(const Socket& clientSocket, std::map<int, Socket>& socketMap);
+		void	readFromClient(const Socket& clientSocket, std::map<int, Socket>& SocketMap);
+		void	writeToClient(const Socket& clientSocket, std::map<int, Socket>& SocketMap);
 
-		// return bool to indicate whether server should remove this client connection from the sockets
-		// false means to close connection
-		bool	writeToClient(const Socket& clientSocket, std::map<int, Socket>& socketMap);
+		bool	isKeepConnection() const;
 };
 
 #endif

@@ -19,8 +19,8 @@ WebServ::WebServ(const std::string &configPath) : _webservConfigPath(configPath)
 		while (serversConfigIterator != serversConfigMapPtr->end()){
 			try {
 				Socket tempSocket = socket(AF_INET, SOCK_STREAM, 0);
-				tempSocket.setupSocket(SERVER_SOCKET, &serversConfigIterator->second, _epollFD);
-				sockets.insert(std::make_pair(serversConfigIterator->first, tempSocket));
+				tempSocket.setupSocket(SERVER_SOCKET, &serversConfigIterator->second, _epollFD, &sockets);
+				sockets.insert(std::make_pair(tempSocket.getSocketFD().getFd(), tempSocket));
 			} 
 			catch (std::exception &e) {
 				throw WebservException("::Create serverSocket failed::" + std::string(e.what()));
@@ -33,17 +33,22 @@ WebServ::WebServ(const std::string &configPath) : _webservConfigPath(configPath)
 	{
 		epoll_event	events[MAX_EPOLL_EVENT];
 		int returnEventsAmount;
+		int lastAmount = 0;
 		int	eventsIndex;
 		Logger::log(LC_DEBUG, "Webserv is Waiting for connection!");
-		while (true){
-			returnEventsAmount = epoll_wait(_epollFD, events, MAX_EPOLL_EVENT, 1000);
-
+		while (signal_status() == 1){
+			returnEventsAmount = epoll_wait(_epollFD.getFd(), events, MAX_EPOLL_EVENT, 1000);
+			if (lastAmount != returnEventsAmount && returnEventsAmount >= 0)
+				Logger::log(LC_CONN_LOG, "Epoll event!:%d Total_Socket: %zu", returnEventsAmount, sockets.size());
+			lastAmount = returnEventsAmount;
 			if (returnEventsAmount == 0)
 				continue;
 
 			// ERROR but should retry if EINTR
 			if (returnEventsAmount < 0){
 				if (errno == EINTR){
+					if (signal_status() == 0)
+						return ;
 					Logger::log(LC_DEBUG, "epoll_wait() got interrupted. Retrying...");
 					Logger::log(LC_DEBUG, "Webserv is Waiting for connection!");
 					continue;
@@ -53,7 +58,7 @@ WebServ::WebServ(const std::string &configPath) : _webservConfigPath(configPath)
 
 			eventsIndex = 0;
 			while (eventsIndex < returnEventsAmount){
-				if (sockets[events[eventsIndex].data.fd].handleEvent(events[eventsIndex], sockets) == false){
+				if (sockets[events[eventsIndex].data.fd].handleEvent(events[eventsIndex]) == false){
 					sockets.erase(events[eventsIndex].data.fd);
 				}
 				++eventsIndex;

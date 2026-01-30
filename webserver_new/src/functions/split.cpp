@@ -72,7 +72,7 @@ void	splitString(const std::string& toSplit,
 
 		nextIndex = toSplit.find_first_of(delimitter, currIndex);
 		if (nextIndex == toSplit.npos || nextIndex >= endPos){
-			returnVec.push_back(toSplit.substr(currIndex));
+			returnVec.push_back(toSplit.substr(currIndex, endPos - currIndex));
 			return;
 		}
 		else {
@@ -154,7 +154,7 @@ void	splitString(const std::string& toSplit,
 
 		nextIndex = delimitter.findFirstCharset(toSplit, currIndex);
 		if (nextIndex == toSplit.npos || nextIndex >= endPos){
-			returnVec.push_back(toSplit.substr(currIndex));
+			returnVec.push_back(toSplit.substr(currIndex, endPos - currIndex));
 			return;
 		}
 		else {

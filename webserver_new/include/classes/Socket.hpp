@@ -14,6 +14,7 @@
 # include <sys/epoll.h>
 # include "../utility_function.hpp"
 # include "Http.hpp"
+# include "CgiProcess.hpp"
 
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
@@ -40,6 +41,16 @@ private:
 	const std::vector<ServerConfig> *_serversConfig;
 	Http	http;
 
+	// for CGI part
+	std::map<int, Socket>	*_socketMap;
+
+	// cgi target to parent
+	Socket	*_parentSocket;
+	
+
+	CgiProcess	_cgiProcess;
+
+
 public:
 
 	Socket();
@@ -49,12 +60,17 @@ public:
 	Socket &operator=(const Socket &obj);
 	~Socket();
 	const FileDescriptor& getSocketFD() const;
+	const FileDescriptor& getEpollFD() const;
 	const std::vector<ServerConfig> *getServersConfigPtr() const;
 
 	// Be sure that epollFD still available !
-	bool setupSocket(e_socket_type socketType, const std::vector<ServerConfig> *_serversConfigVec, const FileDescriptor &epollFD);
+	bool setupSocket(e_socket_type socketType, const std::vector<ServerConfig> *_serversConfigVec,
+		const FileDescriptor &epollFD, std::map<int, Socket>* socketMap);
+
+	bool setupCGI_socket(e_socket_type cgiSocketType, const std::vector<ServerConfig> *_serversConfigVec, const FileDescriptor &epollFD,
+		Socket* parentSocket, std::map<int, Socket>* socketMap, CgiProcess& cgiProcess);
 	// return false means this Socket should be DESTROYED after handleEVENT
-	bool handleEvent(const epoll_event &event, std::map<int, Socket> &socketMap);
+	bool handleEvent(const epoll_event &event);
 
 };
 
