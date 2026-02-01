@@ -3,6 +3,7 @@
 
 # include <list>
 # include <map>
+# include <set>
 # include "../defined_value.hpp"
 
 class Socket;
@@ -42,12 +43,13 @@ class Http {
 		void	httpError(int errorCode, const std::string& throwToClient);
 		void	httpError(int errorCode);
 
+
 		e_http_request_method	_method;
 		std::string				_requestTarget;
 		std::string				_protocol;
 
 		void	printHeaderField() const;
-		t_config_map			_headerField;
+		std::map<std::string, std::set<std::string> > _headerField;
 
 	public:
 		Http();

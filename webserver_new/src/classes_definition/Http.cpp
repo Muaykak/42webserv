@@ -44,8 +44,8 @@ void Http::printHeaderField() const
 			std::cout << _requestTarget << " " << _protocol << std::endl;
 		}
 
-		t_config_map::const_iterator	it = _headerField.begin();
-		std::vector<std::string>::const_iterator vecIt;
+		std::map<std::string, std::set<std::string> >::const_iterator	it = _headerField.begin();
+		std::set<std::string>::const_iterator vecIt;
 		while (it != _headerField.end())
 		{
 			std::cout << it->first << ": ";
@@ -222,7 +222,7 @@ bool	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Soc
 		std::string	tempFieldName;
 		std::string	tempFieldValue;
 		std::string	tempSep;
-		std::vector<std::string> tempVec;
+		std::set<std::string> tempSet;
 		size_t	colonPos;
 		size_t	temp;
 
@@ -293,6 +293,7 @@ bool	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Soc
 				size_t	commaPos;
 				size_t	i = 0;
 				size_t	j = 0;
+				std::string	newStr;
 
 				while (i < tempSep.size())
 				{
@@ -312,24 +313,24 @@ bool	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Soc
 					j = htabSp().findLastNotCharset(tempSep, commaPos - 1, commaPos - 1 - i);
 
 					if (j <= i || j == tempSep.npos)
-						tempVec.push_back(tempSep.substr(i, 1));
+						newStr = tempSep.substr(i, 1);
 					else
-						tempVec.push_back(tempSep.substr(i, j - i + 1));
-
+						newStr = tempSep.substr(i, j - i + 1);
 					//check if field value doesn't contain any forbidden char
-					if (forbiddenFieldValueChar().isNotMatch(tempVec.back()) == false)
+					if (forbiddenFieldValueChar().isNotMatch(newStr) == false)
 					{
 						httpError(400);
 						return (false);
 					}
+					tempSet.insert(newStr);
+					newStr.clear();
 					
 					i = commaPos + 1;
 				}
 			}
-			if (!tempVec.empty())
-				_headerField[tempFieldName].insert(_headerField[tempFieldName].end(), tempVec.begin(), tempVec.end());
-
-			tempVec.clear();
+			if (!tempSet.empty())
+				_headerField[tempFieldName].insert(tempSet.begin(), tempSet.end());
+			tempSet.clear();
 			
 			// successfully read one field name and value, move to next one
 			currIndex = endLinePos + 2;
@@ -338,7 +339,12 @@ bool	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Soc
 
 		/************************************** */
 		/* */
+		std::vector<ServerConfig>::const_iterator it = clientSocket.getServersConfigPtr()->begin();
 
+		while (it != clientSocket.getServersConfigPtr()->end()){
+			it->printServerConfig();
+			++it;
+		}
 
 
 	}
@@ -388,76 +394,3 @@ void	Http::writeToClient(const Socket& clientSocket, std::map<int, Socket>& Sock
 {
 
 }
-
-//Http::Http() {
-//	_recvBuffer.reserve(HTTP_RECV_BUFFER);
-//}
-//Http::Http(const Http& obj) : _requestData(obj._requestData), _responseBuffer(obj._responseBuffer){}
-//Http& Http::operator=(const Http& obj){
-//	_requestData = obj._requestData;
-//	_responseBuffer = obj._responseBuffer;
-//	return (*this);
-//}
-//Http::~Http(){}
-
-//// return bool to indicate whether server should remove this client connection from the sockets
-//// false means to close connection
-//bool Http::readFromClient(const Socket& clientSocket, std::map<int, Socket>& socketMap){
-
-//	ssize_t	readAmount;
-
-//	std::list<std::string>	buffList;
-//	while (true){
-//		readAmount = recv(clientSocket.getSocketFD().getFd(), &_recvBuffer[0], HTTP_RECV_BUFFER, 0);
-
-//		if (readAmount == 0){
-//			return (false);
-//		}
-//		if (readAmount < 0){
-//			if (errno == EINTR)
-//				continue;	
-//			else if (errno == EAGAIN || errno == EWOULDBLOCK)
-//				break ;
-//			else
-//				return (false);
-//		} else {
-//			buffList.push_back(std::string(_recvBuffer, readAmount));
-//		}
-//	}
-//	if (!buffList.empty())
-//	{
-//		size_t	recvBuffLen = 0; 
-//		std::list<std::string>::const_iterator it = buffList.begin();
-//		while (it != buffList.end()){
-//			recvBuffLen += it->size();
-//			++it;
-//		}
-//		_requestBuffer.reserve(_recvBuffer.size() + recvBuffLen);
-
-//		it = buffList.begin();
-//		while (it != buffList.end()){
-//			_requestBuffer.append(*it);
-//			++it;
-//		}
-//		_
-//	}
-//	else {
-//		std::cout << "Nothing to read!?" << std::endl;
-//		return (true);
-//	}
-
-//	if (_requestData.empty() || _requestData.back().getStatus() == COMPLETE){
-//		_requestData.push_back(HttpRequest());
-//	}
-
-//	_requestData.back().processingReadBuffer(_requestBuffer);
-
-
-//	return (true);
-//}
-
-//// return bool to indicate whether server should remove this client connection from the sockets
-//// false means to close connection
-//bool Http::writeToClient(const Socket& clientSocket, std::map<int, Socket>& socketMap){
-//	return (true);
-//}
