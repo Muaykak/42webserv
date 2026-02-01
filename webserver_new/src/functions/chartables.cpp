@@ -3,7 +3,7 @@
 // Frequently used tables
 
 const CharTable&	whiteSpaceTable(){
-	static const CharTable table(" \t\v\n\f\r\0", true);
+	static const CharTable table(" \t\v\n\f\r", true);
 	return (table);
 }
 
@@ -24,7 +24,7 @@ static std::string forbiddenControlCharOnFieldValue()
 {
 	std::string returnStr;
 	returnStr.reserve(32);
-	for (char c = 0; c < 32; c++)
+	for (unsigned char c = 0; c < 32; c++)
 	{
 		// vertical tab is allowed
 		if (c == '\v')
@@ -40,3 +40,4 @@ const CharTable&	forbiddenFieldValueChar()
 	static const CharTable table(forbiddenControlCharOnFieldValue(), true);
 	return (table);
 }
+

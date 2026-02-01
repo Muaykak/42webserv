@@ -256,17 +256,39 @@ void	ConfigData::splitToken(const std::string &readLine, std::vector<s_config_to
 			s_config_token	temp_config_data;
 			temp_config_data.token_type = DATA_TOKEN;
 			//indexNext = readLine.find_first_of(" \t\v\n\f\r#;{}", indexCurrent);
-			indexNext = configTokenTable.findFirstCharset(readLine, indexCurrent);
-			if (indexNext == readLine.npos){
-				temp_config_data.tokenString = readLine.substr(indexCurrent);
-				tokenList.push_back(temp_config_data);
-				break ;
+			if (readLine[indexCurrent] == '\"' || readLine[indexCurrent] == '\'')
+			{
+				if (indexCurrent + 1 >= readLineSize)
+					throw WebservException("ConfigData::splitToken::wrong syntax::use of \', \"::" + readLine);
+				indexNext = readLine.find_first_of(readLine[indexCurrent], indexCurrent + 1);
+				if (indexNext == readLine.npos)
+				{
+					throw WebservException("ConfigData::splitToken::wrong syntax::use of \', \"::" + readLine);
+				}
+				else
+				{
+					size_t	n = indexCurrent + 1 >= indexNext ? 0 : indexNext - indexCurrent - 1;
+					if (n > 0)
+					{
+						temp_config_data.tokenString = readLine.substr(indexCurrent + 1, n);
+						tokenList.push_back(temp_config_data);
+					}
+					indexCurrent = indexNext + 1;
+				}
 			}
 			else {
-				temp_config_data.tokenString = readLine.substr(indexCurrent, indexNext - indexCurrent);
-				tokenList.push_back(temp_config_data);
-				indexCurrent = indexNext;
-				continue;
+				indexNext = configTokenTable.findFirstCharset(readLine, indexCurrent);
+				if (indexNext == readLine.npos){
+					temp_config_data.tokenString = readLine.substr(indexCurrent);
+					tokenList.push_back(temp_config_data);
+					break ;
+				}
+				else {
+					temp_config_data.tokenString = readLine.substr(indexCurrent, indexNext - indexCurrent);
+					tokenList.push_back(temp_config_data);
+					indexCurrent = indexNext;
+					continue;
+				}
 			}
 		}
 	}
