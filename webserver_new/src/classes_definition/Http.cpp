@@ -88,23 +88,10 @@ void Http::readingRequestBuffer()
 
 }
 
-bool	Http::parsingHttpHeader()
+void	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 {
-
-}
-
-/*
-return value:
-
-0 = false, error occurred, usually define
-	the error code to _errorStatusCode (no error will default set to -1)
-
-1 = success, can continue to next procedure
-
-2 = need to wait for new buffer (wait for next EPOLLIN)
-*/
-int	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
-{
+	if (_process_return != 1)
+		return ;
 	if (_processStatus == NO_STATUS)
 		_processStatus = READING_REQUEST_LINE;
 	if (_processStatus == READING_REQUEST_LINE){
@@ -112,7 +99,6 @@ int	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 		if (reqBuffSize > MAX_REQUEST_BUFFER_SIZE)
 		{
 			httpError(400, "request buffer should not higher than MAX_REQUEST_BUFFER_SIZE");
-			return (0);
 		}
 		if (_method == NO_METHOD)
 		{
@@ -123,7 +109,8 @@ int	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 					// '\r' must always followed by '\n'
 					if (_requestBuffer[currIndex + 1] != '\n') {
 						httpError(400);
-						return (0);
+						_process_return = 0;
+						return ;
 					}
 					currIndex += 2;
 					continue;
@@ -134,7 +121,8 @@ int	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 		
 			if (currIndex >= reqBuffSize){
 				_requestBuffer.clear();
-				return (2);
+				_process_return = 2;
+				return ;
 			}
 			// now currIndex sits at the first char of the 
 			// request line
@@ -148,7 +136,8 @@ int	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 			if (endLinePos == _requestBuffer.npos){
 				if (currIndex != 0)
 					_requestBuffer = _requestBuffer.substr(currIndex);
-				return (2);
+				_process_return = 2;
+				return ;
 			}
 
 			std::string methodStr;
@@ -168,28 +157,32 @@ int	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 			}
 			else {
 				httpError(400, "");
-				return (0);
+				_process_return = 0;
+				return ;
 			}
 			// skip 1 pos which is the first whitespace
 			currIndex = pos + 1;
 			// should not reach endlinePos yet
 			if (currIndex >= endLinePos){
 				httpError(400, "");
-				return (0);
+				_process_return = 0;
+				return ;
 			}
 			// now get the request target.
 			pos = htabSp().findFirstCharset(_requestBuffer, currIndex, endLinePos - currIndex);
 			// must can find next whitespace.. it IS the format
 			if (pos == _requestBuffer.npos){
 				httpError(400, "");
-				return (0);
+				_process_return = 0;
+				return ;
 			}
 			_requestTarget = _requestBuffer.substr(currIndex, pos - currIndex);
 
 			// must not empty
 			if (_requestTarget.empty()){
 				httpError(400, "");
-				return (0);
+				_process_return = 0;
+				return ;
 			}
 
 			// then move our currIndex
@@ -198,7 +191,8 @@ int	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 			// should not reach endlinePos yet
 			if (currIndex >= endLinePos){
 				httpError(400, "");
-				return (0);
+				_process_return = 0;
+				return ;
 			}
 
 			// now the last part is protocol version
@@ -207,7 +201,8 @@ int	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 			// check must not empty
 			if (_protocol.empty()){
 				httpError(400, "");
-				return (0);
+				_process_return = 0;
+				return ;
 			}
 			// we get all the request line then we move to reading the header field
 			currIndex = endLinePos + 2;
@@ -215,162 +210,177 @@ int	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 
 		_processStatus = READING_HEADER;
 
-		return (1);
 	}
 
+	_process_return = 1;
+	return ;
 }
 
+void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
+{
+	if (_process_return != 1)
+		return ;
+	if (currIndex >= reqBuffSize)
+	{
+		_requestBuffer.clear();
+		_process_return = 2;
+		return ;
+	}
+
+	// should fix about \r\n\r\n
+
+	size_t	endLinePos;
+
+	std::string	tempFieldName;
+	std::string	tempFieldValue;
+	std::string	tempSep;
+	std::set<std::string> tempSet;
+	size_t	colonPos;
+	size_t	temp;
+
+	while (_processStatus == READING_HEADER)
+	{
+		endLinePos = _requestBuffer.find("\r\n", currIndex);
+
+		// cannot find endline yet, process next read later
+		if (endLinePos == _requestBuffer.npos)
+		{
+			if (currIndex != 0)
+				_requestBuffer.erase(0, currIndex);
+			_process_return = 2;
+			return ;
+		}
+
+		// it is \r\n\r\n determine the end of header
+		if (endLinePos == currIndex)
+		{
+
+			_processStatus = PROCESSING_REQUEST;
+			if (currIndex + 2 >= reqBuffSize)
+				_requestBuffer.clear();
+			else
+				_requestBuffer.erase(0, currIndex);
+			currIndex = 0;
+			printHeaderField();
+			break ;
+		}
+
+
+		// we found end line pos
+
+		// must separate name and value by colon ':'
+		colonPos = _requestBuffer.find_first_of(':', currIndex);
+		// not separate by :  must reject
+		if (colonPos == _requestBuffer.npos || colonPos >= endLinePos)
+		{
+			httpError(400);
+			_process_return = 0;
+			return ;
+		}
+		// then get the field name in temp first
+		tempFieldName = _requestBuffer.substr(currIndex, colonPos - currIndex);
+
+		// must not empty
+		if (tempFieldName.empty())
+		{
+			httpError(400);
+			_process_return = 0;
+			return ;
+		}
+
+		// We can check field name length here
+
+		// simple checking that it must not contain any forbidden char
+		if (allowedFieldNameChar().isNotMatch(tempFieldName))
+		{
+			httpError(400);
+			_process_return = 0;
+			return ;
+		}
+
+
+		// now we got field name, next we want field value
+		currIndex = colonPos + 1;
+		tempSep = _requestBuffer.substr(currIndex, endLinePos - currIndex);
+		// Field value allow to be empty
+		// so only process if not empty
+		if (!tempSep.empty())
+		{
+			size_t	commaPos;
+			size_t	i = 0;
+			size_t	j = 0;
+			std::string	newStr;
+
+			while (i < tempSep.size())
+			{
+				// skip whitespace at the front first
+				temp = htabSp().findFirstNotCharset(tempSep, i);
+				// found only \t' ' so no value
+				if (temp == tempSep.npos)
+				{
+					break ;
+				}
+
+				// move to first char
+				i = temp;
+				commaPos = tempSep.find_first_of(',', i);
+				if (commaPos == tempSep.npos)
+					commaPos = tempSep.size();
+				j = htabSp().findLastNotCharset(tempSep, commaPos - 1, commaPos - 1 - i);
+
+				if (j <= i || j == tempSep.npos)
+					newStr = tempSep.substr(i, 1);
+				else
+					newStr = tempSep.substr(i, j - i + 1);
+				//check if field value doesn't contain any forbidden char
+				if (forbiddenFieldValueChar().isNotMatch(newStr) == false)
+				{
+					httpError(400);
+					_process_return = 0;
+					return ;
+				}
+				tempSet.insert(newStr);
+				newStr.clear();
+				
+				i = commaPos + 1;
+			}
+		}
+		if (!tempSet.empty())
+			_headerField[tempFieldName].insert(tempSet.begin(), tempSet.end());
+		tempSet.clear();
+		
+		// successfully read one field name and value, move to next one
+		currIndex = endLinePos + 2;
+
+	}
+
+	_process_return = 1;
+	return ;
+}
+
+
 // use the _requestBuffer
-bool	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Socket>& socketMap)
+void	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Socket>& socketMap)
 {
 	try
 	{
 		size_t	currIndex = 0;
 		size_t	reqBuffSize = _requestBuffer.size();
 
-		int ret;
-		ret = parsingHttpRequestLine(currIndex, reqBuffSize);
+		_process_return = 1;
 
-		if ()
-
-		if (currIndex >= reqBuffSize)
-		{
-			_requestBuffer.clear();
-			return (true);
-		}
-
-		// should fix about \r\n\r\n
-
-		size_t	endLinePos;
-
-		std::string	tempFieldName;
-		std::string	tempFieldValue;
-		std::string	tempSep;
-		std::set<std::string> tempSet;
-		size_t	colonPos;
-		size_t	temp;
-
-		while (_processStatus == READING_HEADER)
-		{
-			endLinePos = _requestBuffer.find("\r\n", currIndex);
-
-			// cannot find endline yet, process next read later
-			if (endLinePos == _requestBuffer.npos)
-			{
-				if (currIndex != 0)
-					_requestBuffer.erase(0, currIndex);
-				return (true);
-			}
-
-			// it is \r\n\r\n determine the end of header
-			if (endLinePos == currIndex)
-			{
-
-				_processStatus = PROCESSING_REQUEST;
-				if (currIndex + 2 >= reqBuffSize)
-					_requestBuffer.clear();
-				else
-					_requestBuffer.erase(0, currIndex);
-				currIndex = 0;
-				printHeaderField();
-				break ;
-			}
-
-
-			// we found end line pos
-
-			// must separate name and value by colon ':'
-			colonPos = _requestBuffer.find_first_of(':', currIndex);
-			// not separate by :  must reject
-			if (colonPos == _requestBuffer.npos || colonPos >= endLinePos)
-			{
-				httpError(400);
-				return (false);
-			}
-			// then get the field name in temp first
-			tempFieldName = _requestBuffer.substr(currIndex, colonPos - currIndex);
-
-			// must not empty
-			if (tempFieldName.empty())
-			{
-				httpError(400);
-				return (false);
-			}
-
-			// We can check field name length here
-
-			// simple checking that it must not contain any forbidden char
-			if (allowedFieldNameChar().isNotMatch(tempFieldName))
-			{
-				httpError(400);
-				return (false);
-			}
-
-
-			// now we got field name, next we want field value
-			currIndex = colonPos + 1;
-			tempSep = _requestBuffer.substr(currIndex, endLinePos - currIndex);
-			// Field value allow to be empty
-			// so only process if not empty
-			if (!tempSep.empty())
-			{
-				size_t	commaPos;
-				size_t	i = 0;
-				size_t	j = 0;
-				std::string	newStr;
-
-				while (i < tempSep.size())
-				{
-					// skip whitespace at the front first
-					temp = htabSp().findFirstNotCharset(tempSep, i);
-					// found only \t' ' so no value
-					if (temp == tempSep.npos)
-					{
-						break ;
-					}
-
-					// move to first char
-					i = temp;
-					commaPos = tempSep.find_first_of(',', i);
-					if (commaPos == tempSep.npos)
-						commaPos = tempSep.size();
-					j = htabSp().findLastNotCharset(tempSep, commaPos - 1, commaPos - 1 - i);
-
-					if (j <= i || j == tempSep.npos)
-						newStr = tempSep.substr(i, 1);
-					else
-						newStr = tempSep.substr(i, j - i + 1);
-					//check if field value doesn't contain any forbidden char
-					if (forbiddenFieldValueChar().isNotMatch(newStr) == false)
-					{
-						httpError(400);
-						return (false);
-					}
-					tempSet.insert(newStr);
-					newStr.clear();
-					
-					i = commaPos + 1;
-				}
-			}
-			if (!tempSet.empty())
-				_headerField[tempFieldName].insert(tempSet.begin(), tempSet.end());
-			tempSet.clear();
-			
-			// successfully read one field name and value, move to next one
-			currIndex = endLinePos + 2;
-
-		}
-		
-
+		parsingHttpRequestLine(currIndex, reqBuffSize);
+		parsingHttpHeader(currIndex, reqBuffSize);
 	}
 	catch (std::exception &e)
 	{
 		Logger::log(LC_ERROR, "something weird, Consider as server error ::%s", e.what());
 		httpError(500, e.what());
-		return (false);
+		_process_return = 0;
+		return ;
 	}
 
-	return (false);
+	return ;
 }
 
 void Http::readFromClient(const Socket& clientSocket, std::map<int, Socket>& socketMap)
@@ -397,8 +407,7 @@ void Http::readFromClient(const Socket& clientSocket, std::map<int, Socket>& soc
 		else 
 		{
 			_requestBuffer.append(_recvBuffer.data(), readAmount);
-			if (processingRequestBuffer(clientSocket, socketMap) == false)
-				break;
+			processingRequestBuffer(clientSocket, socketMap);
 		}
 	}
 	if (_errorStatusCode != -1)
