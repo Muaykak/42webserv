@@ -15,6 +15,8 @@ CLASS_HEADER_FILE =	ConfigData.hpp \
 					CgiProcess.hpp \
 					Logger.hpp \
 					ServerConfig.hpp \
+					ResponseBuffer.hpp \
+					HttpResponse.hpp \
 					Socket.hpp \
 					WebServ.hpp \
 					WebservException.hpp \
@@ -40,6 +42,8 @@ SRC_CLASSES_FILE =	ConfigData.cpp \
 					FileDescriptor.cpp \
 					Http.cpp \
 					CgiProcess.cpp \
+					ResponseBuffer.cpp \
+					HttpResponse.cpp \
 					Logger.cpp \
 					ServerConfig.cpp \
 					Socket.cpp \

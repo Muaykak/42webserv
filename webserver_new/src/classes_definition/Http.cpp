@@ -88,6 +88,138 @@ void Http::readingRequestBuffer()
 
 }
 
+bool	Http::parsingHttpHeader()
+{
+
+}
+
+/*
+return value:
+
+0 = false, error occurred, usually define
+	the error code to _errorStatusCode (no error will default set to -1)
+
+1 = success, can continue to next procedure
+
+2 = need to wait for new buffer (wait for next EPOLLIN)
+*/
+int	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
+{
+	if (_processStatus == NO_STATUS)
+		_processStatus = READING_REQUEST_LINE;
+	if (_processStatus == READING_REQUEST_LINE){
+
+		if (reqBuffSize > MAX_REQUEST_BUFFER_SIZE)
+		{
+			httpError(400, "request buffer should not higher than MAX_REQUEST_BUFFER_SIZE");
+			return (0);
+		}
+		if (_method == NO_METHOD)
+		{
+
+			// skip any empty line '\r\n"""
+			while (currIndex + 1 < reqBuffSize){
+				if (_requestBuffer[currIndex] == '\r') {
+					// '\r' must always followed by '\n'
+					if (_requestBuffer[currIndex + 1] != '\n') {
+						httpError(400);
+						return (0);
+					}
+					currIndex += 2;
+					continue;
+				}
+				else
+					break ;
+			}
+		
+			if (currIndex >= reqBuffSize){
+				_requestBuffer.clear();
+				return (2);
+			}
+			// now currIndex sits at the first char of the 
+			// request line
+			
+			// I need the whole request line first
+			// before process anything
+			size_t	endLinePos = _requestBuffer.find("\r\n");
+
+			// doesn't find any endline delimiter
+			// will process later
+			if (endLinePos == _requestBuffer.npos){
+				if (currIndex != 0)
+					_requestBuffer = _requestBuffer.substr(currIndex);
+				return (2);
+			}
+
+			std::string methodStr;
+
+			// find pos any whitespaces but not '\n'
+			size_t	pos = htabSp().findFirstCharset(_requestBuffer, currIndex, endLinePos - currIndex);
+			methodStr = pos == _requestBuffer.npos ? _requestBuffer.substr(currIndex) : _requestBuffer.substr(currIndex, pos - currIndex);
+
+			if (methodStr == "GET") {
+				_method = GET;
+			}
+			else if (methodStr == "POST") {
+				_method = POST;
+			}
+			else if (methodStr == "DELETE") {
+				_method = DELETE;
+			}
+			else {
+				httpError(400, "");
+				return (0);
+			}
+			// skip 1 pos which is the first whitespace
+			currIndex = pos + 1;
+			// should not reach endlinePos yet
+			if (currIndex >= endLinePos){
+				httpError(400, "");
+				return (0);
+			}
+			// now get the request target.
+			pos = htabSp().findFirstCharset(_requestBuffer, currIndex, endLinePos - currIndex);
+			// must can find next whitespace.. it IS the format
+			if (pos == _requestBuffer.npos){
+				httpError(400, "");
+				return (0);
+			}
+			_requestTarget = _requestBuffer.substr(currIndex, pos - currIndex);
+
+			// must not empty
+			if (_requestTarget.empty()){
+				httpError(400, "");
+				return (0);
+			}
+
+			// then move our currIndex
+			currIndex = pos + 1;
+			// prevent edge case where now currIndex might right at the endLinepos
+			// should not reach endlinePos yet
+			if (currIndex >= endLinePos){
+				httpError(400, "");
+				return (0);
+			}
+
+			// now the last part is protocol version
+			_protocol = _requestBuffer.substr(currIndex, endLinePos - currIndex);
+
+			// check must not empty
+			if (_protocol.empty()){
+				httpError(400, "");
+				return (0);
+			}
+			// we get all the request line then we move to reading the header field
+			currIndex = endLinePos + 2;
+		}
+
+		_processStatus = READING_HEADER;
+
+		return (1);
+	}
+
+}
+
 // use the _requestBuffer
 bool	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Socket>& socketMap)
 {
@@ -95,124 +227,16 @@ bool	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Soc
 	{
 		size_t	currIndex = 0;
 		size_t	reqBuffSize = _requestBuffer.size();
-		if (_processStatus == NO_STATUS)
-			_processStatus = READING_REQUEST_LINE;
-		
-		if (_processStatus == READING_REQUEST_LINE){
 
-			if (reqBuffSize > MAX_REQUEST_BUFFER_SIZE)
-			{
-				httpError(400, "request buffer should not higher than MAX_REQUEST_BUFFER_SIZE");
-				return (false);
-			}
-			if (_method == NO_METHOD)
-			{
+		int ret;
+		ret = parsingHttpRequestLine(currIndex, reqBuffSize);
 
-				// skip any empty line '\r\n"""
-				while (currIndex + 1 < reqBuffSize){
-					if (_requestBuffer[currIndex] == '\r') {
-						// '\r' must always followed by '\n'
-						if (_requestBuffer[currIndex + 1] != '\n') {
-							httpError(400);
-							return (false);
-						}
-						currIndex += 2;
-						continue;
-					}
-					else
-						break ;
-				}
-			
-				if (currIndex >= reqBuffSize){
-					_requestBuffer.clear();
-					return (true);
-				}
-				// now currIndex sits at the first char of the 
-				// request line
-				
-				// I need the whole request line first
-				// before process anything
-				size_t	endLinePos = _requestBuffer.find("\r\n");
+		if ()
 
-				// doesn't find any endline delimiter
-				// will process later
-				if (endLinePos == _requestBuffer.npos){
-					if (currIndex != 0)
-						_requestBuffer = _requestBuffer.substr(currIndex);
-					return (true);
-				}
-
-				std::string methodStr;
-
-				// find pos any whitespaces but not '\n'
-				size_t	pos = htabSp().findFirstCharset(_requestBuffer, currIndex, endLinePos - currIndex);
-				methodStr = pos == _requestBuffer.npos ? _requestBuffer.substr(currIndex) : _requestBuffer.substr(currIndex, pos - currIndex);
-
-				if (methodStr == "GET") {
-					_method = GET;
-				}
-				else if (methodStr == "POST") {
-					_method = POST;
-				}
-				else if (methodStr == "DELETE") {
-					_method = DELETE;
-				}
-				else {
-					httpError(400, "");
-					return (false);
-				}
-				// skip 1 pos which is the first whitespace
-				currIndex = pos + 1;
-				// should not reach endlinePos yet
-				if (currIndex >= endLinePos){
-					httpError(400, "");
-					return (false);
-				}
-				// now get the request target.
-				pos = htabSp().findFirstCharset(_requestBuffer, currIndex, endLinePos - currIndex);
-				// must can find next whitespace.. it IS the format
-				if (pos == _requestBuffer.npos){
-					httpError(400, "");
-					return (false);
-				}
-				_requestTarget = _requestBuffer.substr(currIndex, pos - currIndex);
-
-				// must not empty
-				if (_requestTarget.empty()){
-					httpError(400, "");
-					return (false);
-				}
-
-				// then move our currIndex
-				currIndex = pos + 1;
-				// prevent edge case where now currIndex might right at the endLinepos
-				// should not reach endlinePos yet
-				if (currIndex >= endLinePos){
-					httpError(400, "");
-					return (false);
-				}
-
-				// now the last part is protocol version
-				_protocol = _requestBuffer.substr(currIndex, endLinePos - currIndex);
-
-				// check must not empty
-				if (_protocol.empty()){
-					httpError(400, "");
-					return (false);
-				}
-				// we get all the request line then we move to reading the header field
-				currIndex = endLinePos + 2;
-			}
-
-			// We can checking check length of request line here if  we want
-
-
-			_processStatus = READING_HEADER;
-			if (currIndex >= reqBuffSize)
-			{
-				_requestBuffer.clear();
-				return (true);
-			}
+		if (currIndex >= reqBuffSize)
+		{
+			_requestBuffer.clear();
+			return (true);
 		}
 
 		// should fix about \r\n\r\n
@@ -336,16 +360,7 @@ bool	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Soc
 			currIndex = endLinePos + 2;
 
 		}
-
-		/************************************** */
-		/* */
-		std::vector<ServerConfig>::const_iterator it = clientSocket.getServersConfigPtr()->begin();
-
-		while (it != clientSocket.getServersConfigPtr()->end()){
-			it->printServerConfig();
-			++it;
-		}
-
+		
 
 	}
 	catch (std::exception &e)

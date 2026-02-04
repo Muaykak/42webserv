@@ -47,7 +47,7 @@ ConfigData::ConfigData(const std::string &configPath)
 	}
 
 	// The actual read
-	std::list<s_config_token> tokenList;
+	std::vector<s_config_token> tokenList;
 	{
 		std::string readBuffer;
 		while (std::getline(configFile, readBuffer, '\n')){
@@ -62,7 +62,8 @@ ConfigData::ConfigData(const std::string &configPath)
 	{
 		bool	isInServerBlock = false;
 		bool	isInLocationBlock = false;
-		std::list<s_config_token>::iterator tokenListIt = tokenList.begin();
+		size_t	tokenI = 0;
+		size_t	tokenListSize = tokenList.size();
 		t_config_map	tempServerConfig;
 		std::string					tempDirectiveName;
 		std::vector<std::string>	tempDirectiveValue;
@@ -71,9 +72,9 @@ ConfigData::ConfigData(const std::string &configPath)
 		std::string		tempLocationName;
 		CharTable	allowChar("0123456789:.", true);
 
-		while (tokenListIt != tokenList.end()){
-			if (tokenListIt->token_type == OP_TOKEN){
-				if ((tokenListIt->tokenString)[0] == '{'){
+		while (tokenI < tokenListSize){
+			if (tokenList[tokenI].token_type == OP_TOKEN){
+				if ((tokenList[tokenI].tokenString)[0] == '{'){
 					//if (!tempServerConfig.empty() || !tempLocationMap.empty())
 					//{
 					//	throw WebservException("ConfigData::tempServerConfig, tempLocationMap is not empty");
@@ -98,7 +99,7 @@ ConfigData::ConfigData(const std::string &configPath)
 					else
 						throw WebservException("ConfigData::WRONG CURLY BRACKET(\"{}\")");
 				}
-				else if ((tokenListIt->tokenString)[0] == '}'){
+				else if ((tokenList[tokenI].tokenString)[0] == '}'){
 					if (!isInServerBlock && !isInLocationBlock)
 						throw WebservException("ConfigData::WRONG CURLY BRACKET(\"{}\")");
 					if (!tempDirectiveName.empty())
@@ -179,14 +180,14 @@ ConfigData::ConfigData(const std::string &configPath)
 				}
 			}
 
-			else if (tokenListIt->token_type == DATA_TOKEN){
+			else if (tokenList[tokenI].token_type == DATA_TOKEN){
 				if (tempDirectiveName.empty())
-					tempDirectiveName = tokenListIt->tokenString;
+					tempDirectiveName = tokenList[tokenI].tokenString;
 				else 
-					tempDirectiveValue.push_back(tokenListIt->tokenString);
+					tempDirectiveValue.push_back(tokenList[tokenI].tokenString);
 			}
 
-			++tokenListIt;
+			++tokenI;
 		}
 
 		checkServersConfigDuplicate();
@@ -220,7 +221,7 @@ void ConfigData::checkServersConfigDuplicate() {
 	}
 }
 
-void	ConfigData::splitToken(const std::string &readLine, std::list<s_config_token>& tokenList){
+void	ConfigData::splitToken(const std::string &readLine, std::vector<s_config_token>& tokenList){
 	size_t indexCurrent = 0;
 	size_t indexNext;
 	size_t readLineSize = readLine.size();

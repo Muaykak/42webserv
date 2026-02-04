@@ -12,7 +12,7 @@ enum e_http_process_status {
 	NO_STATUS,
 	READING_REQUEST_LINE,
 	READING_HEADER,
-	PROCESSING_REQUEST
+	PROCESSING_REQUEST,
 };
 
 enum e_http_request_method {
@@ -35,6 +35,8 @@ class Http {
 
 		e_http_process_status	_processStatus;
 		bool	processingRequestBuffer(const Socket& clientSocket, std::map<int, Socket>& socketMap);
+		bool	parsingHttpHeader();
+		int	parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize);
 		void	readingRequestBuffer();
 		void	validateRequestBufffer();
 
