@@ -9,6 +9,7 @@
 # include <cstring>
 # include <cstdlib>
 # include <sys/stat.h>
+# include <list>
 
 enum e_config_token_type {
 	NO_TOKEN_TYPE,
@@ -27,7 +28,7 @@ private:
 	// search server config by its port
 	std::map<int, std::vector<ServerConfig> > _serversConfigs;
 
-	void	splitToken(const std::string &readLine, std::vector<s_config_token>& tokenList);
+	void	splitToken(const std::string &readLine, std::list<s_config_token>& tokenList);
 
 	// remove if found any duplicates
 	void checkServersConfigDuplicate();
