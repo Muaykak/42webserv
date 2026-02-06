@@ -56,7 +56,9 @@ class Http {
 
 
 		std::string		_method;
-		std::string		_requestTarget;
+		std::string		_requestTarget;	
+		std::string		_targetPath;
+		std::string		_queryString;
 		std::string		_protocol;
 		void	printHeaderField() const;
 		std::map<std::string, std::set<std::string> > _headerField;

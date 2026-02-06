@@ -474,7 +474,12 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 
 	// checking the request line
 	{
+		// we need to check the 'request target' first
+		// this is the tedious process
+		{
 
+			// separate
+		}
 	}
 }
 
