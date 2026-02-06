@@ -4,6 +4,9 @@ void	splitString(const std::string& toSplit, const std::string& delimitter, std:
 	returnVec.clear();
 	size_t	currIndex = 0;
 	size_t	nextIndex;
+
+	if (delimitter.empty() || toSplit.empty())
+		return ;
 	while (true){
 		nextIndex =	toSplit.find_first_not_of(delimitter, currIndex);
 

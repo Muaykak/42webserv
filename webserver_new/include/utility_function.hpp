@@ -17,6 +17,7 @@ std::string toString(const T &value)
 
 const CharTable&	whiteSpaceTable();
 const CharTable&	htabSp();
+const CharTable&	alphaAtoZ();
 const CharTable&	allowedFieldNameChar();
 const CharTable&	forbiddenFieldValueChar();
 
@@ -39,6 +40,8 @@ void	splitString(const std::string& toSplit,
 void	splitString(const std::string& toSplit,
 		const CharTable& delimitter,
 		std::vector<std::string>& returnVec, size_t startPos, size_t size);
+
+void	stringToLower(std::string& toConvert);
 
 void 	serverStopHandler(int signum);
 volatile sig_atomic_t& signal_status();

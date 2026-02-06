@@ -2,9 +2,15 @@
 
 
 ServerConfig::ServerConfig() : _listenPort(-1), _serverNameVec(NULL){}
-ServerConfig::ServerConfig(const ServerConfig &obj) : _serverConfig(obj._serverConfig), _locationsConfig(obj._locationsConfig), _listenPort(obj._listenPort)
+ServerConfig::ServerConfig(const ServerConfig &obj)
+: _serverConfig(obj._serverConfig),
+_locationsConfig(obj._locationsConfig), _listenPort(obj._listenPort)
 {
-	_serverNameVec = getServerData("server_name");
+	const std::vector<std::string>* vecPtr = getServerData("server_name");
+	if (vecPtr)
+		_serverNameVec = *vecPtr;
+	for (size_t i = 0; i < _serverNameVec.size(); i++)
+		stringToLower(_serverNameVec[i]);
 }
 ServerConfig& ServerConfig::operator=(const ServerConfig &obj)
 {
@@ -25,7 +31,11 @@ ServerConfig::ServerConfig(const t_config_map& serverConfig, const t_location_ma
 		throw WebservException("ServerConfig::InvalidListenPort");
 	}
 	_listenPort = listenPort;
-	_serverNameVec = getServerData("server_name");
+	const std::vector<std::string>* vecPtr = getServerData("server_name");
+	if (vecPtr)
+		_serverNameVec = *vecPtr;
+	for (size_t i = 0; i < _serverNameVec.size(); i++)
+		stringToLower(_serverNameVec[i]);
 }
 
 bool ServerConfig::operator==(const ServerConfig& obj) const {
@@ -62,7 +72,7 @@ const std::vector<std::string>* ServerConfig::getLocationData(const std::string 
 int	ServerConfig::getPort() const {
 	return (_listenPort);
 }
-const std::vector<std::string> * ServerConfig::getServerNameVec() const {
+const std::vector<std::string> &ServerConfig::getServerNameVec() const {
 	return (_serverNameVec);
 }
 

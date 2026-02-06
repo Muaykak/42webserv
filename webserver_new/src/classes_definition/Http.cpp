@@ -4,7 +4,6 @@
 Http::Http()
 : _keepConnection(true),
 _processStatus(NO_STATUS),
-_method(NO_METHOD),
 _errorStatusCode(-1)
 {
 	_recvBuffer.reserve(HTTP_RECV_BUFFER);
@@ -24,24 +23,7 @@ void Http::printHeaderField() const
 		std::cout << "====================================" << std::endl;
 		//print request line
 		{
-			switch (_method)
-			{
-			case NO_METHOD:
-				std::cout << "NO_METHOD ";
-				break;
-			case GET:
-				std::cout << "GET ";
-				break;
-			case POST:
-				std::cout << "POST ";
-				break;
-			case DELETE:
-				std::cout << "DELETE ";
-				break;
-			default:
-				break;
-			}
-			std::cout << _requestTarget << " " << _protocol << std::endl;
+			std::cout << _method << " " << _requestTarget << " " << _protocol << std::endl;
 		}
 
 		std::map<std::string, std::set<std::string> >::const_iterator	it = _headerField.begin();
@@ -78,14 +60,7 @@ void Http::httpError(int errorCode, const std::string& throwToClient)
 void Http::httpError(int errorCode)
 {
 	_errorStatusCode = errorCode;
-	_requestBuffer.clear();
-}
-
-// call to processRequestBuffer
-
-void Http::readingRequestBuffer()
-{
-
+	_requestBuffer.clear(); //should clean or not!!?
 }
 
 void	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
@@ -100,7 +75,7 @@ void	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 		{
 			httpError(400, "request buffer should not higher than MAX_REQUEST_BUFFER_SIZE");
 		}
-		if (_method == NO_METHOD)
+		if (_method.empty())
 		{
 
 			// skip any empty line '\r\n"""
@@ -140,26 +115,17 @@ void	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 				return ;
 			}
 
-			std::string methodStr;
-
 			// find pos any whitespaces but not '\n'
 			size_t	pos = htabSp().findFirstCharset(_requestBuffer, currIndex, endLinePos - currIndex);
-			methodStr = pos == _requestBuffer.npos ? _requestBuffer.substr(currIndex) : _requestBuffer.substr(currIndex, pos - currIndex);
+			_method = pos == _requestBuffer.npos ? _requestBuffer.substr(currIndex) : _requestBuffer.substr(currIndex, pos - currIndex);
 
-			if (methodStr == "GET") {
-				_method = GET;
-			}
-			else if (methodStr == "POST") {
-				_method = POST;
-			}
-			else if (methodStr == "DELETE") {
-				_method = DELETE;
-			}
-			else {
+			if (_method.empty() || alphaAtoZ().isNotMatch(_method) == true)
+			{
 				httpError(400, "");
 				_process_return = 0;
 				return ;
 			}
+
 			// skip 1 pos which is the first whitespace
 			currIndex = pos + 1;
 			// should not reach endlinePos yet
@@ -255,7 +221,7 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 		if (endLinePos == currIndex)
 		{
 
-			_processStatus = PROCESSING_REQUEST;
+			_processStatus = VALIDATING_REQUEST;
 			if (currIndex + 2 >= reqBuffSize)
 				_requestBuffer.clear();
 			else
@@ -345,6 +311,10 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 				i = commaPos + 1;
 			}
 		}
+
+		// normalize field name because it is case insensitive
+		stringToLower(tempFieldName);
+
 		if (!tempSet.empty())
 			_headerField[tempFieldName].insert(tempSet.begin(), tempSet.end());
 		tempSet.clear();
@@ -358,6 +328,156 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 	return ;
 }
 
+void	Http::validateRequestBufffer(const Socket& clientSocket)
+{
+	if (_process_return != 1 || _processStatus != VALIDATING_REQUEST)
+		return ;
+	
+	// check Host: first
+	{
+		std::string host_string;
+
+		std::map<std::string, std::set<std::string> >::iterator it = _headerField.find("host");
+
+		// CANNOT find Host: !
+		if (it == _headerField.end())
+		{
+			httpError(400, "cannot find \"Host\" field name");
+			_process_return = 0;
+			return ;
+		}
+
+		/*
+			key is "host"
+			the value is std::set,
+			so the size of std::set for this area
+			should be only one element
+		*/
+		if (it->second.size() != 1)
+		{
+			httpError(400, "Host: :: invalid value");
+			_process_return = 0;
+			return ;
+		}
+
+		host_string = *it->second.begin();
+
+		//should not empty
+		if (host_string.empty())
+		{
+			httpError(400, "Host: :: invalid value");
+			_process_return = 0;
+			return ;
+		}
+
+		/*
+			separate ip:port
+			by the ':' symbol
+		*/
+		std::vector<std::string> splitStrVec;
+		splitString(host_string, ":", splitStrVec);
+
+		/* size of vector must be 1 or more */
+		if (splitStrVec.size() == 0)
+		{
+			httpError(400, "Host: :: invalid value");
+			_process_return = 0;
+			return ;
+		}
+
+		/*
+		vec[0] is the ip
+		vec[1] is port
+		*/
+		
+		// first we check if port is correct
+		// it is optional to put port in host, it will discard when
+		// use default port like 443, 80
+		if (splitStrVec.size() == 2)
+		{
+			// port ranges between 0 - 65535 so only 5 letters
+			if (splitStrVec[1].size() > 5 || splitStrVec[1].size() < 1)
+			{
+				httpError(400, "Host: :: invalid value:: invalid port");
+				_process_return = 0;
+				return ;
+			}
+
+			//convert
+			int portNum = std::atoi(splitStrVec[1].c_str());
+
+			if (portNum != clientSocket.getServerListenPort())
+			{
+				httpError(400, "Host: :: invalid value:: invalid port");
+				_process_return = 0;
+				return ;
+			}
+		}
+		// is host has no port
+		// means that it is 443 or 80
+		else
+		{
+			int serverPort = clientSocket.getServerListenPort();
+			// something is wrong connection should not reach here
+			if (serverPort != 443 || serverPort != 80)
+			{
+				httpError(400, "Host: :: invalid value:: invalid port");
+				_process_return = 0;
+				return ;
+			}
+		}
+
+		// next we check the hostname (ip)
+		{
+			// uri-host checking is case insensitive
+			host_string = splitStrVec[0];
+			stringToLower(host_string);
+
+			const std::vector<ServerConfig>* serverVecPtr = clientSocket.getServersConfigPtr();
+			// for safety
+			if (!serverVecPtr)
+			{
+				httpError(500, "clientSocket.getServersConfigPtr():: SHOULD NOT BE NULL HERE");
+				_process_return = 0;
+				return ;
+			}
+
+			const std::vector<std::string>* tempServerNameVecPtr;
+
+			_targetServer = NULL;
+			// loop check if had matching name from config file
+			for (size_t i = 0; i < serverVecPtr->size(); i++)
+			{
+				tempServerNameVecPtr = &((*serverVecPtr)[i].getServerNameVec());
+
+				// also iterate the name vector to find matching
+				for (size_t j = 0; j < tempServerNameVecPtr->size(); j++)
+				{
+					if ((*tempServerNameVecPtr)[j] == host_string)
+					{
+						_targetServer = &((*serverVecPtr)[i]);
+						break ;
+					}
+				}
+				if (_targetServer)
+					break ;
+			}
+			// if cannot find, we pick the first one
+			if (_targetServer == NULL)
+				_targetServer = &((*serverVecPtr)[0]);
+			
+		}
+
+		// Host: is finished, now we need to check the
+		// request line
+	}
+
+	// checking the request line
+	{
+
+	}
+}
+
 
 // use the _requestBuffer
 void	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Socket>& socketMap)
@@ -369,8 +489,11 @@ void	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Soc
 
 		_process_return = 1;
 
+		// put into structure
 		parsingHttpRequestLine(currIndex, reqBuffSize);
 		parsingHttpHeader(currIndex, reqBuffSize);
+
+
 	}
 	catch (std::exception &e)
 	{

@@ -13,6 +13,12 @@ const CharTable&	htabSp()
 	static const CharTable table(" \t", true);
 	return (table);
 }
+// big case alphabets table
+const CharTable&	alphaAtoZ()
+{
+	static const CharTable table("ABCDEFGHIJKLMNOPQRSTUVWXYZ", true);
+	return (table);
+}
 
 const CharTable&	allowedFieldNameChar()
 {

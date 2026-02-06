@@ -7,6 +7,7 @@
 # include <iostream>
 # include "WebservException.hpp"
 # include "../defined_value.hpp"
+# include "../utility_function.hpp"
 
 
 class ServerConfig
@@ -15,7 +16,7 @@ private:
 	t_config_map _serverConfig;
 	t_location_map _locationsConfig;
 	int				_listenPort;
-	const std::vector<std::string> *_serverNameVec;
+	std::vector<std::string> _serverNameVec;
 
 	static void resolveLocationPath(std::string locationPath);
 	// ####################  AI GEN -> Make sure to understand logic ########
@@ -31,7 +32,7 @@ public:
 	const std::vector<std::string>* getServerData(const std::string &keyToFind) const;
 	const std::vector<std::string>* getLocationData(const std::string &locationPath, const std::string &keytoFind) const;
 	int	getPort() const;
-	const std::vector<std::string> * getServerNameVec() const;
+	const std::vector<std::string> &getServerNameVec() const;
 
 	void	printServerConfig() const;
 };

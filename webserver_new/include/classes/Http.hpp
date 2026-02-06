@@ -12,14 +12,7 @@ enum e_http_process_status {
 	NO_STATUS,
 	READING_REQUEST_LINE,
 	READING_HEADER,
-	PROCESSING_REQUEST,
-};
-
-enum e_http_request_method {
-	NO_METHOD,
-	GET,
-	POST,
-	DELETE
+	VALIDATING_REQUEST,
 };
 
 class Http {
@@ -46,16 +39,15 @@ class Http {
 		NOTE: return value = 0 usually means ready to
 			create response (whether it is fail or success)
 		*/
+
+
 		int		_process_return;
-
-
 
 		e_http_process_status	_processStatus;
 		void	processingRequestBuffer(const Socket& clientSocket, std::map<int, Socket>& socketMap);
 		void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize);
 		void	parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize);
-		void	readingRequestBuffer();
-		void	validateRequestBufffer();
+		void	validateRequestBufffer(const Socket& clientSocket);
 
 		int	_errorStatusCode;
 		std::string	_throwMessageToClient; // so we know where it happen error
@@ -63,12 +55,12 @@ class Http {
 		void	httpError(int errorCode);
 
 
-		e_http_request_method	_method;
-		std::string				_requestTarget;
-		std::string				_protocol;
-
+		std::string		_method;
+		std::string		_requestTarget;
+		std::string		_protocol;
 		void	printHeaderField() const;
 		std::map<std::string, std::set<std::string> > _headerField;
+		const ServerConfig*	_targetServer;
 
 	public:
 		Http();

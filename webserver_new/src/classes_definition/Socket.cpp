@@ -233,6 +233,7 @@ bool Socket::setupSocket(e_socket_type socketType, const std::vector<ServerConfi
 		}
 		case CLIENT_SOCKET:
 		{
+			_server_listen_port = (*_serversConfig)[0].getPort();
 			if (fcntl(_socketFD.getFd(), F_SETFL, O_NONBLOCK) != 0)
 			{
 				std::string errorMsg = "Socket::fcntl() O_NONBLOCK Error::";
@@ -380,6 +381,12 @@ bool Socket::handleEvent(const epoll_event &event)
 	return (true);
 }
 
-const std::vector<ServerConfig> *Socket::getServersConfigPtr() const {
+const std::vector<ServerConfig> *Socket::getServersConfigPtr() const
+{
 	return (_serversConfig);
+}
+
+int	Socket::getServerListenPort() const
+{
+	return (_server_listen_port);
 }
