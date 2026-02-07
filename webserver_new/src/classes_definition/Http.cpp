@@ -339,7 +339,7 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 // decoding the '%' in URI path
 static bool	pathDecoding(std::string& pathStr)
 {
-
+	return true;
 }
 
 void	Http::validateRequestBufffer(const Socket& clientSocket)

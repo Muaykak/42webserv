@@ -5,6 +5,9 @@
 # include <string>
 # include <vector>
 # include <iostream>
+
+// for uint32_t
+# include <netinet/in.h>
 # include "WebservException.hpp"
 # include "../defined_value.hpp"
 # include "../utility_function.hpp"
@@ -17,6 +20,9 @@ private:
 	t_location_map _locationsConfig;
 	int				_listenPort;
 	std::vector<std::string> _serverNameVec;
+
+	// ipv4 ip address
+	in_addr_t		_host_ip;
 
 	static void resolveLocationPath(std::string locationPath);
 	// ####################  AI GEN -> Make sure to understand logic ########

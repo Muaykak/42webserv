@@ -5,6 +5,7 @@
 # include <map>
 # include <set>
 # include "../defined_value.hpp"
+# include "./ServerConfig.hpp"
 
 class Socket;
 
@@ -12,7 +13,7 @@ enum e_http_process_status {
 	NO_STATUS,
 	READING_REQUEST_LINE,
 	READING_HEADER,
-	VALIDATING_REQUEST,
+	VALIDATING_REQUEST
 };
 
 class Http {
@@ -45,7 +46,7 @@ class Http {
 
 		e_http_process_status	_processStatus;
 		void	processingRequestBuffer(const Socket& clientSocket, std::map<int, Socket>& socketMap);
-		void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize);
+		void	parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize);
 		void	parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize);
 		void	validateRequestBufffer(const Socket& clientSocket);
 

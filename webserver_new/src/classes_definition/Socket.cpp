@@ -305,7 +305,7 @@ bool Socket::handleEvent(const epoll_event &event)
 					client_socket = accept(event.data.fd, (sockaddr *)&client_address, &len);
 					if (client_socket > 0)
 					{
-						// need to check if cilent access to this server with the same ip ranges that server recieves
+						// need to check if cilent access to this server with the same ip that server recieves
 
 						Logger::log(LC_CONN_LOG, "Port %d Establishing connection from client#%d", _server_listen_port, client_socket);
 

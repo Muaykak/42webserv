@@ -1,10 +1,10 @@
 #include "../../include/classes/ServerConfig.hpp"
 
 
-ServerConfig::ServerConfig() : _listenPort(-1), _serverNameVec(NULL){}
+ServerConfig::ServerConfig() : _listenPort(-1){}
 ServerConfig::ServerConfig(const ServerConfig &obj)
 : _serverConfig(obj._serverConfig),
-_locationsConfig(obj._locationsConfig), _listenPort(obj._listenPort)
+_locationsConfig(obj._locationsConfig), _listenPort(obj._listenPort), _serverNameVec(obj._serverNameVec)
 {
 	const std::vector<std::string>* vecPtr = getServerData("server_name");
 	if (vecPtr)
