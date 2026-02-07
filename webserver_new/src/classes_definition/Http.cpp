@@ -478,7 +478,23 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 		// this is the tedious process
 		{
 
-			// separate
+			// separate query and path first
+			{
+				size_t	pos = _requestTarget.find_first_of('?');
+				if (pos == _requestTarget.npos)
+					_targetPath = _requestTarget;
+				else
+				{
+					_targetPath = _requestTarget.substr(0, pos);
+					if (pos < _requestTarget.size() - 1)
+						_queryString = _requestTarget.substr(pos + 1);
+				}
+			}
+
+			// now we decode any '%' encoding
+			{
+
+			}
 		}
 	}
 }
