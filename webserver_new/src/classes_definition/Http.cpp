@@ -493,7 +493,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 
 			// now we decode any '%' encoding
 			{
-
+				
 			}
 		}
 	}
