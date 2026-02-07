@@ -20,6 +20,7 @@ const CharTable&	htabSp();
 const CharTable&	alphaAtoZ();
 const CharTable&	allowedFieldNameChar();
 const CharTable&	forbiddenFieldValueChar();
+const CharTable&	allowRequestTargetChar();
 
 void	splitString(const std::string& toSplit,
 		const std::string& delimitter,

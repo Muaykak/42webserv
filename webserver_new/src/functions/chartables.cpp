@@ -20,9 +20,21 @@ const CharTable&	alphaAtoZ()
 	return (table);
 }
 
+const CharTable&	hexChar()
+{
+	static const CharTable table("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", true);
+	return (table);
+}
+
 const CharTable&	allowedFieldNameChar()
 {
 	static const CharTable table("qazwsxedcrfvtgbyhnujmiklopQAZWSXEDCRFVTGBYHNUJMIKLOP1234567890!#$%&\'*+-.^_`|~", true);
+	return (table);
+}
+
+const CharTable&	allowRequestTargetChar()
+{
+	static const CharTable table("qazwsxedcrfvtgbyhnujmiklopQAZWSXEDCRFVTGBYHNUJMIKLOP0123456789-._~!$&\'()*+,;=/?:@%", true);
 	return (table);
 }
 

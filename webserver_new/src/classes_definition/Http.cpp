@@ -151,6 +151,14 @@ void	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 				return ;
 			}
 
+			// also check if contain any forbidden chars
+			if (allowRequestTargetChar().isMatch(_requestTarget) == false)
+			{
+				httpError(400, "");
+				_process_return = 0;
+				return ;
+			}
+
 			// then move our currIndex
 			currIndex = pos + 1;
 			// prevent edge case where now currIndex might right at the endLinepos
@@ -257,7 +265,7 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 		// We can check field name length here
 
 		// simple checking that it must not contain any forbidden char
-		if (allowedFieldNameChar().isNotMatch(tempFieldName))
+		if (allowedFieldNameChar().isMatch(tempFieldName) == false)
 		{
 			httpError(400);
 			_process_return = 0;
@@ -328,12 +336,97 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 	return ;
 }
 
+// decoding the '%' in URI path
+static bool	pathDecoding(std::string& pathStr)
+{
+
+}
+
 void	Http::validateRequestBufffer(const Socket& clientSocket)
 {
 	if (_process_return != 1 || _processStatus != VALIDATING_REQUEST)
 		return ;
+
+	// checking the request line
+	{
+		// we need to check the 'request target' first
+		// this is the tedious process
+		{
+			// check the first character to see if it is
+			// origin form or absolute form
+			{
+				// if first character is not '/'
+				// then it might be absolute form
+				// we need to check that scheme
+				if (_requestTarget[0] != '/')
+				{
+					//this request targen legth if in absolute form must
+					// longer than  characters
+					if (_requestTarget.size() <= 7)
+					{
+						httpError(400, "Invalid::URI Scheme::");
+						_process_return = 0;
+						return ;
+					}
+
+
+					// allow only this scheme
+					if (_requestTarget.compare(0, 7, "http://") != 0)
+					{
+						httpError(400, "Invalid::URI Scheme::allowed only \"http://\"");
+						_process_return = 0;
+						return ;
+					}
+
+					std::string authStr;
+					// now we check the authority part
+					{
+						// start index
+
+
+						size_t	pathPos = _requestTarget.find_first_of('/', 7);
+						// if cannot find then it is only /
+						if (pathPos == _requestTarget.npos)
+							authStr = _requestTarget.substr(7);
+						else
+							authStr = _requestTarget.substr(7, pathPos - 7);
+							
+						// authority cannot empty
+						if (authStr.empty())
+						{
+							httpError(400, "Invalid::URI Scheme::");
+							_process_return = 0;
+							return ;
+						}
+
+						
+					}
+
+				}
+			}
+
+			// separate query and path
+			{
+				size_t	pos = _requestTarget.find_first_of('?');
+				if (pos == _requestTarget.npos)
+					_targetPath = _requestTarget;
+				else
+				{
+					_targetPath = _requestTarget.substr(0, pos);
+					if (pos < _requestTarget.size() - 1)
+						_queryString = _requestTarget.substr(pos + 1);
+				}
+			}
+
+			// now we decode any '%' encoding
+			{
+
+			}
+		}
+	}
+
 	
-	// check Host: first
+	// check Host: if URI is not in absolute form
 	{
 		std::string host_string;
 
@@ -472,31 +565,6 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 		// request line
 	}
 
-	// checking the request line
-	{
-		// we need to check the 'request target' first
-		// this is the tedious process
-		{
-
-			// separate query and path first
-			{
-				size_t	pos = _requestTarget.find_first_of('?');
-				if (pos == _requestTarget.npos)
-					_targetPath = _requestTarget;
-				else
-				{
-					_targetPath = _requestTarget.substr(0, pos);
-					if (pos < _requestTarget.size() - 1)
-						_queryString = _requestTarget.substr(pos + 1);
-				}
-			}
-
-			// now we decode any '%' encoding
-			{
-				
-			}
-		}
-	}
 }
 
 

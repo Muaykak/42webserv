@@ -212,7 +212,7 @@ bool Socket::setupSocket(e_socket_type socketType, const std::vector<ServerConfi
 			ss >> portStr;
 			while (_serversConfigIndex < _serversConfig->size())
 			{
-				tempServerNameVec = (*_serversConfig)[_serversConfigIndex].getServerNameVec();
+				tempServerNameVec = &(*_serversConfig)[_serversConfigIndex].getServerNameVec();
 				if (tempServerNameVec == NULL)
 					Logger::log(LC_SYSTEM, "Server is listening on port " + portStr);
 				else {
@@ -297,6 +297,7 @@ bool Socket::handleEvent(const epoll_event &event)
 			else if (event.events & EPOLLIN)
 			{
 				sockaddr_in client_address;
+				std::memset(&client_address, 0, sizeof(sockaddr_in));
 				socklen_t len = sizeof(client_address);
 				int client_socket;
 				while (true)
@@ -304,6 +305,7 @@ bool Socket::handleEvent(const epoll_event &event)
 					client_socket = accept(event.data.fd, (sockaddr *)&client_address, &len);
 					if (client_socket > 0)
 					{
+						// need to check if cilent access to this server with the same ip ranges that server recieves
 
 						Logger::log(LC_CONN_LOG, "Port %d Establishing connection from client#%d", _server_listen_port, client_socket);
 
