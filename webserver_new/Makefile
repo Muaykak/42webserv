@@ -55,7 +55,8 @@ SRC_FUNC_DIR = functions/
 SRC_FUNC_FILE = chartables.cpp \
 				split.cpp \
 				signal_handler.cpp \
-				tolower.cpp
+				tolower.cpp \
+				ip_conversion.cpp
 				
 
 SOURCE_MAIN_FILE = main.cpp

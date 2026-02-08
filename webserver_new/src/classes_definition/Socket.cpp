@@ -154,6 +154,27 @@ bool Socket::setupSocket(e_socket_type socketType, const std::vector<ServerConfi
 			{
 				throw WebservException("Socket::setup ServerSocket needs _serversConfig!");
 			}
+
+			std::set<in_addr_t> temp_addr_set;
+			// put serversConfig ip host together
+			{
+				std::vector<ServerConfig>::const_iterator	vecServerIt = _serversConfig->begin();
+				while (vecServerIt != _serversConfig->end())
+				{
+					temp_addr_set = vecServerIt->getHostIp();
+
+					// if any of server config doesn't have host ip. 
+					// meaning that server socket should accept any ip connection
+					if (temp_addr_set.size() == 0)
+					{
+						_server_ip_host.clear();
+						break ;
+					}
+					else
+						_server_ip_host.insert(temp_addr_set.begin(), temp_addr_set.end());
+					++vecServerIt;
+				}
+			}
 		
 			if (fcntl(_socketFD.getFd(), F_SETFL, O_NONBLOCK) != 0)
 			{
@@ -306,6 +327,7 @@ bool Socket::handleEvent(const epoll_event &event)
 					if (client_socket > 0)
 					{
 						// need to check if cilent access to this server with the same ip that server recieves
+						if ()
 
 						Logger::log(LC_CONN_LOG, "Port %d Establishing connection from client#%d", _server_listen_port, client_socket);
 

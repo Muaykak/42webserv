@@ -48,13 +48,17 @@ ServerConfig::ServerConfig(const t_config_map& serverConfig, const t_location_ma
 	{
 		std::vector<std::string>::const_iterator vecIt = it->second.begin();
 
+		in_addr_t	temp_in_addr_t;
 		while (vecIt != it->second.end())
 		{
 			// convert the ip strings into in_addr_t)
 			// if converrsion failed should throw back errors
-
+			if (string_to_in_addr_t(*vecIt, temp_in_addr_t) == false)
+				throw WebservException("ServerConfig::string_to_in_addr_t::error");
+			_host_ip_set.insert(temp_in_addr_t);
 			++vecIt;
 		}
+		std::cout << "host amount: " << _host_ip_set.size() << std::endl;
 	}
 }
 
@@ -169,3 +173,8 @@ const t_config_map *ServerConfig::longestPrefixMatch(std::string locationPath) c
        }
    }
 // ##############################################################
+
+const std::set<in_addr_t>&	ServerConfig::getHostIp() const
+{
+	return (_host_ip_set);
+}

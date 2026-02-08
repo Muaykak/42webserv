@@ -7,6 +7,13 @@ const CharTable&	whiteSpaceTable(){
 	return (table);
 }
 
+// just 0-9 and '.'
+const CharTable&	hostipChar()
+{
+	static const CharTable table("0123456789.", true);
+	return (table);
+}
+
 // horizontal tab and ' '(space) 
 const CharTable&	htabSp()
 {

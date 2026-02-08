@@ -39,6 +39,7 @@ private:
 	e_socket_type _socketType;
 	const std::vector<ServerConfig> *_serversConfig;
 	int _server_listen_port;
+	std::set<in_addr_t>	_server_ip_host;
 	Http	http;
 
 	// for CGI part

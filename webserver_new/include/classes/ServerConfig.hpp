@@ -41,6 +41,7 @@ public:
 	const std::vector<std::string>* getLocationData(const std::string &locationPath, const std::string &keytoFind) const;
 	int	getPort() const;
 	const std::vector<std::string> &getServerNameVec() const;
+	const std::set<in_addr_t>&	getHostIp() const;
 
 	void	printServerConfig() const;
 };
