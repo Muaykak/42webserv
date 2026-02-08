@@ -4,6 +4,7 @@
 # include <map>
 # include <string>
 # include <vector>
+# include <set>
 # include <iostream>
 
 // for uint32_t
@@ -21,8 +22,9 @@ private:
 	int				_listenPort;
 	std::vector<std::string> _serverNameVec;
 
-	// ipv4 ip address
-	in_addr_t		_host_ip;
+	// set of ipv4 address host server
+	std::set<in_addr_t>	_host_ip_set;
+	// there are helper functions in utility_function.hpp
 
 	static void resolveLocationPath(std::string locationPath);
 	// ####################  AI GEN -> Make sure to understand logic ########

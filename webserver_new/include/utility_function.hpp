@@ -6,6 +6,7 @@
 # include <vector>
 # include "classes/CharTable.hpp"
 # include <csignal>
+# include <netinet/in.h>
 
 template <typename T>
 std::string toString(const T &value)

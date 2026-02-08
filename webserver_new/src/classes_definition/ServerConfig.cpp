@@ -4,13 +4,18 @@
 ServerConfig::ServerConfig() : _listenPort(-1){}
 ServerConfig::ServerConfig(const ServerConfig &obj)
 : _serverConfig(obj._serverConfig),
-_locationsConfig(obj._locationsConfig), _listenPort(obj._listenPort), _serverNameVec(obj._serverNameVec)
+_locationsConfig(obj._locationsConfig),
+_listenPort(obj._listenPort),
+_serverNameVec(obj._serverNameVec),
+_host_ip_set(obj._host_ip_set)
 {
 	const std::vector<std::string>* vecPtr = getServerData("server_name");
 	if (vecPtr)
 		_serverNameVec = *vecPtr;
 	for (size_t i = 0; i < _serverNameVec.size(); i++)
 		stringToLower(_serverNameVec[i]);
+		
+
 }
 ServerConfig& ServerConfig::operator=(const ServerConfig &obj)
 {
@@ -36,6 +41,21 @@ ServerConfig::ServerConfig(const t_config_map& serverConfig, const t_location_ma
 		_serverNameVec = *vecPtr;
 	for (size_t i = 0; i < _serverNameVec.size(); i++)
 		stringToLower(_serverNameVec[i]);
+	
+	// check if has 'host'in _serverConfig
+	t_config_map::const_iterator it = _serverConfig.find("host");
+	if (it != _serverConfig.end())
+	{
+		std::vector<std::string>::const_iterator vecIt = it->second.begin();
+
+		while (vecIt != it->second.end())
+		{
+			// convert the ip strings into in_addr_t)
+			// if converrsion failed should throw back errors
+
+			++vecIt;
+		}
+	}
 }
 
 bool ServerConfig::operator==(const ServerConfig& obj) const {
