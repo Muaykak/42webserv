@@ -3,7 +3,14 @@
 // Frequently used tables
 
 const CharTable&	whiteSpaceTable(){
-	static const CharTable table(" \t\v\n\f\r\0", true);
+	static const CharTable table(" \t\v\n\f\r", true);
+	return (table);
+}
+
+// just 0-9 and '.'
+const CharTable&	hostipChar()
+{
+	static const CharTable table("0123456789.", true);
 	return (table);
 }
 
@@ -13,6 +20,18 @@ const CharTable&	htabSp()
 	static const CharTable table(" \t", true);
 	return (table);
 }
+// big case alphabets table
+const CharTable&	alphaAtoZ()
+{
+	static const CharTable table("ABCDEFGHIJKLMNOPQRSTUVWXYZ", true);
+	return (table);
+}
+
+const CharTable&	hexChar()
+{
+	static const CharTable table("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", true);
+	return (table);
+}
 
 const CharTable&	allowedFieldNameChar()
 {
@@ -20,11 +39,17 @@ const CharTable&	allowedFieldNameChar()
 	return (table);
 }
 
+const CharTable&	allowRequestTargetChar()
+{
+	static const CharTable table("qazwsxedcrfvtgbyhnujmiklopQAZWSXEDCRFVTGBYHNUJMIKLOP0123456789-._~!$&\'()*+,;=/?:@%", true);
+	return (table);
+}
+
 static std::string forbiddenControlCharOnFieldValue()
 {
 	std::string returnStr;
 	returnStr.reserve(32);
-	for (char c = 0; c < 32; c++)
+	for (unsigned char c = 0; c < 32; c++)
 	{
 		// vertical tab is allowed
 		if (c == '\v')
@@ -40,3 +65,4 @@ const CharTable&	forbiddenFieldValueChar()
 	static const CharTable table(forbiddenControlCharOnFieldValue(), true);
 	return (table);
 }
+

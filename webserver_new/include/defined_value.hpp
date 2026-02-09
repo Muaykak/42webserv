@@ -46,4 +46,10 @@
 typedef std::map<std::string, std::vector<std::string> > t_config_map;
 typedef std::map<std::string, const t_config_map> t_location_map;
 
+struct s_response_buff
+{
+	std::vector<char> buffer;
+	size_t	currentIndex;
+};
+
 #endif

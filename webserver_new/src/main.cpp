@@ -1,8 +1,6 @@
 #include "../include/classes/WebServ.hpp"
 
-
-
-int main(int argc, char **argv){
+int main(int argc, char **argv, char** envp){
 	signal(SIGPIPE, SIG_IGN);
 	signal(SIGINT, serverStopHandler);
 	signal(SIGQUIT, serverStopHandler);
@@ -18,3 +16,11 @@ int main(int argc, char **argv){
 		}
 	}
 }
+
+
+//int main(){
+//	std::cout << "TESTING CONFIG FILE" << std::endl;
+
+//	ConfigData conf("./configs/default.conf");
+//	conf.printConfigData();
+//}

@@ -1,10 +1,21 @@
 #include "../../include/classes/ServerConfig.hpp"
 
 
-ServerConfig::ServerConfig() : _listenPort(-1), _serverNameVec(NULL){}
-ServerConfig::ServerConfig(const ServerConfig &obj) : _serverConfig(obj._serverConfig), _locationsConfig(obj._locationsConfig), _listenPort(obj._listenPort)
+ServerConfig::ServerConfig() : _listenPort(-1){}
+ServerConfig::ServerConfig(const ServerConfig &obj)
+: _serverConfig(obj._serverConfig),
+_locationsConfig(obj._locationsConfig),
+_listenPort(obj._listenPort),
+_serverNameVec(obj._serverNameVec),
+_host_ip_set(obj._host_ip_set)
 {
-	_serverNameVec = getServerData("server_name");
+	const std::vector<std::string>* vecPtr = getServerData("server_name");
+	if (vecPtr)
+		_serverNameVec = *vecPtr;
+	for (size_t i = 0; i < _serverNameVec.size(); i++)
+		stringToLower(_serverNameVec[i]);
+		
+
 }
 ServerConfig& ServerConfig::operator=(const ServerConfig &obj)
 {
@@ -25,7 +36,29 @@ ServerConfig::ServerConfig(const t_config_map& serverConfig, const t_location_ma
 		throw WebservException("ServerConfig::InvalidListenPort");
 	}
 	_listenPort = listenPort;
-	_serverNameVec = getServerData("server_name");
+	const std::vector<std::string>* vecPtr = getServerData("server_name");
+	if (vecPtr)
+		_serverNameVec = *vecPtr;
+	for (size_t i = 0; i < _serverNameVec.size(); i++)
+		stringToLower(_serverNameVec[i]);
+	
+	// check if has 'host'in _serverConfig
+	t_config_map::const_iterator it = _serverConfig.find("host");
+	if (it != _serverConfig.end())
+	{
+		std::vector<std::string>::const_iterator vecIt = it->second.begin();
+
+		in_addr_t	temp_in_addr_t;
+		while (vecIt != it->second.end())
+		{
+			// convert the ip strings into in_addr_t)
+			// if converrsion failed should throw back errors
+			if (string_to_in_addr_t(*vecIt, temp_in_addr_t) == false)
+				throw WebservException("ServerConfig::string_to_in_addr_t::error");
+			_host_ip_set.insert(temp_in_addr_t);
+			++vecIt;
+		}
+	}
 }
 
 bool ServerConfig::operator==(const ServerConfig& obj) const {
@@ -62,7 +95,7 @@ const std::vector<std::string>* ServerConfig::getLocationData(const std::string 
 int	ServerConfig::getPort() const {
 	return (_listenPort);
 }
-const std::vector<std::string> * ServerConfig::getServerNameVec() const {
+const std::vector<std::string> &ServerConfig::getServerNameVec() const {
 	return (_serverNameVec);
 }
 
@@ -139,3 +172,8 @@ const t_config_map *ServerConfig::longestPrefixMatch(std::string locationPath) c
        }
    }
 // ##############################################################
+
+const std::set<in_addr_t>&	ServerConfig::getHostIp() const
+{
+	return (_host_ip_set);
+}

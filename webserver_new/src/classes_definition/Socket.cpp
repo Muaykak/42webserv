@@ -154,6 +154,27 @@ bool Socket::setupSocket(e_socket_type socketType, const std::vector<ServerConfi
 			{
 				throw WebservException("Socket::setup ServerSocket needs _serversConfig!");
 			}
+
+			std::set<in_addr_t> temp_addr_set;
+			// put serversConfig ip host together
+			{
+				std::vector<ServerConfig>::const_iterator	vecServerIt = _serversConfig->begin();
+				while (vecServerIt != _serversConfig->end())
+				{
+					temp_addr_set = vecServerIt->getHostIp();
+
+					// if any of server config doesn't have host ip. 
+					// meaning that server socket should accept any ip connection
+					if (temp_addr_set.size() == 0)
+					{
+						_server_ip_host.clear();
+						break ;
+					}
+					else
+						_server_ip_host.insert(temp_addr_set.begin(), temp_addr_set.end());
+					++vecServerIt;
+				}
+			}
 		
 			if (fcntl(_socketFD.getFd(), F_SETFL, O_NONBLOCK) != 0)
 			{
@@ -212,7 +233,7 @@ bool Socket::setupSocket(e_socket_type socketType, const std::vector<ServerConfi
 			ss >> portStr;
 			while (_serversConfigIndex < _serversConfig->size())
 			{
-				tempServerNameVec = (*_serversConfig)[_serversConfigIndex].getServerNameVec();
+				tempServerNameVec = &(*_serversConfig)[_serversConfigIndex].getServerNameVec();
 				if (tempServerNameVec == NULL)
 					Logger::log(LC_SYSTEM, "Server is listening on port " + portStr);
 				else {
@@ -233,6 +254,7 @@ bool Socket::setupSocket(e_socket_type socketType, const std::vector<ServerConfi
 		}
 		case CLIENT_SOCKET:
 		{
+			_server_listen_port = (*_serversConfig)[0].getPort();
 			if (fcntl(_socketFD.getFd(), F_SETFL, O_NONBLOCK) != 0)
 			{
 				std::string errorMsg = "Socket::fcntl() O_NONBLOCK Error::";
@@ -296,6 +318,7 @@ bool Socket::handleEvent(const epoll_event &event)
 			else if (event.events & EPOLLIN)
 			{
 				sockaddr_in client_address;
+				std::memset(&client_address, 0, sizeof(sockaddr_in));
 				socklen_t len = sizeof(client_address);
 				int client_socket;
 				while (true)
@@ -303,6 +326,13 @@ bool Socket::handleEvent(const epoll_event &event)
 					client_socket = accept(event.data.fd, (sockaddr *)&client_address, &len);
 					if (client_socket > 0)
 					{
+						// need to check if cilent access to this server with the same ip that server recieves
+						if (_server_ip_host.size() != 0
+						&& _server_ip_host.find(client_address.sin_addr.s_addr) == _server_ip_host.end())
+						{
+							Logger::log(LC_CON_FAIL, "Incoming connection does not match any server %s", in_addr_t_to_string(client_address.sin_addr.s_addr).c_str());
+						}
+						Logger::log(LC_CONN_LOG, "Connection from %s", in_addr_t_to_string(client_address.sin_addr.s_addr).c_str());
 
 						Logger::log(LC_CONN_LOG, "Port %d Establishing connection from client#%d", _server_listen_port, client_socket);
 
@@ -380,6 +410,12 @@ bool Socket::handleEvent(const epoll_event &event)
 	return (true);
 }
 
-const std::vector<ServerConfig> *Socket::getServersConfigPtr() const {
+const std::vector<ServerConfig> *Socket::getServersConfigPtr() const
+{
 	return (_serversConfig);
+}
+
+int	Socket::getServerListenPort() const
+{
+	return (_server_listen_port);
 }

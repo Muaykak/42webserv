@@ -14,7 +14,6 @@ ConfigData::~ConfigData(){
 
 }
 
-
 ConfigData::ConfigData(const std::string &configPath)
 {
 	// Checking File extention (.conf)
@@ -63,8 +62,8 @@ ConfigData::ConfigData(const std::string &configPath)
 	{
 		bool	isInServerBlock = false;
 		bool	isInLocationBlock = false;
+		size_t	tokenI = 0;
 		size_t	tokenListSize = tokenList.size();
-		size_t	i = 0;
 		t_config_map	tempServerConfig;
 		std::string					tempDirectiveName;
 		std::vector<std::string>	tempDirectiveValue;
@@ -73,9 +72,9 @@ ConfigData::ConfigData(const std::string &configPath)
 		std::string		tempLocationName;
 		CharTable	allowChar("0123456789:.", true);
 
-		while (i < tokenListSize){
-			if (tokenList[i].token_type == OP_TOKEN){
-				if ((tokenList[i].tokenString)[0] == '{'){
+		while (tokenI < tokenListSize){
+			if (tokenList[tokenI].token_type == OP_TOKEN){
+				if ((tokenList[tokenI].tokenString)[0] == '{'){
 					//if (!tempServerConfig.empty() || !tempLocationMap.empty())
 					//{
 					//	throw WebservException("ConfigData::tempServerConfig, tempLocationMap is not empty");
@@ -100,7 +99,7 @@ ConfigData::ConfigData(const std::string &configPath)
 					else
 						throw WebservException("ConfigData::WRONG CURLY BRACKET(\"{}\")");
 				}
-				else if ((tokenList[i].tokenString)[0] == '}'){
+				else if ((tokenList[tokenI].tokenString)[0] == '}'){
 					if (!isInServerBlock && !isInLocationBlock)
 						throw WebservException("ConfigData::WRONG CURLY BRACKET(\"{}\")");
 					if (!tempDirectiveName.empty())
@@ -181,14 +180,14 @@ ConfigData::ConfigData(const std::string &configPath)
 				}
 			}
 
-			else if (tokenList[i].token_type == DATA_TOKEN){
+			else if (tokenList[tokenI].token_type == DATA_TOKEN){
 				if (tempDirectiveName.empty())
-					tempDirectiveName = tokenList[i].tokenString;
+					tempDirectiveName = tokenList[tokenI].tokenString;
 				else 
-					tempDirectiveValue.push_back(tokenList[i].tokenString);
+					tempDirectiveValue.push_back(tokenList[tokenI].tokenString);
 			}
 
-			++i;
+			++tokenI;
 		}
 
 		checkServersConfigDuplicate();
@@ -256,17 +255,39 @@ void	ConfigData::splitToken(const std::string &readLine, std::vector<s_config_to
 			s_config_token	temp_config_data;
 			temp_config_data.token_type = DATA_TOKEN;
 			//indexNext = readLine.find_first_of(" \t\v\n\f\r#;{}", indexCurrent);
-			indexNext = configTokenTable.findFirstCharset(readLine, indexCurrent);
-			if (indexNext == readLine.npos){
-				temp_config_data.tokenString = readLine.substr(indexCurrent);
-				tokenList.push_back(temp_config_data);
-				break ;
+			if (readLine[indexCurrent] == '\"' || readLine[indexCurrent] == '\'')
+			{
+				if (indexCurrent + 1 >= readLineSize)
+					throw WebservException("ConfigData::splitToken::wrong syntax::use of \', \"::" + readLine);
+				indexNext = readLine.find_first_of(readLine[indexCurrent], indexCurrent + 1);
+				if (indexNext == readLine.npos)
+				{
+					throw WebservException("ConfigData::splitToken::wrong syntax::use of \', \"::" + readLine);
+				}
+				else
+				{
+					size_t	n = indexCurrent + 1 >= indexNext ? 0 : indexNext - indexCurrent - 1;
+					if (n > 0)
+					{
+						temp_config_data.tokenString = readLine.substr(indexCurrent + 1, n);
+						tokenList.push_back(temp_config_data);
+					}
+					indexCurrent = indexNext + 1;
+				}
 			}
 			else {
-				temp_config_data.tokenString = readLine.substr(indexCurrent, indexNext - indexCurrent);
-				tokenList.push_back(temp_config_data);
-				indexCurrent = indexNext;
-				continue;
+				indexNext = configTokenTable.findFirstCharset(readLine, indexCurrent);
+				if (indexNext == readLine.npos){
+					temp_config_data.tokenString = readLine.substr(indexCurrent);
+					tokenList.push_back(temp_config_data);
+					break ;
+				}
+				else {
+					temp_config_data.tokenString = readLine.substr(indexCurrent, indexNext - indexCurrent);
+					tokenList.push_back(temp_config_data);
+					indexCurrent = indexNext;
+					continue;
+				}
 			}
 		}
 	}

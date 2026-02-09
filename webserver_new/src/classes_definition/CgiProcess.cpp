@@ -86,6 +86,7 @@ void	CgiProcess::release()
 			waitpid(_pid, NULL, 0);
 			delete _reference_count;
 			_reference_count = NULL;
+			_pid = -1;
 		}
 	}
 }

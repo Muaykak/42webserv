@@ -3,7 +3,9 @@
 
 # include <list>
 # include <map>
+# include <set>
 # include "../defined_value.hpp"
+# include "./ServerConfig.hpp"
 
 class Socket;
 
@@ -11,14 +13,7 @@ enum e_http_process_status {
 	NO_STATUS,
 	READING_REQUEST_LINE,
 	READING_HEADER,
-	PROCESSING_REQUEST
-};
-
-enum e_http_request_method {
-	NO_METHOD,
-	GET,
-	POST,
-	DELETE
+	VALIDATING_REQUEST
 };
 
 class Http {
@@ -31,23 +26,44 @@ class Http {
 		std::string	_sendBuffer;
 
 
+		/*
+		return value:
+
+		0 = false, error occurred, usually define
+			the error code to _errorStatusCode (no error will default set to -1)
+			may skip to create response or just close connection.
+
+		1 = success, can continue to next procedure
+
+		2 = need to wait for new buffer (wait for next EPOLLIN)
+
+		NOTE: return value = 0 usually means ready to
+			create response (whether it is fail or success)
+		*/
+
+
+		int		_process_return;
 
 		e_http_process_status	_processStatus;
-		bool	processingRequestBuffer(const Socket& clientSocket, std::map<int, Socket>& socketMap);
-		void	readingRequestBuffer();
-		void	validateRequestBufffer();
+		void	processingRequestBuffer(const Socket& clientSocket, std::map<int, Socket>& socketMap);
+		void	parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize);
+		void	parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize);
+		void	validateRequestBufffer(const Socket& clientSocket);
 
 		int	_errorStatusCode;
 		std::string	_throwMessageToClient; // so we know where it happen error
 		void	httpError(int errorCode, const std::string& throwToClient);
 		void	httpError(int errorCode);
 
-		e_http_request_method	_method;
-		std::string				_requestTarget;
-		std::string				_protocol;
 
+		std::string		_method;
+		std::string		_requestTarget;	
+		std::string		_targetPath;
+		std::string		_queryString;
+		std::string		_protocol;
 		void	printHeaderField() const;
-		t_config_map			_headerField;
+		std::map<std::string, std::set<std::string> > _headerField;
+		const ServerConfig*	_targetServer;
 
 	public:
 		Http();

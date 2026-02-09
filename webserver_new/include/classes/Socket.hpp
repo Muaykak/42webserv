@@ -37,8 +37,9 @@ private:
 	FileDescriptor _epollFD;
 	FileDescriptor _socketFD;
 	e_socket_type _socketType;
-	int _server_listen_port;
 	const std::vector<ServerConfig> *_serversConfig;
+	int _server_listen_port;
+	std::set<in_addr_t>	_server_ip_host;
 	Http	http;
 
 	// for CGI part
@@ -62,6 +63,7 @@ public:
 	const FileDescriptor& getSocketFD() const;
 	const FileDescriptor& getEpollFD() const;
 	const std::vector<ServerConfig> *getServersConfigPtr() const;
+	int getServerListenPort() const;
 
 	// Be sure that epollFD still available !
 	bool setupSocket(e_socket_type socketType, const std::vector<ServerConfig> *_serversConfigVec,

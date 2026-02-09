@@ -15,6 +15,8 @@ CLASS_HEADER_FILE =	ConfigData.hpp \
 					CgiProcess.hpp \
 					Logger.hpp \
 					ServerConfig.hpp \
+					ResponseBuffer.hpp \
+					HttpResponse.hpp \
 					Socket.hpp \
 					WebServ.hpp \
 					WebservException.hpp \
@@ -37,20 +39,24 @@ SRC_FILE =	${addprefix ${SRC_DIR}${SRC_CLASS_DIR}, ${SRC_CLASSES_FILE}} \
 
 SRC_CLASS_DIR = classes_definition/
 SRC_CLASSES_FILE =	ConfigData.cpp \
+					CgiProcess.cpp \
+					CharTable.cpp \
 					FileDescriptor.cpp \
 					Http.cpp \
-					CgiProcess.cpp \
+					HttpResponse.cpp \
 					Logger.cpp \
+					ResponseBuffer.cpp \
 					ServerConfig.cpp \
 					Socket.cpp \
 					WebServ.cpp \
-					WebservException.cpp \
-					CharTable.cpp
+					WebservException.cpp
 
 SRC_FUNC_DIR = functions/
 SRC_FUNC_FILE = chartables.cpp \
 				split.cpp \
-				signal_handler.cpp
+				signal_handler.cpp \
+				tolower.cpp \
+				ip_conversion.cpp
 				
 
 SOURCE_MAIN_FILE = main.cpp
