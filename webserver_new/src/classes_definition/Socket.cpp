@@ -331,6 +331,8 @@ bool Socket::handleEvent(const epoll_event &event)
 						&& _server_ip_host.find(client_address.sin_addr.s_addr) == _server_ip_host.end())
 						{
 							Logger::log(LC_CON_FAIL, "Incoming connection does not match any server %s", in_addr_t_to_string(client_address.sin_addr.s_addr).c_str());
+							close(client_socket);
+							continue;
 						}
 						Logger::log(LC_CONN_LOG, "Connection from %s", in_addr_t_to_string(client_address.sin_addr.s_addr).c_str());
 
