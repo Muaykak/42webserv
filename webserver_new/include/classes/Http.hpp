@@ -49,6 +49,7 @@ class Http {
 		void	parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize);
 		void	parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize);
 		void	validateRequestBufffer(const Socket& clientSocket);
+		void	validateRequestBufferSelectServer(const Socket& clientSocket, std::string& authStr);
 
 		int	_errorStatusCode;
 		std::string	_throwMessageToClient; // so we know where it happen error

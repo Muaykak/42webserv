@@ -343,6 +343,187 @@ static bool	pathDecoding(std::string& pathStr)
 	return true;
 }
 
+void	Http::validateRequestBufferSelectServer(const Socket& clientSocket, std::string& authStr)
+{
+	//separate port and host from authStr
+	int			portNum;
+	std::string	host;
+	{
+		std::string portStr;
+		size_t	colonPos = authStr.find_first_of(':', 0);
+		if (colonPos == authStr.npos)
+		{
+			// we didn't allow https so assume the default is always 80
+			host = authStr;
+			portStr = "80";
+		}
+		else 
+		{
+			host = authStr.substr(0, colonPos);
+			if (host.empty())
+			{
+				httpError(400, "Invalid::URI Authority::");
+				_process_return = 0;
+				return ;
+			}
+
+			portStr = authStr.substr(colonPos + 1);
+			if (portStr.empty() || portStr.size() > 5 || digitChar().isMatch(portStr) == false)
+			{
+				httpError(400, "Invalid::URI Authority::");
+				_process_return = 0;
+				return ;
+			}
+		}
+		portNum = std::atoi(portStr.c_str());
+	}
+
+	// check port
+	{
+		// if the port is out of range we can define as
+		// 400 bad request
+		if (portNum > 65535)
+		{
+			httpError(400, "Invalid::URI Authority::Port is out of range");
+			_process_return = 0;
+			return ;
+		}
+
+		// if the port is in the range but doesn't match with
+		// the connection it was coming through
+		// we can give 403 Forbidden because we are not
+		// Proxy server
+		if (portNum != clientSocket.getServerListenPort())
+		{
+			std::string msg = "Invalid::URI Authority::Port mismatch request_target:" + toString(portNum) + " server_port:" + toString(clientSocket.getServerListenPort());
+			
+			httpError(403, msg);
+			_process_return = 0;
+			return ;
+		}
+	}
+
+	// now we check the host, if it is ip or server_name (or whatever it's called)
+	{
+
+		// it is probably something like 172.233.21.34 some thing like that
+		if (hostipChar().isMatch(host) == true)
+		{
+			in_addr_t	tempAddr;
+			// conversion failed
+			if (string_to_in_addr_t(host, tempAddr) == false)
+			{
+				httpError(400, "Invalid::URI Authority::failed to convert IP");
+				_process_return = 0;
+				return ;
+			}
+
+			// correct syntax but should not allow, it is broadcast address
+			if (tempAddr == 0xFFFFFFFF)
+			{
+				httpError(403, "Invalid::URI Authority:: IP cannot be 255.255.255.255");
+				_process_return = 0;
+				return ;
+			}
+
+			/*
+			Remember the accept() function that we
+			use to create new client socket ?
+
+			client_socket = accept(event.data.fd, (sockaddr *)&client_address, &len);
+
+			we have client_address struct to look at the destination IP
+			that client connect to server (not the client's IP)
+
+			so what happens when the IP in request target does not match
+			with the socket IP actually is?
+
+			in general according to HTTP RFC9112
+			there are 2 types of server
+			1. the proxy server
+			2. origin server
+
+			for proxy server
+			if the mismatch means the the client want us to connect to
+			another server using this request target (act as a middle man)
+
+			for origin server
+			this is what Webserv project lives. we are the origin server.
+			We are suppose not to act as middle man.
+			If the mismatch happens the RFC9112 only specify that
+			we should not treat this as bad request (because the syntax is correct).
+			but it allows freedom how we handle this case
+
+			-> for Nginx server, it handles by default fallback server.
+			If the mismatch happens, nginx will choose the default server. (usually the one on the top)
+
+			-> for us we can response with 403 Forbidden. this way we can avoid trouble the most.
+			*/
+			if (tempAddr != clientSocket._client_addr_in)
+			{
+				std::string msg = "Invalid::URI Authority::IP mismatch:: server_ip:" + in_addr_t_to_string(clientSocket._client_addr_in) + " request_target:" + in_addr_t_to_string(tempAddr);
+				httpError(403, msg);
+				_process_return = 0;
+				return ;
+			}
+		}
+		else
+		{
+			/*
+
+				this part mean that is host of authority part
+				is not the form of 123.123.123.123
+
+				it has some name which we would match with
+
+				because we kind of implement virtual hosting
+
+				this part we have fallback server
+			*/
+
+			// but check first if contain any invalid host field of http
+
+			const ServerConfig* fallback_server = NULL;
+			const std::vector<ServerConfig>* ptr = clientSocket.getServersConfigPtr();
+			std::vector<ServerConfig>::const_iterator serverVecIt = ptr->begin();
+			std::vector<std::string>::const_iterator tempNameVecIt;
+			_targetServer = NULL;
+			while (serverVecIt != ptr->end() && _targetServer == NULL)
+			{
+				if (serverVecIt->getServerNameVec().size() == 0)
+				{
+					if (fallback_server == NULL)
+						fallback_server = &(*serverVecIt);
+				}
+				else
+				{
+					tempNameVecIt = serverVecIt->getServerNameVec().begin();
+					while (tempNameVecIt != serverVecIt->getServerNameVec().end())
+					{
+						// if matches, then pick this server and break
+						if (*tempNameVecIt == host)
+						{
+							_targetServer = &(*serverVecIt);
+							break ;
+						}
+						++tempNameVecIt;
+					}
+				}
+				++serverVecIt;
+			}
+			if (_targetServer == NULL)
+			{
+				if (fallback_server)
+					_targetServer = fallback_server;
+				else
+					_targetServer = &((*clientSocket.getServersConfigPtr())[0]);
+			}
+		}
+	}
+
+
+}
+
 void	Http::validateRequestBufffer(const Socket& clientSocket)
 {
 	if (_process_return != 1 || _processStatus != VALIDATING_REQUEST)
@@ -350,6 +531,15 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 
 	// checking the request line
 	{
+		// whether what we check, if host is missing from
+		// header field, the server should not accept it.
+		if (_headerField.find("host") == _headerField.end())
+		{
+			// treated as bad request
+			httpError(400, "Bad request::cannot find \'host\' in header field");
+			_process_return = 0;
+			return ;
+		}
 		// we need to check the 'request target' first
 		// this is the tedious process
 		{
@@ -383,112 +573,39 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 					{
 						std::string authStr;
 
-						{
-							size_t	pathPos = _requestTarget.find_first_of('/', 7);
-							// if cannot find then it is only /
-							if (pathPos == _requestTarget.npos)
-								authStr = _requestTarget.substr(7);
-							else
-								authStr = _requestTarget.substr(7, pathPos - 7);
+						size_t	pathPos = _requestTarget.find_first_of('/', 7);
+						// if cannot find then it is only /
+						if (pathPos == _requestTarget.npos)
+							authStr = _requestTarget.substr(7);
+						else
+							authStr = _requestTarget.substr(7, pathPos - 7);
 
-							// authority cannot empty
-							if (authStr.empty())
-							{
-								httpError(400, "Invalid::URI Scheme::");
-								_process_return = 0;
-								return ;
-							}
+						// authority cannot empty
+						if (authStr.empty())
+						{
+							httpError(400, "Invalid::URI Scheme::");
+							_process_return = 0;
+							return ;
 						}
 
-						//separate port and host from authStr
-						int			portNum;
-						std::string	host;
-						{
-							std::string portStr;
-							size_t	colonPos = authStr.find_first_of(':', 0);
-							if (colonPos == authStr.npos)
-							{
-								// we didn't allow https so assume the default is always 80
-								host = authStr;
-								portStr = "80";
-							}
-							else 
-							{
-								host = authStr.substr(0, colonPos);
-								if (host.empty())
-								{
-									httpError(400, "Invalid::URI Authority::");
-									_process_return = 0;
-									return ;
-								}
+						validateRequestBufferSelectServer(clientSocket, authStr);
 
-								portStr = authStr.substr(colonPos + 1);
-								if (portStr.empty() || portStr.size() > 5 || digitChar().isMatch(portStr) == false)
-								{
-									httpError(400, "Invalid::URI Authority::");
-									_process_return = 0;
-									return ;
-								}
-							}
-							portNum = std::atoi(portStr.c_str());
-						}
-
-						// now we check the host, if it is ip or server_name (or whatever it's called)
-						{
-
-							// it is probably something like 172.233.21.34 some thing like that
-							if (hostipChar().isMatch(host) == true)
-							{
-								in_addr_t	tempAddr;
-								// conversion failed
-								if (string_to_in_addr_t(host, tempAddr) == false)
-								{
-									httpError(400, "Invalid::URI Authority::");
-									_process_return = 0;
-									return ;
-								}
-
-								const ServerConfig* fallback_server = NULL;
-
-								const std::vector<ServerConfig>* ptr = clientSocket.getServersConfigPtr();
-								std::vector<ServerConfig>::const_iterator serverVecIt = ptr->begin();
-								while (serverVecIt != ptr->end() && _targetServer == NULL)
-								{
-									if (serverVecIt->getHostIp().empty())
-									{
-										if (fallback_server == NULL)
-											fallback_server = &(*serverVecIt);
-									}
-									else if (serverVecIt->getHostIp().find(tempAddr) != serverVecIt->getHostIp().end())
-									{
-										_targetServer = &(*serverVecIt);
-									}
-									++serverVecIt;
-								}
-								if (_targetServer == NULL)
-								{
-									// have no target server
-									// the connection is valid but the authority is
-									// wrong we shoud still return error
-									if (fallback_server == NULL)
-									{
-										httpError(400, "Invalid::URI Authority::");
-										_process_return = 0;
-										return ;
-									}
-									else
-
-								}
-							}
-							else 
-							{
-
-							}
-						}
-
+						// now for authority part we check both host and ip
+						// so now we can recreate _requestTarget string
+						if (pathPos == _requestTarget.npos)
+							_requestTarget = "/";
+						else
+							_requestTarget = _requestTarget.substr(pathPos);
 					}
 
 				}
+
+				/*
+					In case of target that starts with '/' 
+					meaning that it is URI origin form
+					in this case we need to check the host:
+					in header
+				*/
 			}
 
 			// separate query and path

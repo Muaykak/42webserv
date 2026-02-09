@@ -4,6 +4,7 @@ Socket::Socket() :
 _socketType(NO_TYPE),
 _server_listen_port(-1),
 _socketMap(NULL),
+_serversConfig(NULL),
 _parentSocket(NULL)
 {}
 Socket::Socket(const Socket &obj) :
@@ -22,7 +23,8 @@ _socketFD(fd),
 _socketType(NO_TYPE),
 _server_listen_port(-1),
 _socketMap(NULL),
-_parentSocket(NULL)
+_parentSocket(NULL),
+_serversConfig(NULL)
 {
 
 }
@@ -31,7 +33,8 @@ _socketFD(fd),
 _socketType(NO_TYPE),
 _server_listen_port(-1),
 _socketMap(NULL),
-_parentSocket(NULL)
+_parentSocket(NULL),
+_serversConfig(NULL)
 {
 }
 Socket& Socket::operator=(const Socket &obj)
@@ -62,7 +65,7 @@ const FileDescriptor& Socket::getEpollFD() const
 	return (_epollFD);
 }
 
-bool Socket::setupCGI_socket(e_socket_type cgiSocketType, const std::vector<ServerConfig>& serversConfig, const FileDescriptor &epollFD,
+bool Socket::setupCGI_socket(e_socket_type cgiSocketType, const std::vector<ServerConfig>* serversConfig, const FileDescriptor &epollFD,
 	Socket* parentSocket, std::map<int, Socket>* socketMap, CgiProcess& cgiProcess)
 {
 	if (cgiSocketType != CGI_FD_STDIN && cgiSocketType != CGI_FD_STDOUT)
@@ -86,7 +89,7 @@ bool Socket::setupCGI_socket(e_socket_type cgiSocketType, const std::vector<Serv
 	}
 
 	_epollFD = epollFD;
-	_serversConfig = *_serversConfigVec;
+	_serversConfig = _serversConfig;
 	_socketType = cgiSocketType;
 	_socketMap = socketMap;
 	_parentSocket = parentSocket;
@@ -113,7 +116,7 @@ bool Socket::setupCGI_socket(e_socket_type cgiSocketType, const std::vector<Serv
 }
 
 // Be sure that epollFD still available !
-bool Socket::setupSocket(e_socket_type socketType, const std::vector<ServerConfig>& serversConfig,
+bool Socket::setupSocket(e_socket_type socketType, const std::vector<ServerConfig>* serversConfig,
 	const FileDescriptor &epollFD, std::map<int, Socket>* socketMap)
 {
 	if (_socketType != NO_TYPE)
@@ -148,17 +151,17 @@ bool Socket::setupSocket(e_socket_type socketType, const std::vector<ServerConfi
 	{
 		case SERVER_SOCKET:
 		{
-			if (!_serversConfigVec)
+			if (!_serversConfig)
 			{
 				throw WebservException("Socket::setup ServerSocket needs _serversConfig!");
 			}
-			_serversConfig = *_serversConfigVec;
+			_serversConfig = _serversConfig;
 
 			std::set<in_addr_t> temp_addr_set;
 			// put serversConfig ip host together
 			{
-				std::vector<ServerConfig>::const_iterator	vecServerIt = _serversConfig.begin();
-				while (vecServerIt != _serversConfig.end())
+				std::vector<ServerConfig>::const_iterator	vecServerIt = _serversConfig->begin();
+				while (vecServerIt != _serversConfig->end())
 				{
 					temp_addr_set = vecServerIt->getHostIp();
 
@@ -192,7 +195,7 @@ bool Socket::setupSocket(e_socket_type socketType, const std::vector<ServerConfi
 			sv_addr.sin_family = AF_INET;
 			sv_addr.sin_addr.s_addr = INADDR_ANY;
 			/*################### NEED TO FIX THIS */
-			_server_listen_port = _serversConfig[0].getPort();
+			_server_listen_port = (*_serversConfig)[0].getPort();
 			sv_addr.sin_port = htons(_server_listen_port);
 		
 			if (bind(_socketFD.getFd(), (struct sockaddr *)&sv_addr, sizeof(sv_addr)) != 0)
@@ -230,9 +233,9 @@ bool Socket::setupSocket(e_socket_type socketType, const std::vector<ServerConfi
 			ss << _server_listen_port;
 			std::string portStr;
 			ss >> portStr;
-			while (_serversConfigIndex < _serversConfig.size())
+			while (_serversConfigIndex < _serversConfig->size())
 			{
-				tempServerNameVec = &(_serversConfig)[_serversConfigIndex].getServerNameVec();
+				tempServerNameVec = &(*_serversConfig)[_serversConfigIndex].getServerNameVec();
 				if (tempServerNameVec == NULL)
 					Logger::log(LC_SYSTEM, "Server is listening on port " + portStr);
 				else {
@@ -253,7 +256,7 @@ bool Socket::setupSocket(e_socket_type socketType, const std::vector<ServerConfi
 		}
 		case CLIENT_SOCKET:
 		{
-			_server_listen_port = (_serversConfig)[0].getPort();
+			_server_listen_port = (*_serversConfig)[0].getPort();
 			if (fcntl(_socketFD.getFd(), F_SETFL, O_NONBLOCK) != 0)
 			{
 				std::string errorMsg = "Socket::fcntl() O_NONBLOCK Error::";
@@ -340,6 +343,7 @@ bool Socket::handleEvent(const epoll_event &event)
 						// set up client Socket
 						_socketMap->insert(std::make_pair(client_socket, Socket(client_socket)));
 						(*_socketMap)[client_socket].setupSocket(CLIENT_SOCKET, _serversConfig, _epollFD, _socketMap);
+						(*_socketMap)[client_socket]._client_addr_in = client_address.sin_addr.s_addr;
 						continue;
 					}
 					if (errno == EAGAIN || errno == EWOULDBLOCK)

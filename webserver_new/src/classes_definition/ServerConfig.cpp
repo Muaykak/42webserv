@@ -55,6 +55,14 @@ ServerConfig::ServerConfig(const t_config_map& serverConfig, const t_location_ma
 			// if converrsion failed should throw back errors
 			if (string_to_in_addr_t(*vecIt, temp_in_addr_t) == false)
 				throw WebservException("ServerConfig::string_to_in_addr_t::error");
+			if (temp_in_addr_t == 0xFFFFFFFF)
+				throw WebservException("ServerConfig::string_to_in_addr_t::cannot assign server to broadcast address");
+			if (temp_in_addr_t == 0x00000000)
+			{
+				// mean that accept all connection
+				_host_ip_set.clear();
+				break ;
+			}
 			_host_ip_set.insert(temp_in_addr_t);
 			++vecIt;
 		}
