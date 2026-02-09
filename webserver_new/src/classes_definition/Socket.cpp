@@ -327,7 +327,12 @@ bool Socket::handleEvent(const epoll_event &event)
 					if (client_socket > 0)
 					{
 						// need to check if cilent access to this server with the same ip that server recieves
-						if ()
+						if (_server_ip_host.size() != 0
+						&& _server_ip_host.find(client_address.sin_addr.s_addr) == _server_ip_host.end())
+						{
+							Logger::log(LC_CON_FAIL, "Incoming connection does not match any server %s", in_addr_t_to_string(client_address.sin_addr.s_addr).c_str());
+						}
+						Logger::log(LC_CONN_LOG, "Connection from %s", in_addr_t_to_string(client_address.sin_addr.s_addr).c_str());
 
 						Logger::log(LC_CONN_LOG, "Port %d Establishing connection from client#%d", _server_listen_port, client_socket);
 

@@ -58,7 +58,6 @@ ServerConfig::ServerConfig(const t_config_map& serverConfig, const t_location_ma
 			_host_ip_set.insert(temp_in_addr_t);
 			++vecIt;
 		}
-		std::cout << "host amount: " << _host_ip_set.size() << std::endl;
 	}
 }
 
