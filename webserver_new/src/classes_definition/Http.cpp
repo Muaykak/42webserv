@@ -4,7 +4,8 @@
 Http::Http()
 : _keepConnection(true),
 _processStatus(NO_STATUS),
-_errorStatusCode(-1)
+_errorStatusCode(-1),
+_targetServer(NULL)
 {
 	_recvBuffer.reserve(HTTP_RECV_BUFFER);
 }
@@ -378,28 +379,113 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 						return ;
 					}
 
-					std::string authStr;
-					// now we check the authority part
+					// check the authority part
 					{
-						// start index
+						std::string authStr;
 
-
-						size_t	pathPos = _requestTarget.find_first_of('/', 7);
-						// if cannot find then it is only /
-						if (pathPos == _requestTarget.npos)
-							authStr = _requestTarget.substr(7);
-						else
-							authStr = _requestTarget.substr(7, pathPos - 7);
-							
-						// authority cannot empty
-						if (authStr.empty())
 						{
-							httpError(400, "Invalid::URI Scheme::");
-							_process_return = 0;
-							return ;
+							size_t	pathPos = _requestTarget.find_first_of('/', 7);
+							// if cannot find then it is only /
+							if (pathPos == _requestTarget.npos)
+								authStr = _requestTarget.substr(7);
+							else
+								authStr = _requestTarget.substr(7, pathPos - 7);
+
+							// authority cannot empty
+							if (authStr.empty())
+							{
+								httpError(400, "Invalid::URI Scheme::");
+								_process_return = 0;
+								return ;
+							}
 						}
 
-						
+						//separate port and host from authStr
+						int			portNum;
+						std::string	host;
+						{
+							std::string portStr;
+							size_t	colonPos = authStr.find_first_of(':', 0);
+							if (colonPos == authStr.npos)
+							{
+								// we didn't allow https so assume the default is always 80
+								host = authStr;
+								portStr = "80";
+							}
+							else 
+							{
+								host = authStr.substr(0, colonPos);
+								if (host.empty())
+								{
+									httpError(400, "Invalid::URI Authority::");
+									_process_return = 0;
+									return ;
+								}
+
+								portStr = authStr.substr(colonPos + 1);
+								if (portStr.empty() || portStr.size() > 5 || digitChar().isMatch(portStr) == false)
+								{
+									httpError(400, "Invalid::URI Authority::");
+									_process_return = 0;
+									return ;
+								}
+							}
+							portNum = std::atoi(portStr.c_str());
+						}
+
+						// now we check the host, if it is ip or server_name (or whatever it's called)
+						{
+
+							// it is probably something like 172.233.21.34 some thing like that
+							if (hostipChar().isMatch(host) == true)
+							{
+								in_addr_t	tempAddr;
+								// conversion failed
+								if (string_to_in_addr_t(host, tempAddr) == false)
+								{
+									httpError(400, "Invalid::URI Authority::");
+									_process_return = 0;
+									return ;
+								}
+
+								const ServerConfig* fallback_server = NULL;
+
+								const std::vector<ServerConfig>* ptr = clientSocket.getServersConfigPtr();
+								std::vector<ServerConfig>::const_iterator serverVecIt = ptr->begin();
+								while (serverVecIt != ptr->end() && _targetServer == NULL)
+								{
+									if (serverVecIt->getHostIp().empty())
+									{
+										if (fallback_server == NULL)
+											fallback_server = &(*serverVecIt);
+									}
+									else if (serverVecIt->getHostIp().find(tempAddr) != serverVecIt->getHostIp().end())
+									{
+										_targetServer = &(*serverVecIt);
+									}
+									++serverVecIt;
+								}
+								if (_targetServer == NULL)
+								{
+									// have no target server
+									// the connection is valid but the authority is
+									// wrong we shoud still return error
+									if (fallback_server == NULL)
+									{
+										httpError(400, "Invalid::URI Authority::");
+										_process_return = 0;
+										return ;
+									}
+									else
+
+								}
+							}
+							else 
+							{
+
+							}
+						}
+
 					}
 
 				}

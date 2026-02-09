@@ -2,7 +2,6 @@
 
 Socket::Socket() :
 _socketType(NO_TYPE),
-_serversConfig(NULL),
 _server_listen_port(-1),
 _socketMap(NULL),
 _parentSocket(NULL)
@@ -14,13 +13,13 @@ _socketType(obj._socketType),
 _serversConfig(obj._serversConfig),
 _server_listen_port(obj._server_listen_port),
 _socketMap(obj._socketMap),
-_parentSocket(obj._parentSocket)
+_parentSocket(obj._parentSocket),
+_server_ip_host(obj._server_ip_host)
 {
 }
 Socket::Socket(int fd) :
 _socketFD(fd),
 _socketType(NO_TYPE),
-_serversConfig(NULL),
 _server_listen_port(-1),
 _socketMap(NULL),
 _parentSocket(NULL)
@@ -30,7 +29,6 @@ _parentSocket(NULL)
 Socket::Socket(const FileDescriptor& fd) :
 _socketFD(fd),
 _socketType(NO_TYPE),
-_serversConfig(NULL),
 _server_listen_port(-1),
 _socketMap(NULL),
 _parentSocket(NULL)
@@ -47,6 +45,7 @@ Socket& Socket::operator=(const Socket &obj)
 		_serversConfig = obj._serversConfig;
 		_socketMap = obj._socketMap;
 		_parentSocket = obj._parentSocket;
+		_server_ip_host = obj._server_ip_host;
 	}
 	return (*this);
 }
@@ -63,7 +62,7 @@ const FileDescriptor& Socket::getEpollFD() const
 	return (_epollFD);
 }
 
-bool Socket::setupCGI_socket(e_socket_type cgiSocketType, const std::vector<ServerConfig> *_serversConfigVec, const FileDescriptor &epollFD,
+bool Socket::setupCGI_socket(e_socket_type cgiSocketType, const std::vector<ServerConfig>& serversConfig, const FileDescriptor &epollFD,
 	Socket* parentSocket, std::map<int, Socket>* socketMap, CgiProcess& cgiProcess)
 {
 	if (cgiSocketType != CGI_FD_STDIN && cgiSocketType != CGI_FD_STDOUT)
@@ -87,7 +86,7 @@ bool Socket::setupCGI_socket(e_socket_type cgiSocketType, const std::vector<Serv
 	}
 
 	_epollFD = epollFD;
-	_serversConfig = _serversConfigVec;
+	_serversConfig = *_serversConfigVec;
 	_socketType = cgiSocketType;
 	_socketMap = socketMap;
 	_parentSocket = parentSocket;
@@ -114,7 +113,7 @@ bool Socket::setupCGI_socket(e_socket_type cgiSocketType, const std::vector<Serv
 }
 
 // Be sure that epollFD still available !
-bool Socket::setupSocket(e_socket_type socketType, const std::vector<ServerConfig> *_serversConfigVec,
+bool Socket::setupSocket(e_socket_type socketType, const std::vector<ServerConfig>& serversConfig,
 	const FileDescriptor &epollFD, std::map<int, Socket>* socketMap)
 {
 	if (_socketType != NO_TYPE)
@@ -143,23 +142,23 @@ bool Socket::setupSocket(e_socket_type socketType, const std::vector<ServerConfi
 
 
 	_epollFD = epollFD;
-	_serversConfig = _serversConfigVec;
 	_socketType = socketType;
 	_socketMap = socketMap;
 	switch (socketType)
 	{
 		case SERVER_SOCKET:
 		{
-			if (!_serversConfig)
+			if (!_serversConfigVec)
 			{
 				throw WebservException("Socket::setup ServerSocket needs _serversConfig!");
 			}
+			_serversConfig = *_serversConfigVec;
 
 			std::set<in_addr_t> temp_addr_set;
 			// put serversConfig ip host together
 			{
-				std::vector<ServerConfig>::const_iterator	vecServerIt = _serversConfig->begin();
-				while (vecServerIt != _serversConfig->end())
+				std::vector<ServerConfig>::const_iterator	vecServerIt = _serversConfig.begin();
+				while (vecServerIt != _serversConfig.end())
 				{
 					temp_addr_set = vecServerIt->getHostIp();
 
@@ -193,7 +192,7 @@ bool Socket::setupSocket(e_socket_type socketType, const std::vector<ServerConfi
 			sv_addr.sin_family = AF_INET;
 			sv_addr.sin_addr.s_addr = INADDR_ANY;
 			/*################### NEED TO FIX THIS */
-			_server_listen_port = (*_serversConfig)[0].getPort();
+			_server_listen_port = _serversConfig[0].getPort();
 			sv_addr.sin_port = htons(_server_listen_port);
 		
 			if (bind(_socketFD.getFd(), (struct sockaddr *)&sv_addr, sizeof(sv_addr)) != 0)
@@ -231,9 +230,9 @@ bool Socket::setupSocket(e_socket_type socketType, const std::vector<ServerConfi
 			ss << _server_listen_port;
 			std::string portStr;
 			ss >> portStr;
-			while (_serversConfigIndex < _serversConfig->size())
+			while (_serversConfigIndex < _serversConfig.size())
 			{
-				tempServerNameVec = &(*_serversConfig)[_serversConfigIndex].getServerNameVec();
+				tempServerNameVec = &(_serversConfig)[_serversConfigIndex].getServerNameVec();
 				if (tempServerNameVec == NULL)
 					Logger::log(LC_SYSTEM, "Server is listening on port " + portStr);
 				else {
@@ -254,7 +253,7 @@ bool Socket::setupSocket(e_socket_type socketType, const std::vector<ServerConfi
 		}
 		case CLIENT_SOCKET:
 		{
-			_server_listen_port = (*_serversConfig)[0].getPort();
+			_server_listen_port = (_serversConfig)[0].getPort();
 			if (fcntl(_socketFD.getFd(), F_SETFL, O_NONBLOCK) != 0)
 			{
 				std::string errorMsg = "Socket::fcntl() O_NONBLOCK Error::";

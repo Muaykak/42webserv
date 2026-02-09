@@ -18,6 +18,7 @@ std::string toString(const T &value)
 
 const CharTable&	whiteSpaceTable();
 const CharTable&	hostipChar();
+const CharTable&	digitChar();
 const CharTable&	htabSp();
 const CharTable&	alphaAtoZ();
 const CharTable&	allowedFieldNameChar();

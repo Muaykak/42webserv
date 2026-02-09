@@ -37,7 +37,7 @@ private:
 	FileDescriptor _epollFD;
 	FileDescriptor _socketFD;
 	e_socket_type _socketType;
-	const std::vector<ServerConfig> *_serversConfig;
+	std::vector<ServerConfig> _serversConfig;
 	int _server_listen_port;
 	std::set<in_addr_t>	_server_ip_host;
 	Http	http;

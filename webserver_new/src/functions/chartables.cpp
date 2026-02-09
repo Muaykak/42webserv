@@ -14,6 +14,12 @@ const CharTable&	hostipChar()
 	return (table);
 }
 
+const CharTable&	digitChar()
+{
+	static const CharTable table("0123456789", true);
+	return (table);
+}
+
 // horizontal tab and ' '(space) 
 const CharTable&	htabSp()
 {
