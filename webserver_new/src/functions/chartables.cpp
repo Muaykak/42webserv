@@ -35,7 +35,7 @@ const CharTable&	alphaAtoZ()
 
 const CharTable&	hexChar()
 {
-	static const CharTable table("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", true);
+	static const CharTable table("ABCDEFabcdef0123456789", true);
 	return (table);
 }
 

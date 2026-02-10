@@ -1,5 +1,33 @@
 #include "../../include/utility_function.hpp"
 
+void	splitString(const std::string& toSplit, const std::string& delimitter, std::list<std::string>& returnList){
+	returnList.clear();
+	size_t	currIndex = 0;
+	size_t	nextIndex;
+
+	if (delimitter.empty() || toSplit.empty())
+		return ;
+	while (true){
+		nextIndex =	toSplit.find_first_not_of(delimitter, currIndex);
+
+		if (nextIndex == toSplit.npos){
+			return ;
+		}
+
+		currIndex = nextIndex;
+
+		nextIndex = toSplit.find_first_of(delimitter, currIndex);
+		if (nextIndex == toSplit.npos){
+			returnList.push_back(toSplit.substr(currIndex));
+			return;
+		}
+		else {
+			returnList.push_back(toSplit.substr(currIndex, nextIndex - currIndex));
+			currIndex = nextIndex;
+		}
+	}
+}
+
 void	splitString(const std::string& toSplit, const std::string& delimitter, std::vector<std::string>& returnVec){
 	returnVec.clear();
 	size_t	currIndex = 0;

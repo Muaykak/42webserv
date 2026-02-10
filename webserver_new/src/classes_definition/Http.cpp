@@ -1,5 +1,7 @@
 #include "../../include/classes/Http.hpp"
 #include "../../include/classes/Socket.hpp"
+#include "../../include/utility_function.hpp"
+#include <cctype>
 
 Http::Http()
 : _keepConnection(true),
@@ -340,10 +342,46 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 // decoding the '%' in URI path
 static bool	pathDecoding(std::string& pathStr)
 {
+	size_t	curPos = 0;
+	size_t	symPos = 0;
+	std::string	returnStr;
+	std::string hexStr = "0123456789abcdef";
+	unsigned char temp;
+
+	// should not empty string here
+	if (pathStr.empty())
+		return (false);
+	while (curPos < pathStr.size())
+	{
+		symPos = pathStr.find_first_of('%', curPos);
+		if (symPos == pathStr.npos)
+		{
+			returnStr += pathStr.substr(curPos);
+			break ;
+		}
+		else 
+		{
+			// add normal chars to returnStr
+			if (symPos != curPos)
+				returnStr += pathStr.substr(curPos, symPos - curPos);
+			// because '%' must followed by 2 char
+			if (symPos + 2 >= pathStr.size() || hexChar().isMatch(pathStr, symPos + 1, 2) == false)
+				return (false);
+			temp = static_cast<unsigned char>(hexStr.find_first_of(std::tolower(pathStr[symPos + 1])) << 4);
+			temp |= static_cast<unsigned char>(hexStr.find_first_of(std::tolower(pathStr[symPos + 2])));
+
+			// will not accept if temp is control chars, '/', or DEL (127)
+			if (temp < 32 || temp == '/' || temp == 127)
+				return (false);
+			returnStr += temp;
+			curPos = symPos + 3;
+		}
+		pathStr = returnStr;
+	}
 	return true;
 }
 
-void	Http::validateRequestBufferSelectServer(const Socket& clientSocket, std::string& authStr)
+void	Http::validateRequestBufferSelectServer(const Socket& clientSocket,const std::string& authStr)
 {
 	//separate port and host from authStr
 	int			portNum;
@@ -531,6 +569,65 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 
 	// checking the request line
 	{
+		{
+			// rough check for method first
+			if (_method != "GET" && _method != "POST" && _method != "DELETE")
+			{
+				httpError(405, "Method not allowed");
+				_process_return = 0;
+				return ;
+			}
+		}
+
+		// before anything, we check the protocol version first
+		{
+			
+			char maj;
+			char min;
+			// the string should be at least 8
+			// HTTP/X.X
+			// whether what version you are
+			// must start with "HTTP/"
+			if (_protocol.size() != 8 || _protocol.compare(0, 5, "HTTP/") != 0 || _protocol[6] != '.')
+			{
+				httpError(400, "ERROR::protocol version wrong format");
+				_process_return = 0;
+				return ;
+			}
+
+			maj = _protocol[5];
+			if (maj != '1')
+			{
+				if (maj >= '0' && maj <= '3')
+				{
+					// response with unsupported version
+					httpError(505, "Error::version not supported");
+				}
+				else 
+				{
+					// some weird characters
+					httpError(400, "ERROR::protocol version wrong format");
+				}
+				_process_return = 0;
+				return ;
+			}
+
+			min = _protocol[7];
+			if (min < '0' || min > '9')
+			{
+				// must be digit
+				httpError(400, "ERROR::protocal version wrong format");
+				_process_return = 0;
+				return ;
+			}
+
+			_protocol.clear();
+			_protocol += maj;
+			_protocol += min;
+			// finished processing protocol
+
+		}
+
 		// whether what we check, if host is missing from
 		// header field, the server should not accept it.
 		if (_headerField.find("host") == _headerField.end())
@@ -589,6 +686,8 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 						}
 
 						validateRequestBufferSelectServer(clientSocket, authStr);
+						if (_process_return == 0)
+							return ;
 
 						// now for authority part we check both host and ip
 						// so now we can recreate _requestTarget string
@@ -599,13 +698,31 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 					}
 
 				}
-
+				else
+				{
 				/*
 					In case of target that starts with '/' 
 					meaning that it is URI origin form
 					in this case we need to check the host:
 					in header
 				*/
+					std::set<std::string>& fieldValueSet = _headerField.find("host")->second;
+
+					// must have only 1 value in host:
+					if (fieldValueSet.size() != 1)
+					{
+						httpError(400, "Http::Invalid field value:: host must have only 1 element");
+						_process_return = 0;
+						return ;
+					}
+
+					std::set<std::string>::const_iterator	fieldValueSetIt = fieldValueSet.begin();
+
+					validateRequestBufferSelectServer(clientSocket, *fieldValueSetIt);
+					if (_process_return == 0)
+						return ;
+				}
+
 			}
 
 			// separate query and path
@@ -621,152 +738,134 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 				}
 			}
 
-			// now we decode any '%' encoding
+			// this is to processing the path.
 			{
 
-			}
-		}
-	}
+				// according to the standard, we must
+				// separate path into segments separated by
+				// the '/' as the delimitter first
 
-	
-	// check Host: if URI is not in absolute form
-	{
-		std::string host_string;
+				std::list<std::string> splitList;
+				splitString(_targetPath, "/", splitList);
 
-		std::map<std::string, std::set<std::string> >::iterator it = _headerField.find("host");
-
-		// CANNOT find Host: !
-		if (it == _headerField.end())
-		{
-			httpError(400, "cannot find \"Host\" field name");
-			_process_return = 0;
-			return ;
-		}
-
-		/*
-			key is "host"
-			the value is std::set,
-			so the size of std::set for this area
-			should be only one element
-		*/
-		if (it->second.size() != 1)
-		{
-			httpError(400, "Host: :: invalid value");
-			_process_return = 0;
-			return ;
-		}
-
-		host_string = *it->second.begin();
-
-		//should not empty
-		if (host_string.empty())
-		{
-			httpError(400, "Host: :: invalid value");
-			_process_return = 0;
-			return ;
-		}
-
-		/*
-			separate ip:port
-			by the ':' symbol
-		*/
-		std::vector<std::string> splitStrVec;
-		splitString(host_string, ":", splitStrVec);
-
-		/* size of vector must be 1 or more */
-		if (splitStrVec.size() == 0)
-		{
-			httpError(400, "Host: :: invalid value");
-			_process_return = 0;
-			return ;
-		}
-
-		/*
-		vec[0] is the ip
-		vec[1] is port
-		*/
-		
-		// first we check if port is correct
-		// it is optional to put port in host, it will discard when
-		// use default port like 443, 80
-		if (splitStrVec.size() == 2)
-		{
-			// port ranges between 0 - 65535 so only 5 letters
-			if (splitStrVec[1].size() > 5 || splitStrVec[1].size() < 1)
-			{
-				httpError(400, "Host: :: invalid value:: invalid port");
-				_process_return = 0;
-				return ;
-			}
-
-			//convert
-			int portNum = std::atoi(splitStrVec[1].c_str());
-
-			if (portNum != clientSocket.getServerListenPort())
-			{
-				httpError(400, "Host: :: invalid value:: invalid port");
-				_process_return = 0;
-				return ;
-			}
-		}
-		// is host has no port
-		// means that it is 443 or 80
-		else
-		{
-			int serverPort = clientSocket.getServerListenPort();
-			// something is wrong connection should not reach here
-			if (serverPort != 443 || serverPort != 80)
-			{
-				httpError(400, "Host: :: invalid value:: invalid port");
-				_process_return = 0;
-				return ;
-			}
-		}
-
-		// next we check the hostname (ip)
-		{
-			// uri-host checking is case insensitive
-			host_string = splitStrVec[0];
-			stringToLower(host_string);
-
-			const std::vector<ServerConfig>* serverVecPtr = clientSocket.getServersConfigPtr();
-			// for safety
-			if (!serverVecPtr)
-			{
-				httpError(500, "clientSocket.getServersConfigPtr():: SHOULD NOT BE NULL HERE");
-				_process_return = 0;
-				return ;
-			}
-
-			const std::vector<std::string>* tempServerNameVecPtr;
-
-			_targetServer = NULL;
-			// loop check if had matching name from config file
-			for (size_t i = 0; i < serverVecPtr->size(); i++)
-			{
-				tempServerNameVecPtr = &((*serverVecPtr)[i].getServerNameVec());
-
-				// also iterate the name vector to find matching
-				for (size_t j = 0; j < tempServerNameVecPtr->size(); j++)
+				//split vector should not empty
+				if (splitList.size() == 0)
 				{
-					if ((*tempServerNameVecPtr)[j] == host_string)
+					httpError(400, "Bad Path. Or my bad parser lol");
+					_process_return = 0;
+					return ;
+				}
+
+				std::list<std::string>::iterator	splitListIt = splitList.begin();
+
+				while (splitListIt != splitList.end())
+				{
+					if (*splitListIt == ".")
+						splitList.erase(splitListIt++);
+					else if (*splitListIt == "..")
 					{
-						_targetServer = &((*serverVecPtr)[i]);
-						break ;
+						if (splitListIt != splitList.begin())
+						{
+							--splitListIt;
+							splitList.erase(splitListIt++);
+						}
+						splitList.erase(splitListIt++);
+					}
+					else
+					{
+						/*
+						this part means that this segment 
+						is filename 
+						and what we should do is decode the
+						'%' first
+						*/
+
+						/*
+						then we check after decoding again if this segment
+						string is "." or "..". i will assume this as bad intent
+						because why you don't use  '.' in the first place	
+						*/
+						if (pathDecoding(*splitListIt) == false || *splitListIt == "." || *splitListIt == "..")
+						{
+							// failed to decode 
+							// wrong use of '%'
+							httpError(400, "request target::'%' encoding invalid::");
+							_process_return = 0;
+							return ;
+						}
+
+						// we proved this string is valid path name
+						// continue to next one
+						++splitListIt;
 					}
 				}
-				if (_targetServer)
-					break ;
+
+				//finished processing the list
+				// now we combined that list back to string
+				_targetPath.clear();
+				splitListIt = splitList.begin();
+				size_t	newSize = 0;
+				while (splitListIt != splitList.end())
+				{
+					newSize += splitListIt->size() + 1;
+					++splitListIt;
+				}
+				_targetPath.reserve(newSize);
+				splitListIt = splitList.begin();
+				while (splitListIt != splitList.end())
+				{
+					_targetPath += '/';
+					_targetPath += *splitListIt;
+					++splitListIt;
+				}
 			}
-			// if cannot find, we pick the first one
-			if (_targetServer == NULL)
-				_targetServer = &((*serverVecPtr)[0]);
-			
+
+			// path process done, now 
+
 		}
 
-		// Host: is finished, now we need to check the
-		// request line
+		// now we check the method
+		{
+			// we should have target server now
+			if (_targetServer == NULL)
+			{
+				httpError(500, "Internal Error:: _targetServer Not Found");
+				_process_return = 0;
+				return ;
+			}
+
+			const std::vector<std::string>* allowMethodVec = _targetServer->getLocationData(_targetPath, "allowed_methods");
+			// must found, if not then config file is wrong, or something is wrong
+			if (allowMethodVec == NULL)
+			{
+				httpError(500, "Internal Error:: cannot find allowed_methods");
+				_process_return = 0;
+				return ;
+			}
+
+			bool match = false;
+			
+			for (size_t i = 0; i < allowMethodVec->size(); i++)
+			{
+				if (_method == (*allowMethodVec)[i])
+				{
+					match = true;
+					break ;
+				}
+			}
+			// Method not alowed
+			if (match == false)
+			{
+				httpError(405, "Method not allowed");
+				_process_return = 0;
+				return ;
+			}
+
+		}
 	}
+
+	//
+	sdf
 
 }
 

@@ -7,6 +7,7 @@
 # include "classes/CharTable.hpp"
 # include <csignal>
 # include <netinet/in.h>
+# include <list>
 
 template <typename T>
 std::string toString(const T &value)
@@ -19,6 +20,7 @@ std::string toString(const T &value)
 const CharTable&	whiteSpaceTable();
 const CharTable&	hostipChar();
 const CharTable&	digitChar();
+const CharTable&	hexChar();
 const CharTable&	htabSp();
 const CharTable&	alphaAtoZ();
 const CharTable&	allowedFieldNameChar();
@@ -28,6 +30,10 @@ const CharTable&	allowRequestTargetChar();
 std::string in_addr_t_to_string(in_addr_t toConvert);
 bool	string_to_in_addr_t(const std::string& toConvert, in_addr_t& returnValue);
 
+
+void	splitString(const std::string& toSplit,
+		const std::string& delimitter,
+		std::list<std::string>& returnList);
 void	splitString(const std::string& toSplit,
 		const std::string& delimitter,
 		std::vector<std::string>& returnVec);

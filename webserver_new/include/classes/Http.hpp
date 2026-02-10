@@ -49,19 +49,18 @@ class Http {
 		void	parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize);
 		void	parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize);
 		void	validateRequestBufffer(const Socket& clientSocket);
-		void	validateRequestBufferSelectServer(const Socket& clientSocket, std::string& authStr);
+		void	validateRequestBufferSelectServer(const Socket& clientSocket, const std::string& authStr);
 
 		int	_errorStatusCode;
 		std::string	_throwMessageToClient; // so we know where it happen error
 		void	httpError(int errorCode, const std::string& throwToClient);
 		void	httpError(int errorCode);
 
-
 		std::string		_method;
 		std::string		_requestTarget;	
 		std::string		_targetPath;
 		std::string		_queryString;
-		std::string		_protocol;
+		std::string		_protocol; // after validating the string will be "HTTP/1.1" => "11"
 		void	printHeaderField() const;
 		std::map<std::string, std::set<std::string> > _headerField;
 		const ServerConfig*	_targetServer;
