@@ -13,7 +13,7 @@ _host_ip_set(obj._host_ip_set)
 	if (vecPtr)
 		_serverNameVec = *vecPtr;
 	for (size_t i = 0; i < _serverNameVec.size(); i++)
-		stringToLower(_serverNameVec[i]);
+		_serverNameVec[i] = stringToLower(_serverNameVec[i]);
 		
 
 }
@@ -40,7 +40,7 @@ ServerConfig::ServerConfig(const t_config_map& serverConfig, const t_location_ma
 	if (vecPtr)
 		_serverNameVec = *vecPtr;
 	for (size_t i = 0; i < _serverNameVec.size(); i++)
-		stringToLower(_serverNameVec[i]);
+		_serverNameVec[i] = stringToLower(_serverNameVec[i]);
 	
 	// check if has 'host'in _serverConfig
 	t_config_map::const_iterator it = _serverConfig.find("host");

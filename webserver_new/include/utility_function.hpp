@@ -54,7 +54,8 @@ void	splitString(const std::string& toSplit,
 		const CharTable& delimitter,
 		std::vector<std::string>& returnVec, size_t startPos, size_t size);
 
-void	stringToLower(std::string& toConvert);
+std::string	stringToLower(const std::string& toConvert);
+std::string	stringToUpper(const std::string& toConvert);
 
 void 	serverStopHandler(int signum);
 volatile sig_atomic_t& signal_status();

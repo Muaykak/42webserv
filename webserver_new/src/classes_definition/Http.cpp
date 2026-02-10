@@ -324,7 +324,7 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 		}
 
 		// normalize field name because it is case insensitive
-		stringToLower(tempFieldName);
+		tempFieldName = stringToLower(tempFieldName);
 
 		if (!tempSet.empty())
 			_headerField[tempFieldName].insert(tempSet.begin(), tempSet.end());
@@ -865,7 +865,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 	}
 
 	//
-	sdf
+	df
 
 }
 

@@ -10,6 +10,7 @@ HEADER_FILE =	${addprefix ${HEADERS_DIR}, ${MAIN_HEADER_FILE}} \
 
 CLASS_HEADER_DIR = classes/
 CLASS_HEADER_FILE =	ConfigData.hpp \
+					EnvpWrapper.hpp \
 					FileDescriptor.hpp \
 					Http.hpp \
 					CgiProcess.hpp \
@@ -41,6 +42,7 @@ SRC_CLASS_DIR = classes_definition/
 SRC_CLASSES_FILE =	ConfigData.cpp \
 					CgiProcess.cpp \
 					CharTable.cpp \
+					EnvpWrapper.cpp \
 					FileDescriptor.cpp \
 					Http.cpp \
 					HttpResponse.cpp \
