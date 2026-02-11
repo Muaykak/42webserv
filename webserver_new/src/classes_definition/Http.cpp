@@ -871,7 +871,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 		std::map<std::string, std::set<std::string> >::const_iterator content_length = _headerField.find("content-length");
 		std::map<std::string, std::set<std::string> >::const_iterator tranfer_encoding = _headerField.find("transfer-encoding");
 
-		if (tranfer_encoding != _headerField.end() && content_length == _headerField.end())
+		if (tranfer_encoding != _headerField.end() && content_length != _headerField.end())
 		{
 			httpError(400, "Bad request:: Transfer-Encoding and Content-Length cannot both exist in header");
 			_process_return = 0;
@@ -879,7 +879,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 		}
 
 		// if Content-Length is found, check if it exceeds the client_max_body_size
-		if (content_length != _headerField.end())
+		else if (content_length != _headerField.end())
 		{
 			// this field must have only 1 element
 			if (content_length->second.size() != 1)
@@ -943,11 +943,45 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 				}
 			}
 		}
-		else
+		else if (tranfer_encoding != _headerField.end())
 		{
 			// here need to check the Transfer Encoding
-			a
+			const std::set<std::string>& valueSet = tranfer_encoding->second;
+
+			// mean that chunked is not found in the list
+			if (valueSet.find("chunked") == valueSet.end())
+			{
+				std::string msg = "Http::request Transfer-Encoding:: \"chunked\" not found::key=";
+				
+				std::set<std::string>::const_iterator it = valueSet.begin();
+				while (it != valueSet.end())
+				{
+					if (it != valueSet.begin())
+						msg += ", ";
+					msg += *it;
+					++it;
+				}
+				
+				httpError(400, msg);
+				_process_return = 0;
+				return ;
+			}
+
+			// chunked found then this is chunked encoding.
+			_body_type = 2;
+			_body_size = 0;
 		}
+		// both Content-Length and Transfer-Encoding not found
+		else
+		{
+			_body_type = 0;
+			_body_size = 0;
+		}
+	}
+
+	// check for redirection
+	{
+
 	}
 
 
