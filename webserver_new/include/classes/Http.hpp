@@ -32,6 +32,10 @@ class Http {
 		0 = false, error occurred, usually define
 			the error code to _errorStatusCode (no error will default set to -1)
 			may skip to create response or just close connection.
+		
+		4 = false, error occured, but it is possible to response error and continue
+		to next request
+		
 
 		1 = success, can continue to next procedure
 
@@ -61,9 +65,21 @@ class Http {
 		std::string		_targetPath;
 		std::string		_queryString;
 		std::string		_protocol; // after validating the string will be "HTTP/1.1" => "11"
+
+		int				_body_type;
+		size_t			_body_size;
+		size_t			_curr_body_read;
+		/*
+			_body_type
+			0 = no body
+			1 = content-lenth body
+			2 = transfer-encoding body
+		*/
+
 		void	printHeaderField() const;
 		std::map<std::string, std::set<std::string> > _headerField;
 		const ServerConfig*	_targetServer;
+		const t_config_map* _targetLocationBlock;
 
 	public:
 		Http();

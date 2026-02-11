@@ -80,14 +80,13 @@ const std::vector<std::string>* ServerConfig::getServerData(const std::string &k
 		return (NULL);
 	return (&FoundKey->second);
 }
-const std::vector<std::string>* ServerConfig::getLocationData(const std::string &locationPath, const std::string &keytoFind) const
+const std::vector<std::string>* ServerConfig::getLocationData(const t_config_map* targetLocationBlock, const std::string &keytoFind) const
 {
-	const t_config_map *locationConfig = longestPrefixMatch(locationPath);
 	t_config_map::const_iterator foundKey;
-	if (locationConfig)
+	if (targetLocationBlock)
 	{
-		foundKey = locationConfig->find(keytoFind);
-		if (foundKey != locationConfig->end())
+		foundKey = targetLocationBlock->find(keytoFind);
+		if (foundKey != targetLocationBlock->end())
 		{
 			return (&foundKey->second);
 		}
@@ -149,7 +148,7 @@ void ServerConfig::resolveLocationPath(std::string locationPath)
 }
 
 // ####################  AI GEN -> Make sure to understand logic ########
-const t_config_map *ServerConfig::longestPrefixMatch(std::string locationPath) const
+const t_config_map *ServerConfig::findLocationBlock(std::string locationPath) const
    {
        std::string tempPath = locationPath;
 
@@ -159,13 +158,10 @@ const t_config_map *ServerConfig::longestPrefixMatch(std::string locationPath) c
            if (it != _locationsConfig.end())
                return (&it->second);
            
-           // Optional: Handle cases where config has "/path/" but request is "/path"
-           /*
-           if (tempPath.length() > 0 && tempPath[tempPath.length() - 1] != '/') {
+           if (tempPath.size() > 0 && tempPath[tempPath.size() - 1] != '/') {
                it = _locationsConfig.find(tempPath + "/");
                if (it != _locationsConfig.end()) return (&it->second);
            }
-           */
 
            if (tempPath.empty() || tempPath == "/")
                return (NULL);

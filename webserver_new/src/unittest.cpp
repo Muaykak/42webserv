@@ -216,12 +216,18 @@ void	testerFileDesciptor(){
 
 }
 
+
 int	main(){
 	//testerFileDesciptor();
 	try {
 		ConfigData	test("./configs/default.conf");
 
-		test.printConfigData();
+		size_t	retSize = 0;
+		std::string sizeStr = "18446744073709551615";
+		if (string_to_size_t(sizeStr, retSize) == false)
+			std::cout << "failed: " << sizeStr << std::endl;
+		else
+			std::cout << "size_t: " << retSize << std::endl;
 	} catch (std::exception &e){
 		std::cout << "ERROR::" << e.what() << std::endl;
 	}

@@ -58,7 +58,8 @@ SRC_FUNC_FILE = chartables.cpp \
 				split.cpp \
 				signal_handler.cpp \
 				tolower.cpp \
-				ip_conversion.cpp
+				ip_conversion.cpp \
+				string_to_size_t.cpp
 				
 
 SOURCE_MAIN_FILE = main.cpp

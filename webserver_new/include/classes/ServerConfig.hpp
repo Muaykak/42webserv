@@ -28,7 +28,6 @@ private:
 
 	static void resolveLocationPath(std::string locationPath);
 	// ####################  AI GEN -> Make sure to understand logic ########
-	const t_config_map *longestPrefixMatch(std::string locationPath) const;
 	// ##############################################################
 public:
 	ServerConfig();
@@ -38,7 +37,8 @@ public:
 	ServerConfig(const t_config_map& serverConfig, const t_location_map& locationsConfig, int listenPort);
 	bool operator==(const ServerConfig& obj) const;
 	const std::vector<std::string>* getServerData(const std::string &keyToFind) const;
-	const std::vector<std::string>* getLocationData(const std::string &locationPath, const std::string &keytoFind) const;
+	const t_config_map *findLocationBlock(std::string locationPath) const;
+	const std::vector<std::string>* getLocationData(const t_config_map* targetLocationBlock, const std::string &keytoFind) const;
 	int	getPort() const;
 	const std::vector<std::string> &getServerNameVec() const;
 	const std::set<in_addr_t>&	getHostIp() const;

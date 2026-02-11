@@ -2,6 +2,7 @@
 #include "../../include/classes/Socket.hpp"
 #include "../../include/utility_function.hpp"
 #include <cctype>
+#include <sys/stat.h>
 
 Http::Http()
 : _keepConnection(true),
@@ -824,48 +825,185 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 
 		}
 
-		// now we check the method
+	}
+
+	// get the targeted location block
+	{
+		// we should have target server now
+		if (_targetServer == NULL)
 		{
-			// we should have target server now
-			if (_targetServer == NULL)
-			{
-				httpError(500, "Internal Error:: _targetServer Not Found");
-				_process_return = 0;
-				return ;
-			}
+			httpError(500, "Internal Error:: _targetServer Not Found");
+			_process_return = 0;
+			return ;
+		}
 
-			const std::vector<std::string>* allowMethodVec = _targetServer->getLocationData(_targetPath, "allowed_methods");
-			// must found, if not then config file is wrong, or something is wrong
-			if (allowMethodVec == NULL)
-			{
-				httpError(500, "Internal Error:: cannot find allowed_methods");
-				_process_return = 0;
-				return ;
-			}
-
-			bool match = false;
-			
-			for (size_t i = 0; i < allowMethodVec->size(); i++)
-			{
-				if (_method == (*allowMethodVec)[i])
-				{
-					match = true;
-					break ;
-				}
-			}
-			// Method not alowed
-			if (match == false)
-			{
-				httpError(405, "Method not allowed");
-				_process_return = 0;
-				return ;
-			}
-
+		_targetLocationBlock = _targetServer->findLocationBlock(_targetPath);
+		// must not be null also
+		if (_targetLocationBlock == NULL)
+		{
+			httpError(500, "Internal Error:: _targetServer Not Found");
+			_process_return = 0;
+			return ;
 		}
 	}
 
-	//
 
+	/*
+	check if found Transfer-Encoding or Content-Length
+		if both are found , simply return error,
+		we treat this as an error, however, another
+		way to implement this is if Both are found
+		'Transfer-Encoding' takes priority
+	*/
+	{
+
+		// check the client_max_body_size of the server block if exist first
+		const std::vector<std::string>* clientMaxBodySizePtr = _targetServer->getLocationData(_targetLocationBlock, "client_max_body_size");
+		if (clientMaxBodySizePtr == NULL || clientMaxBodySizePtr->size() != 1)
+		{
+			// treat as internal error
+			httpError(500, "Internal Error::cannot find client_max_body_size, Or it has no matching element");
+			_process_return = 0;
+			return ;
+		}
+
+		// 
+		std::map<std::string, std::set<std::string> >::const_iterator content_length = _headerField.find("content-length");
+		std::map<std::string, std::set<std::string> >::const_iterator tranfer_encoding = _headerField.find("transfer-encoding");
+
+		if (tranfer_encoding != _headerField.end() && content_length == _headerField.end())
+		{
+			httpError(400, "Bad request:: Transfer-Encoding and Content-Length cannot both exist in header");
+			_process_return = 0;
+			return ;
+		}
+
+		// if Content-Length is found, check if it exceeds the client_max_body_size
+		if (content_length != _headerField.end())
+		{
+			// this field must have only 1 element
+			if (content_length->second.size() != 1)
+			{
+				// treat this as a bad request
+				httpError(400, "Bad request:: Content-Length:: must have only one element in this field");
+				_process_return = 0;
+				return ;
+			}
+
+			std::string numstr = *(content_length->second.begin());
+
+			// must contain only digit
+			if (digitChar().isMatch(numstr) == false)
+			{
+				httpError(400, "Bad request:: Content-Length:: value must be numeric characters (0-9)");
+				_process_return = 0;
+				return ;
+
+			}
+
+
+			// conversion to number with myfunction
+			if (string_to_size_t(numstr, _body_size) == false)
+			{
+				httpError(400, "Bad request:: Content-Length::exceeds size_t value or something");
+				_process_return = 0;
+				return ;
+			}
+
+			// type 1 is body size that specified by Content-Length
+			_body_type = 1;
+
+			// now check the body size if it exceeds the client_max_body_size
+			{
+				const std::vector<std::string>* client_max_body_size_ptr = _targetServer->getLocationData(_targetLocationBlock, "client_max_body_size");
+
+				// internal error
+				if (client_max_body_size_ptr == NULL || client_max_body_size_ptr->size() != 1 || digitChar().isMatch((*client_max_body_size_ptr)[0]) == false)
+				{
+					httpError(500, "Internal Error::cannot find client_max_body_size value, or the value is not correct");
+					// cannot torelate because no boundary to check client request
+					_process_return = 0;
+					return ;
+				}
+
+				size_t	maxBodySize;
+				if (string_to_size_t((*client_max_body_size_ptr)[0], maxBodySize) == false)
+				{
+					httpError(500, "Internal Error:: client_max_body_size value conversion failed");
+					// cannot torelate because no boundary to check client request
+					_process_return = 0;
+					return ;
+				}
+				
+				if (_body_size > maxBodySize)
+				{
+					httpError(413, "HTTP::request Content-Length is Larger than client_max_body_size");
+					_process_return = 0;
+					return ;
+				}
+			}
+		}
+		else
+		{
+			// here need to check the Transfer Encoding
+			a
+		}
+	}
+
+
+	//	// now we check the method
+	//	{
+	//		// we should have target server now
+	//		if (_targetServer == NULL)
+	//		{
+	//			httpError(500, "Internal Error:: _targetServer Not Found");
+	//			_process_return = 0;
+	//			return ;
+	//		}
+
+	//		const std::vector<std::string>* allowMethodVec = _targetServer->getLocationData(_targetPath, "allowed_methods");
+	//		// must found, if not then config file is wrong, or something is wrong
+	//		if (allowMethodVec == NULL)
+	//		{
+	//			httpError(500, "Internal Error:: cannot find allowed_methods");
+	//			_process_return = 0;
+	//			return ;
+	//		}
+
+	//		bool match = false;
+			
+	//		for (size_t i = 0; i < allowMethodVec->size(); i++)
+	//		{
+	//			if (_method == (*allowMethodVec)[i])
+	//			{
+	//				match = true;
+	//				break ;
+	//			}
+	//		}
+	//		// Method not alowed
+	//		if (match == false)
+	//		{
+	//			httpError(405, "Method not allowed");
+	//			_process_return = 0;
+	//			return ;
+	//		}
+
+	//	}
+
+	/*
+		we need to check if the path is valid and if it is
+		a directory or it is just a file	
+	*/
+	{
+		struct stat fileStat;
+		std::memset(&fileStat, 0, sizeof(fileStat));
+		if (stat(_targetPath.c_str(), &fileStat) != 0)
+		{
+			std::string ErrMsg = "Http::stat()::target_path " + _targetPath + "::";
+			ErrMsg += strerror(errno);
+			httpError(404, ErrMsg);
+		}
+	}
 }
 
 
@@ -909,14 +1047,7 @@ void Http::readFromClient(const Socket& clientSocket, std::map<int, Socket>& soc
 			_keepConnection = false;
 		}
 		else if (readAmount < 0)
-		{
-			if (errno == EINTR)
-				continue ;	
-			else if (errno == EAGAIN || errno == EWOULDBLOCK)
-				break ;
-			else
-				_keepConnection = false;
-		}
+			break ;
 		else 
 		{
 			_requestBuffer.append(_recvBuffer.data(), readAmount);
