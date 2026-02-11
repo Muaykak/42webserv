@@ -785,7 +785,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 						string is "." or "..". i will assume this as bad intent
 						because why you don't use  '.' in the first place	
 						*/
-						if (pathDecoding(*splitListIt) == false || *splitListIt == "." || *splitListIt == "..")
+						if (pathDecoding(*splitListIt) == false || *splitListIt == "..")
 						{
 							// failed to decode 
 							// wrong use of '%'
@@ -865,7 +865,6 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 	}
 
 	//
-	df
 
 }
 
