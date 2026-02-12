@@ -6,6 +6,7 @@
 # include <set>
 # include "../defined_value.hpp"
 # include "./ServerConfig.hpp"
+# include "./HttpThrowStatus.hpp"
 
 class Socket;
 
@@ -25,7 +26,7 @@ class Http {
 
 		std::string	_sendBuffer;
 
-
+		e_http_process_status	_processStatus;
 		/*
 		return value:
 
@@ -45,17 +46,13 @@ class Http {
 			create response (whether it is fail or success)
 		*/
 
-
-		int		_process_return;
-
-		e_http_process_status	_processStatus;
 		void	processingRequestBuffer(const Socket& clientSocket, std::map<int, Socket>& socketMap);
 		void	parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize);
 		void	parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize);
 		void	validateRequestBufffer(const Socket& clientSocket);
 		void	validateRequestBufferSelectServer(const Socket& clientSocket, const std::string& authStr);
 
-		int	_errorStatusCode;
+		
 		std::string	_throwMessageToClient; // so we know where it happen error
 		void	httpError(int errorCode, const std::string& throwToClient);
 		void	httpError(int errorCode);

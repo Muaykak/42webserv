@@ -7,7 +7,6 @@
 Http::Http()
 : _keepConnection(true),
 _processStatus(NO_STATUS),
-_errorStatusCode(-1),
 _targetServer(NULL)
 {
 	_recvBuffer.reserve(HTTP_RECV_BUFFER);
@@ -55,30 +54,15 @@ bool Http::isKeepConnection() const
 	return _keepConnection;
 }
 
-void Http::httpError(int errorCode, const std::string& throwToClient)
-{
-	_errorStatusCode = errorCode;
-	_throwMessageToClient = throwToClient;
-	_requestBuffer.clear();
-}
-void Http::httpError(int errorCode)
-{
-	_errorStatusCode = errorCode;
-	_requestBuffer.clear(); //should clean or not!!?
-}
-
 void	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 {
-	if (_process_return != 1)
 		return ;
 	if (_processStatus == NO_STATUS)
 		_processStatus = READING_REQUEST_LINE;
 	if (_processStatus == READING_REQUEST_LINE){
 
 		if (reqBuffSize > MAX_REQUEST_BUFFER_SIZE)
-		{
-			httpError(400, "request buffer should not higher than MAX_REQUEST_BUFFER_SIZE");
-		}
+			throw HttpThrowStatus(400, "request buffer should not higher than MAX_REQUEST_BUFFER_SIZE");
 		if (_method.empty())
 		{
 
@@ -86,11 +70,8 @@ void	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 			while (currIndex + 1 < reqBuffSize){
 				if (_requestBuffer[currIndex] == '\r') {
 					// '\r' must always followed by '\n'
-					if (_requestBuffer[currIndex + 1] != '\n') {
-						httpError(400);
-						_process_return = 0;
-						return ;
-					}
+					if (_requestBuffer[currIndex + 1] != '\n')
+						throw HttpThrowStatus(400);
 					currIndex += 2;
 					continue;
 				}
@@ -100,7 +81,6 @@ void	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 		
 			if (currIndex >= reqBuffSize){
 				_requestBuffer.clear();
-				_process_return = 2;
 				return ;
 			}
 			// now currIndex sits at the first char of the 
@@ -115,7 +95,6 @@ void	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 			if (endLinePos == _requestBuffer.npos){
 				if (currIndex != 0)
 					_requestBuffer = _requestBuffer.substr(currIndex);
-				_process_return = 2;
 				return ;
 			}
 
@@ -124,64 +103,41 @@ void	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 			_method = pos == _requestBuffer.npos ? _requestBuffer.substr(currIndex) : _requestBuffer.substr(currIndex, pos - currIndex);
 
 			if (_method.empty() || alphaAtoZ().isNotMatch(_method) == true)
-			{
-				httpError(400, "");
-				_process_return = 0;
-				return ;
-			}
+				throw HttpThrowStatus(400);
 
 			// skip 1 pos which is the first whitespace
 			currIndex = pos + 1;
 			// should not reach endlinePos yet
-			if (currIndex >= endLinePos){
-				httpError(400, "");
-				_process_return = 0;
-				return ;
-			}
+			if (currIndex >= endLinePos)
+				throw HttpThrowStatus(400);
 			// now get the request target.
 			pos = htabSp().findFirstCharset(_requestBuffer, currIndex, endLinePos - currIndex);
 			// must can find next whitespace.. it IS the format
-			if (pos == _requestBuffer.npos){
-				httpError(400, "");
-				_process_return = 0;
-				return ;
-			}
+			if (pos == _requestBuffer.npos)
+				throw HttpThrowStatus(400);
 			_requestTarget = _requestBuffer.substr(currIndex, pos - currIndex);
 
 			// must not empty
-			if (_requestTarget.empty()){
-				httpError(400, "");
-				_process_return = 0;
-				return ;
-			}
+			if (_requestTarget.empty())
+				throw HttpThrowStatus(400);
 
 			// also check if contain any forbidden chars
 			if (allowRequestTargetChar().isMatch(_requestTarget) == false)
-			{
-				httpError(400, "");
-				_process_return = 0;
-				return ;
-			}
+				throw HttpThrowStatus(400);
 
 			// then move our currIndex
 			currIndex = pos + 1;
 			// prevent edge case where now currIndex might right at the endLinepos
 			// should not reach endlinePos yet
-			if (currIndex >= endLinePos){
-				httpError(400, "");
-				_process_return = 0;
-				return ;
-			}
+			if (currIndex >= endLinePos)
+				throw HttpThrowStatus(400);
 
 			// now the last part is protocol version
 			_protocol = _requestBuffer.substr(currIndex, endLinePos - currIndex);
 
 			// check must not empty
-			if (_protocol.empty()){
-				httpError(400, "");
-				_process_return = 0;
-				return ;
-			}
+			if (_protocol.empty())
+				throw HttpThrowStatus(400);
 			// we get all the request line then we move to reading the header field
 			currIndex = endLinePos + 2;
 		}
@@ -189,19 +145,14 @@ void	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 		_processStatus = READING_HEADER;
 
 	}
-
-	_process_return = 1;
 	return ;
 }
 
 void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 {
-	if (_process_return != 1)
-		return ;
 	if (currIndex >= reqBuffSize)
 	{
 		_requestBuffer.clear();
-		_process_return = 2;
 		return ;
 	}
 
@@ -225,7 +176,6 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 		{
 			if (currIndex != 0)
 				_requestBuffer.erase(0, currIndex);
-			_process_return = 2;
 			return ;
 		}
 
@@ -250,32 +200,19 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 		colonPos = _requestBuffer.find_first_of(':', currIndex);
 		// not separate by :  must reject
 		if (colonPos == _requestBuffer.npos || colonPos >= endLinePos)
-		{
-			httpError(400);
-			_process_return = 0;
-			return ;
-		}
+			throw HttpThrowStatus(400);
 		// then get the field name in temp first
 		tempFieldName = _requestBuffer.substr(currIndex, colonPos - currIndex);
 
 		// must not empty
 		if (tempFieldName.empty())
-		{
-			httpError(400);
-			_process_return = 0;
-			return ;
-		}
+			throw HttpThrowStatus(400);
 
 		// We can check field name length here
 
 		// simple checking that it must not contain any forbidden char
 		if (allowedFieldNameChar().isMatch(tempFieldName) == false)
-		{
-			httpError(400);
-			_process_return = 0;
-			return ;
-		}
-
+			throw HttpThrowStatus(400);
 
 		// now we got field name, next we want field value
 		currIndex = colonPos + 1;
@@ -295,9 +232,7 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 				temp = htabSp().findFirstNotCharset(tempSep, i);
 				// found only \t' ' so no value
 				if (temp == tempSep.npos)
-				{
 					break ;
-				}
 
 				// move to first char
 				i = temp;
@@ -312,11 +247,7 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 					newStr = tempSep.substr(i, j - i + 1);
 				//check if field value doesn't contain any forbidden char
 				if (forbiddenFieldValueChar().isNotMatch(newStr) == false)
-				{
-					httpError(400);
-					_process_return = 0;
-					return ;
-				}
+					throw HttpThrowStatus(400);
 				tempSet.insert(newStr);
 				newStr.clear();
 				
@@ -336,7 +267,6 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 
 	}
 
-	_process_return = 1;
 	return ;
 }
 
@@ -400,19 +330,11 @@ void	Http::validateRequestBufferSelectServer(const Socket& clientSocket,const st
 		{
 			host = authStr.substr(0, colonPos);
 			if (host.empty())
-			{
-				httpError(400, "Invalid::URI Authority::");
-				_process_return = 0;
-				return ;
-			}
+				throw HttpThrowStatus(400, "Invalid::URI Authority::");
 
 			portStr = authStr.substr(colonPos + 1);
 			if (portStr.empty() || portStr.size() > 5 || digitChar().isMatch(portStr) == false)
-			{
-				httpError(400, "Invalid::URI Authority::");
-				_process_return = 0;
-				return ;
-			}
+				throw HttpThrowStatus(400, "Invalid::URI Authority::");
 		}
 		portNum = std::atoi(portStr.c_str());
 	}
@@ -423,9 +345,7 @@ void	Http::validateRequestBufferSelectServer(const Socket& clientSocket,const st
 		// 400 bad request
 		if (portNum > 65535)
 		{
-			httpError(400, "Invalid::URI Authority::Port is out of range");
-			_process_return = 0;
-			return ;
+			throw HttpThrowStatus(400, "Invalid::URI Authority::Port is out of range");
 		}
 
 		// if the port is in the range but doesn't match with
@@ -435,10 +355,7 @@ void	Http::validateRequestBufferSelectServer(const Socket& clientSocket,const st
 		if (portNum != clientSocket.getServerListenPort())
 		{
 			std::string msg = "Invalid::URI Authority::Port mismatch request_target:" + toString(portNum) + " server_port:" + toString(clientSocket.getServerListenPort());
-			
-			httpError(403, msg);
-			_process_return = 0;
-			return ;
+			throw HttpThrowStatus(403, msg);
 		}
 	}
 
@@ -451,19 +368,11 @@ void	Http::validateRequestBufferSelectServer(const Socket& clientSocket,const st
 			in_addr_t	tempAddr;
 			// conversion failed
 			if (string_to_in_addr_t(host, tempAddr) == false)
-			{
-				httpError(400, "Invalid::URI Authority::failed to convert IP");
-				_process_return = 0;
-				return ;
-			}
+				throw HttpThrowStatus(400, "Invalid::URI Authority::failed to convert IP");
 
 			// correct syntax but should not allow, it is broadcast address
 			if (tempAddr == 0xFFFFFFFF)
-			{
-				httpError(403, "Invalid::URI Authority:: IP cannot be 255.255.255.255");
-				_process_return = 0;
-				return ;
-			}
+				throw HttpThrowStatus(403, "Invalid::URI Authority:: IP cannot be 255.255.255.255");
 
 			/*
 			Remember the accept() function that we
@@ -501,9 +410,7 @@ void	Http::validateRequestBufferSelectServer(const Socket& clientSocket,const st
 			if (tempAddr != clientSocket._client_addr_in)
 			{
 				std::string msg = "Invalid::URI Authority::IP mismatch:: server_ip:" + in_addr_t_to_string(clientSocket._client_addr_in) + " request_target:" + in_addr_t_to_string(tempAddr);
-				httpError(403, msg);
-				_process_return = 0;
-				return ;
+				throw HttpThrowStatus(403, msg);
 			}
 		}
 		else
@@ -565,7 +472,7 @@ void	Http::validateRequestBufferSelectServer(const Socket& clientSocket,const st
 
 void	Http::validateRequestBufffer(const Socket& clientSocket)
 {
-	if (_process_return != 1 || _processStatus != VALIDATING_REQUEST)
+	if (_processStatus != VALIDATING_REQUEST)
 		return ;
 
 	// checking the request line
@@ -573,11 +480,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 		{
 			// rough check for method first
 			if (_method != "GET" && _method != "POST" && _method != "DELETE")
-			{
-				httpError(405, "Method not allowed");
-				_process_return = 0;
-				return ;
-			}
+				throw HttpThrowStatus(405, "Method not allowed");
 		}
 
 		// before anything, we check the protocol version first
@@ -590,11 +493,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 			// whether what version you are
 			// must start with "HTTP/"
 			if (_protocol.size() != 8 || _protocol.compare(0, 5, "HTTP/") != 0 || _protocol[6] != '.')
-			{
-				httpError(400, "ERROR::protocol version wrong format");
-				_process_return = 0;
-				return ;
-			}
+				throw HttpThrowStatus(400, "ERROR::protocol version wrong format");
 
 			maj = _protocol[5];
 			if (maj != '1')
@@ -602,24 +501,20 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 				if (maj >= '0' && maj <= '3')
 				{
 					// response with unsupported version
-					httpError(505, "Error::version not supported");
+					throw HttpThrowStatus(505, "Error::version not supported");
 				}
 				else 
 				{
 					// some weird characters
-					httpError(400, "ERROR::protocol version wrong format");
+					throw HttpThrowStatus(400, "ERROR::protocol version wrong format");
 				}
-				_process_return = 0;
-				return ;
 			}
 
 			min = _protocol[7];
 			if (min < '0' || min > '9')
 			{
 				// must be digit
-				httpError(400, "ERROR::protocal version wrong format");
-				_process_return = 0;
-				return ;
+				throw HttpThrowStatus(400, "ERROR::protocal version wrong format");
 			}
 
 			_protocol.clear();
@@ -634,9 +529,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 		if (_headerField.find("host") == _headerField.end())
 		{
 			// treated as bad request
-			httpError(400, "Bad request::cannot find \'host\' in header field");
-			_process_return = 0;
-			return ;
+			throw HttpThrowStatus(400, "Bad request::cannot find \'host\' in header field");
 		}
 		// we need to check the 'request target' first
 		// this is the tedious process
@@ -652,20 +545,12 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 					//this request targen legth if in absolute form must
 					// longer than  characters
 					if (_requestTarget.size() <= 7)
-					{
-						httpError(400, "Invalid::URI Scheme::");
-						_process_return = 0;
-						return ;
-					}
+						throw HttpThrowStatus(400, "Invalid::URI Scheme::");
 
 
 					// allow only this scheme
 					if (_requestTarget.compare(0, 7, "http://") != 0)
-					{
-						httpError(400, "Invalid::URI Scheme::allowed only \"http://\"");
-						_process_return = 0;
-						return ;
-					}
+						throw HttpThrowStatus(400, "Invalid::URI Scheme::allowed only \"http://\"");
 
 					// check the authority part
 					{
@@ -680,15 +565,9 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 
 						// authority cannot empty
 						if (authStr.empty())
-						{
-							httpError(400, "Invalid::URI Scheme::");
-							_process_return = 0;
-							return ;
-						}
+							throw HttpThrowStatus(400, "Invalid::URI Scheme::");
 
 						validateRequestBufferSelectServer(clientSocket, authStr);
-						if (_process_return == 0)
-							return ;
 
 						// now for authority part we check both host and ip
 						// so now we can recreate _requestTarget string
@@ -711,17 +590,11 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 
 					// must have only 1 value in host:
 					if (fieldValueSet.size() != 1)
-					{
-						httpError(400, "Http::Invalid field value:: host must have only 1 element");
-						_process_return = 0;
-						return ;
-					}
+						throw HttpThrowStatus(400, "Http::Invalid field value:: host must have only 1 element");
 
 					std::set<std::string>::const_iterator	fieldValueSetIt = fieldValueSet.begin();
 
 					validateRequestBufferSelectServer(clientSocket, *fieldValueSetIt);
-					if (_process_return == 0)
-						return ;
 				}
 
 			}
@@ -751,11 +624,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 
 				//split vector should not empty
 				if (splitList.size() == 0)
-				{
-					httpError(400, "Bad Path. Or my bad parser lol");
-					_process_return = 0;
-					return ;
-				}
+					throw HttpThrowStatus(400, "Bad Path. Or my bad parser lol");
 
 				std::list<std::string>::iterator	splitListIt = splitList.begin();
 
@@ -790,9 +659,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 						{
 							// failed to decode 
 							// wrong use of '%'
-							httpError(400, "request target::'%' encoding invalid::");
-							_process_return = 0;
-							return ;
+							throw HttpThrowStatus(400, "request target::'%' encoding invalid::");
 						}
 
 						// we proved this string is valid path name
@@ -831,20 +698,12 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 	{
 		// we should have target server now
 		if (_targetServer == NULL)
-		{
-			httpError(500, "Internal Error:: _targetServer Not Found");
-			_process_return = 0;
-			return ;
-		}
+			throw HttpThrowStatus(500, "Internal Error:: _targetServer Not Found");
 
 		_targetLocationBlock = _targetServer->findLocationBlock(_targetPath);
 		// must not be null also
 		if (_targetLocationBlock == NULL)
-		{
-			httpError(500, "Internal Error:: _targetServer Not Found");
-			_process_return = 0;
-			return ;
-		}
+			throw HttpThrowStatus(500, "Internal Error:: _targetServer Not Found");
 	}
 
 
@@ -862,9 +721,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 		if (clientMaxBodySizePtr == NULL || clientMaxBodySizePtr->size() != 1)
 		{
 			// treat as internal error
-			httpError(500, "Internal Error::cannot find client_max_body_size, Or it has no matching element");
-			_process_return = 0;
-			return ;
+			throw HttpThrowStatus(500, "Internal Error::cannot find client_max_body_size, Or it has no matching element");
 		}
 
 		// 
@@ -872,11 +729,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 		std::map<std::string, std::set<std::string> >::const_iterator tranfer_encoding = _headerField.find("transfer-encoding");
 
 		if (tranfer_encoding != _headerField.end() && content_length != _headerField.end())
-		{
-			httpError(400, "Bad request:: Transfer-Encoding and Content-Length cannot both exist in header");
-			_process_return = 0;
-			return ;
-		}
+			throw HttpThrowStatus(400, "Bad request:: Transfer-Encoding and Content-Length cannot both exist in header");
 
 		// if Content-Length is found, check if it exceeds the client_max_body_size
 		else if (content_length != _headerField.end())
@@ -885,30 +738,19 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 			if (content_length->second.size() != 1)
 			{
 				// treat this as a bad request
-				httpError(400, "Bad request:: Content-Length:: must have only one element in this field");
-				_process_return = 0;
-				return ;
+				throw HttpThrowStatus(400, "Bad request:: Content-Length:: must have only one element in this field");
 			}
 
 			std::string numstr = *(content_length->second.begin());
 
 			// must contain only digit
 			if (digitChar().isMatch(numstr) == false)
-			{
-				httpError(400, "Bad request:: Content-Length:: value must be numeric characters (0-9)");
-				_process_return = 0;
-				return ;
-
-			}
+				throw HttpThrowStatus(400, "Bad request:: Content-Length:: value must be numeric characters (0-9)");
 
 
 			// conversion to number with myfunction
 			if (string_to_size_t(numstr, _body_size) == false)
-			{
-				httpError(400, "Bad request:: Content-Length::exceeds size_t value or something");
-				_process_return = 0;
-				return ;
-			}
+				throw HttpThrowStatus(400, "Bad request:: Content-Length::exceeds size_t value or something");
 
 			// type 1 is body size that specified by Content-Length
 			_body_type = 1;
@@ -919,28 +761,17 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 
 				// internal error
 				if (client_max_body_size_ptr == NULL || client_max_body_size_ptr->size() != 1 || digitChar().isMatch((*client_max_body_size_ptr)[0]) == false)
-				{
-					httpError(500, "Internal Error::cannot find client_max_body_size value, or the value is not correct");
-					// cannot torelate because no boundary to check client request
-					_process_return = 0;
-					return ;
-				}
+					throw HttpThrowStatus(500, "Internal Error::cannot find client_max_body_size value, or the value is not correct");
 
 				size_t	maxBodySize;
 				if (string_to_size_t((*client_max_body_size_ptr)[0], maxBodySize) == false)
 				{
-					httpError(500, "Internal Error:: client_max_body_size value conversion failed");
 					// cannot torelate because no boundary to check client request
-					_process_return = 0;
-					return ;
+					throw HttpThrowStatus(500, "Internal Error:: client_max_body_size value conversion failed");
 				}
 				
 				if (_body_size > maxBodySize)
-				{
-					httpError(413, "HTTP::request Content-Length is Larger than client_max_body_size");
-					_process_return = 0;
-					return ;
-				}
+					throw HttpThrowStatus(413, "HTTP::request Content-Length is Larger than client_max_body_size");
 			}
 		}
 		else if (tranfer_encoding != _headerField.end())
@@ -962,9 +793,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 					++it;
 				}
 				
-				httpError(400, msg);
-				_process_return = 0;
-				return ;
+				throw HttpThrowStatus(400, msg);
 			}
 
 			// chunked found then this is chunked encoding.
@@ -980,6 +809,29 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 	}
 
 	// check for redirection
+	{
+		// check for 'return' in location block
+		const std::vector<std::string>* return_redirect = _targetServer->getLocationData(_targetLocationBlock, "return");
+		// if found then we need to redirect
+		if (return_redirect != NULL)
+		{
+			// it must have 2 elements or treat as internal error
+			if (return_redirect->size() != 2)
+				throw HttpThrowStatus(500, "Internal Error:: 'return' redirect in config file must have 2 elements");
+			
+			const std::string& returnCodeStr = (*return_redirect)[0];
+
+			size_t	returnCode = 0;
+			// the string size must be 3 digit and dont start with '0'
+			if (returnCodeStr.size() != 3 || string_to_size_t(returnCodeStr, returnCode) == false || returnCode < 300 || returnCode > 399)
+				throw HttpThrowStatus(500, "Internal Error::config file::redirect contains wrong status code, or wrong format idk");
+				
+			throw HttpThrowStatus(returnCode, (*return_redirect)[1]);
+		}
+	}
+
+	// check the method
+	// return 405 if method is not allowed
 	{
 
 	}
@@ -1049,8 +901,6 @@ void	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Soc
 		size_t	currIndex = 0;
 		size_t	reqBuffSize = _requestBuffer.size();
 
-		_process_return = 1;
-
 		// put into structure
 		parsingHttpRequestLine(currIndex, reqBuffSize);
 		parsingHttpHeader(currIndex, reqBuffSize);
@@ -1060,9 +910,7 @@ void	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Soc
 	catch (std::exception &e)
 	{
 		Logger::log(LC_ERROR, "something weird, Consider as server error ::%s", e.what());
-		httpError(500, e.what());
-		_process_return = 0;
-		return ;
+		throw HttpThrowStatus(500, e.what());
 	}
 
 	return ;
@@ -1085,11 +933,25 @@ void Http::readFromClient(const Socket& clientSocket, std::map<int, Socket>& soc
 		else 
 		{
 			_requestBuffer.append(_recvBuffer.data(), readAmount);
-			processingRequestBuffer(clientSocket, socketMap);
+			try
+			{
+				processingRequestBuffer(clientSocket, socketMap);
+			}
+			catch (HttpThrowStatus &status)
+			{
+
+			}
+			catch (std::exception &e)
+			{
+
+			}
+			catch (...)
+			{
+				// what 
+			}
 		}
 	}
-	if (_errorStatusCode != -1)
-		_keepConnection = false;
+	_keepConnection = false;
 }
 
 void	Http::writeToClient(const Socket& clientSocket, std::map<int, Socket>& SocketMap)
