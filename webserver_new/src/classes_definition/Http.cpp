@@ -480,7 +480,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 		{
 			// rough check for method first
 			if (_method != "GET" && _method != "POST" && _method != "DELETE")
-				throw HttpThrowStatus(405, "Method not allowed");
+				throw HttpThrowStatus(501, "Http::Method not implemented: " + _method);
 		}
 
 		// before anything, we check the protocol version first
@@ -704,6 +704,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 		// must not be null also
 		if (_targetLocationBlock == NULL)
 			throw HttpThrowStatus(500, "Internal Error:: _targetServer Not Found");
+
 	}
 
 
@@ -833,8 +834,56 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 	// check the method
 	// return 405 if method is not allowed
 	{
+		// _method = _method of this current request
 
+		// allowed_methods in the targeted block of the config file
+		const std::vector<std::string>* allowMethodPtr = _targetServer->getLocationData(_targetLocationBlock, "allowed_methods");
+
+		if (allowMethodPtr == NULL)
+			throw HttpThrowStatus(500, "Internal Error::allowed_methods not found in the targeted location block");
+		
+		bool found = false;
+		for (size_t i = 0; i < allowMethodPtr->size(); i++)
+		{
+			if (_method == (*allowMethodPtr)[i])
+			{
+				found = true;
+				break ;
+			}
+		}
+
+		// the method is not allowed in this location block
+		// return 405 Not Implemented
+		if (found == false)
+			throw HttpThrowStatus(405, "Http::method::not implemented::" + _method);
 	}
+
+	// now we can check the file existence
+	{
+		// we need to get the system path first
+		std::string systemPath;
+		{
+			/* In Configuration file, we must choose
+			but depending on what method the request is
+			if the method is something that user want */
+		}
+
+		// we need to combine root of location block
+		// with the URI that we resolved
+		std::string	combinedPath;
+
+		struct stat fileStat;
+		std::memset(&fileStat, 0, sizeof(fileStat));
+		if (stat(_targetPath.c_str(), &fileStat) != 0)
+		{
+			std::string ErrMsg = "Http::stat()::target_path " + _targetPath + "::";
+			ErrMsg += strerror(errno);
+			throw HttpThrowStatus(404, ErrMsg);
+		}
+
+		// check if target
+	}
+
 
 
 	//	// now we check the method
@@ -876,20 +925,6 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 
 	//	}
 
-	/*
-		we need to check if the path is valid and if it is
-		a directory or it is just a file	
-	*/
-	{
-		struct stat fileStat;
-		std::memset(&fileStat, 0, sizeof(fileStat));
-		if (stat(_targetPath.c_str(), &fileStat) != 0)
-		{
-			std::string ErrMsg = "Http::stat()::target_path " + _targetPath + "::";
-			ErrMsg += strerror(errno);
-			httpError(404, ErrMsg);
-		}
-	}
 }
 
 
