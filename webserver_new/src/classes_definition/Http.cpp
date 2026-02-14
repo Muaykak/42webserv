@@ -866,6 +866,10 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 			/* In Configuration file, we must choose
 			but depending on what method the request is
 			if the method is something that user want */
+
+			/*
+			In Get or Delete. use
+			*/
 		}
 
 		// we need to combine root of location block
