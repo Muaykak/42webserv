@@ -76,10 +76,12 @@ OBJ_TEST = ${patsubst ${SRC_DIR}%.cpp, ${OBJ_DIR}%.o, ${SRC_TEST}}
 # ========== COMPILE DIRECTIVES ======
 CC = c++
 
-CFLAGS = -std=c++98 -pedantic-errors -I./${HEADERS_DIR} #-Wall -Wextra -Werror
+CFLAGS = -std=c++98 -pedantic-errors -I./${HEADERS_DIR} -DTEMP_FILE_DIR='${TEMP_DIR}'#-Wall -Wextra -Werror
 
 NAME = Webserv
 TEST_NAME = ${NAME}_unittest
+
+TEMP_DIR = ./temp/
 
 all: ${NAME}
 
@@ -89,7 +91,10 @@ ${NAME}: ${OBJ_MAIN}
 ${OBJ_DIR}:
 	@mkdir -p $@
 
-${OBJ_DIR}%.o: ${SRC_DIR}%.cpp ${HEADER_FILE} Makefile | ${OBJ_DIR}
+${TEMP_DIR}:
+	@mkdir -p $@
+
+${OBJ_DIR}%.o: ${SRC_DIR}%.cpp ${HEADER_FILE} Makefile | ${OBJ_DIR} ${TEMP_DIR}
 	@mkdir -p ${dir $@}
 	${CC} ${CFLAGS} -c $< -o $@
 
@@ -97,7 +102,7 @@ ${TEST_NAME}: ${OBJ_TEST}
 	${CC} ${CFLAGS} ${OBJ_TEST} -o $@
 
 clean:
-	rm -rf ${OBJ_DIR}
+	rm -rf ${OBJ_DIR} ${TEMP_DIR}
 
 fclean: clean
 	rm -rf ${NAME} ${TEST_NAME}

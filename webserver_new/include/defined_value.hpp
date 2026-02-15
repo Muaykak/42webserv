@@ -43,6 +43,10 @@
 #define LC_CON_FAIL "\033[31m"
 #define LC_CONN_LOG "\033[35m"
 
+# ifndef TEMP_FILE_DIR
+# 	 define TEMP_FILE_DIR "./temp/"
+# endif
+
 typedef std::map<std::string, std::vector<std::string> > t_config_map;
 typedef std::map<std::string, const t_config_map> t_location_map;
 

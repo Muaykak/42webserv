@@ -56,7 +56,6 @@ bool Http::isKeepConnection() const
 
 void	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 {
-		return ;
 	if (_processStatus == NO_STATUS)
 		_processStatus = READING_REQUEST_LINE;
 	if (_processStatus == READING_REQUEST_LINE){
@@ -860,6 +859,8 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 
 	// now we can check the file existence
 	{
+		// check if the target is a 
+
 		// we need to get the system path first
 		std::string systemPath;
 		{
@@ -868,7 +869,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 			if the method is something that user want */
 
 			/*
-			In Get or Delete. use
+				In Get Delete. use root and POST may use upload_store
 			*/
 		}
 

@@ -107,6 +107,7 @@ ConfigData::ConfigData(const std::string &configPath)
 					if (isInLocationBlock) {
 						if (tempLocationMap.find(tempLocationName) != tempLocationMap.end())
 							throw WebservException("ConfigData::Cannot have multiple block with the same path");
+						tempLocationConfig.insert(std::make_pair("location_name", tempLocationName));
 						tempLocationMap.insert(std::make_pair(tempLocationName, tempLocationConfig));
 						tempLocationName.clear();
 						tempLocationConfig.clear();
