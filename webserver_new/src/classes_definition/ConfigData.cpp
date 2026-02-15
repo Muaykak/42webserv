@@ -107,7 +107,8 @@ ConfigData::ConfigData(const std::string &configPath)
 					if (isInLocationBlock) {
 						if (tempLocationMap.find(tempLocationName) != tempLocationMap.end())
 							throw WebservException("ConfigData::Cannot have multiple block with the same path");
-						tempLocationConfig.insert(std::make_pair("location_name", tempLocationName));
+						//tempLocationConfig.insert(std::make_pair("location_name", tempLocationName));
+						tempLocationConfig["location_name"].push_back(tempLocationName);
 						tempLocationMap.insert(std::make_pair(tempLocationName, tempLocationConfig));
 						tempLocationName.clear();
 						tempLocationConfig.clear();
@@ -167,7 +168,8 @@ ConfigData::ConfigData(const std::string &configPath)
 					if (tempDirectiveValue.empty())
 						throw WebservException("ConfigData::Directives need atleast 1 value");
 					if (isInLocationBlock){
-						tempLocationConfig.insert(std::make_pair(tempDirectiveName, tempDirectiveValue));
+						tempLocationConfig[tempDirectiveName].insert(tempLocationConfig[tempDirectiveName].end(), tempDirectiveValue.begin(), tempDirectiveValue.end());
+						//tempLocationConfig.insert(std::make_pair(tempDirectiveName, tempDirectiveValue));
 						tempDirectiveName.clear();
 						tempDirectiveValue.clear();
 					}

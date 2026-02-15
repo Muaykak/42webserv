@@ -13,7 +13,7 @@ class HttpThrowStatus
 		HttpThrowStatus();
 		HttpThrowStatus(const HttpThrowStatus& obj) throw();
 		HttpThrowStatus(int statusCode, const std::string& throwMessage) throw();
-		HttpThrowStatus::HttpThrowStatus(int statusCode) throw();
+		HttpThrowStatus(int statusCode) throw();
 		~HttpThrowStatus() throw();
 		const std::string& message() const throw();
 		int	statusCode() const throw();

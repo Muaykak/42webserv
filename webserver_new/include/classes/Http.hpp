@@ -26,7 +26,6 @@ class Http {
 
 		std::string	_sendBuffer;
 
-		e_http_process_status	_processStatus;
 		/*
 		return value:
 
@@ -53,15 +52,16 @@ class Http {
 		void	validateRequestBufferSelectServer(const Socket& clientSocket, const std::string& authStr);
 
 		
-		std::string	_throwMessageToClient; // so we know where it happen error
 		void	httpError(int errorCode, const std::string& throwToClient);
 		void	httpError(int errorCode);
 
+		e_http_process_status	_processStatus;
 		std::string		_method;
 		std::string		_requestTarget;	
 		std::string		_targetPath;
 		std::string		_queryString;
 		std::string		_protocol; // after validating the string will be "HTTP/1.1" => "11"
+		std::string		_cgiPath;
 
 		int				_body_type;
 		size_t			_body_size;

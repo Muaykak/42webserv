@@ -19,25 +19,25 @@
 //}
 
 
-//int main(){
-//	std::cout << "TESTING CONFIG FILE" << std::endl;
+int main(){
+	std::cout << "TESTING CONFIG FILE" << std::endl;
 
-//	ConfigData conf("./configs/default.conf");
-//	conf.printConfigData();
+	ConfigData conf("./configs/default.conf");
+	conf.printConfigData();
+}
+
+//EnvpWrapper& envData(){
+//	static EnvpWrapper data;
+//	return (data);
 //}
 
-EnvpWrapper& envData(){
-	static EnvpWrapper data;
-	return (data);
-}
+//int main(int argc, char **argv, char** envp)
+//{
+//	envData() = EnvpWrapper(envp);
 
-int main(int argc, char **argv, char** envp)
-{
-	envData() = EnvpWrapper(envp);
-
-	char* const* envptest = envData().getEnvp();
-	for (size_t i = 0; envptest[i] != NULL; i++)
-	{
-		std::cout << envptest[i] << std::endl;
-	}
-}
+//	char* const* envptest = envData().getEnvp();
+//	for (size_t i = 0; envptest[i] != NULL; i++)
+//	{
+//		std::cout << envptest[i] << std::endl;
+//	}
+//}

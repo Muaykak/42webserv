@@ -625,6 +625,8 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 				if (splitList.size() == 0)
 					throw HttpThrowStatus(400, "Bad Path. Or my bad parser lol");
 
+				bool isEndwithSlash = _targetPath[_targetPath.size() - 1] == '/' ? true : false;
+
 				std::list<std::string>::iterator	splitListIt = splitList.begin();
 
 				while (splitListIt != splitList.end())
@@ -677,7 +679,10 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 					newSize += splitListIt->size() + 1;
 					++splitListIt;
 				}
-				_targetPath.reserve(newSize);
+				if (isEndwithSlash == true)
+					_targetPath.reserve(newSize + 1);
+				else
+					_targetPath.reserve(newSize);
 				splitListIt = splitList.begin();
 				while (splitListIt != splitList.end())
 				{
@@ -685,6 +690,8 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 					_targetPath += *splitListIt;
 					++splitListIt;
 				}
+				if (isEndwithSlash == true)
+					_targetPath.append("/");
 			}
 
 			// path process done, now 
@@ -859,18 +866,74 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 
 	// now we can check the file existence
 	{
+		bool isEndWithSlash = _targetPath[_targetPath.size() - 1] == '/' ? true : false;
 		// check if the target is a 
+
+		// check if target wants to point to CGI or not
+		{
+			if (isEndWithSlash == false)
+			{
+				size_t dotPos = _targetPath.find_last_of('.');
+
+				// mean that the target having some extensions to check
+				if (dotPos != _targetPath.npos)
+				{
+					std::string	extensionStr = _targetPath.substr(dotPos);
+					// here, we need cgi_pass directive in configuration file
+
+					/*
+					the cgi pass should consist of 2 elements
+					first is the extension of the CGI type (like .php, .py)
+					and second is their executable in absolute path
+					*/
+
+					// first we get the cgi_pass vector
+
+					const std::vector<std::string>* cgi_pass_vec = _targetServer->getLocationData(_targetLocationBlock, "cgi_pass");
+
+					// if found then check
+					if (cgi_pass_vec != NULL)
+					{
+						// check the whole vector if it matches
+						size_t i = 0;
+
+						while (i < cgi_pass_vec->size())
+						{
+							// process here is simple, if some thing doesn't work as expected
+							// the config file parsing is bad
+							if (extensionStr == (*cgi_pass_vec)[i])
+							{
+								// the next index should be the path
+								if (i + 1 == cgi_pass_vec->size())
+									throw HttpThrowStatus(500, "Internal Error::'cgi_pass' in configuration file is wrong:: must be [CGI extension] followed by [absolute path to CGI]");
+								else
+									_cgiPath = (*cgi_pass_vec)[i + 1];
+							}
+							i += 2;
+						}
+					}
+
+					// now we know if the request target is CGI or not by
+					// checking _cgiPath.empty()
+				}
+			}
+
+		}
 
 		// we need to get the system path first
 		std::string systemPath;
-		{
-			/* In Configuration file, we must choose
-			but depending on what method the request is
-			if the method is something that user want */
+		/*
+			The reason to have this section is we need to know
+			whether we want to pick 'root' or 'upload_store'
 
-			/*
-				In Get Delete. use root and POST may use upload_store
-			*/
+			- the GET method always need 'root'
+			- the POST method depends if the target is CGI or not
+				if CGI then use 'root' if not then 'upload store'
+				but if not found 'root' then just take 'upload_store'
+			- the DELETE also 
+		*/
+		{
+
 		}
 
 		// we need to combine root of location block
