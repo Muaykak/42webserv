@@ -27,8 +27,8 @@ private:
 	// there are helper functions in utility_function.hpp
 
 	static void resolveLocationPath(std::string locationPath);
-	// ####################  AI GEN -> Make sure to understand logic ########
-	// ##############################################################
+	void	locationBlockValidate();
+
 public:
 	ServerConfig();
 	ServerConfig(const ServerConfig &obj);
@@ -37,7 +37,9 @@ public:
 	ServerConfig(const t_config_map& serverConfig, const t_location_map& locationsConfig, int listenPort);
 	bool operator==(const ServerConfig& obj) const;
 	const std::vector<std::string>* getServerData(const std::string &keyToFind) const;
+	// ####################  AI GEN -> Make sure to understand logic ########
 	const t_config_map *findLocationBlock(std::string locationPath) const;
+	// ##############################################################
 	const std::vector<std::string>* getLocationData(const t_config_map* targetLocationBlock, const std::string &keytoFind) const;
 	int	getPort() const;
 	const std::vector<std::string> &getServerNameVec() const;

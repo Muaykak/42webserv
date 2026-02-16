@@ -67,6 +67,67 @@ ServerConfig::ServerConfig(const t_config_map& serverConfig, const t_location_ma
 			++vecIt;
 		}
 	}
+
+	// location '/' is a must have ?
+	t_location_map::const_iterator baseLoc = _locationsConfig.find("/");
+	if (baseLoc == _locationsConfig.end())
+		throw WebservException("ServerConfig::Location '/' is required in configuration file");
+	t_config_map::const_iterator rootbaseLoc = baseLoc->second.find("root");
+
+	// we can check each server block here, the config parser can live here
+	/*
+	listen we've already chech that
+	server_name vec alreayd handle
+
+	must check and need to valid:
+
+	client_max_body_size
+		- MUST have in parent server block, location block is optional, but should have
+
+	root
+		- also must have in parent server block. if location block cann't find root
+		it should fallback to the parent block one and it should have
+
+	*/
+
+	// check for the client_max_body_size first
+
+	{
+		t_config_map::const_iterator client_max_body_size_found = _serverConfig.find("client_max_body_size");
+
+		// if not found. then should throw error
+		if (client_max_body_size_found == _serverConfig.end())
+			throw WebservException("ServerConfig::server block must contain 'client_max_body_size' for fallback");
+			
+		const std::vector<std::string>& clientMaxBodySizeVec = client_max_body_size_found->second;
+
+		// check the size of vector must be 1
+		if (clientMaxBodySizeVec.size() != 1)
+			throw WebservException("ServerConfig::server block::client_max_body_size::Invalid Value");
+		
+		size_t	convertSize;
+		if (string_to_size_t(clientMaxBodySizeVec[0], convertSize) == false)
+			throw WebservException("ServerConfig::server block::client_max_body_size::Invalid Value");
+	}
+
+	// check the 'root' the server block
+	{
+		t_config_map::const_iterator rootFound = _serverConfig.find("root");
+
+		// not found, try to grab 'root' from location block '/'
+		if (rootFound == _serverConfig.end())
+		{
+
+		}
+
+		const std::vector<std::string>& rootVec = rootFound->second;
+
+		if (rootVec.size() != 1)
+		{
+			throw WebservException("ServerConfig::server block::root::Invalid Value");
+		}
+	}
+
 }
 
 bool ServerConfig::operator==(const ServerConfig& obj) const {
@@ -176,6 +237,23 @@ const t_config_map *ServerConfig::findLocationBlock(std::string locationPath) co
        }
    }
 // ##############################################################
+
+void	ServerConfig::locationBlockValidate()
+{
+	// check _locationsConfig size should be more than 1
+	if (_locationsConfig.size() < 1)
+		throw WebservException("ServerConfig::must have at least 1 location block inside server block");
+
+	t_location_map::const_iterator	locationIt = _locationsConfig.begin();
+	while (locationIt != _locationsConfig.end())
+	{
+		if (locationIt->first == "root")
+		{
+
+		}
+		++locationIt;
+	}
+}
 
 const std::set<in_addr_t>&	ServerConfig::getHostIp() const
 {
