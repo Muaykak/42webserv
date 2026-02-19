@@ -6,7 +6,7 @@ std::string	stringToLower(const std::string& toConvert)
 {
 	std::string returnStr;
 
-	if (&toConvert == NULL || toConvert.empty())
+	if (toConvert.empty())
 		return returnStr;
 	
 	returnStr = toConvert;
@@ -21,7 +21,7 @@ std::string	stringToUpper(const std::string& toConvert)
 {
 	std::string returnStr;
 
-	if (&toConvert == NULL || toConvert.empty())
+	if (toConvert.empty())
 		return returnStr;
 	
 	returnStr = toConvert;

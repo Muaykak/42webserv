@@ -114,10 +114,9 @@ ServerConfig::ServerConfig(const t_config_map& serverConfig, const t_location_ma
 	{
 		t_config_map::const_iterator rootFound = _serverConfig.find("root");
 
-		// not found, try to grab 'root' from location block '/'
 		if (rootFound == _serverConfig.end())
 		{
-
+			throw WebservException("ServerConfig::'root' in global scope must be exist");
 		}
 
 		const std::vector<std::string>& rootVec = rootFound->second;

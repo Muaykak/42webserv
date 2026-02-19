@@ -933,65 +933,79 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 			- the DELETE also 
 		*/
 		{
+			if (_method == "POST" && _cgiPath.empty())
+			{
 
+				// should use 'upload_store' may be we can give this as a must in configuration file ??
+				// try with this method first
+				const std::vector<std::string>* foundUploadStore = _targetServer->getLocationData(_targetLocationBlock, "upload_store");
+
+				/*
+				i'm not sure but now i'm assume that if you upload a file 
+				via post method, you must explicitly define 'upload_store' in that location
+				block in configuration file	
+				*/
+				if (foundUploadStore == NULL)
+					throw HttpThrowStatus(500, "Internal Error::using POST to upload file to server requires \'upload_store\' to be defined in configuration file");
+
+				// just for sure checking
+				if (foundUploadStore->size() != 1 || (*foundUploadStore)[0].empty())
+				{
+					throw HttpThrowStatus(500, "Internal Error::invalid \'root\' value");
+				}
+
+				_uploadStorePath = (*foundUploadStore)[0];
+				systemPath = (*foundUploadStore)[0];
+			}
+			else // GET or DELETE will use root always
+			{
+
+				// take 'root' as main path
+
+				const std::vector<std::string>* foundRoot = _targetServer->getLocationData(_targetLocationBlock, "root");
+
+				// it should not be null but if so then treat as internal error
+				if (foundRoot == NULL)
+				{
+					throw HttpThrowStatus(500, "Internal Error::require 'root' in this location block");
+				}
+
+				// just for sure checking
+				if (foundRoot->size() != 1 || (*foundRoot)[0].empty())
+				{
+					throw HttpThrowStatus(500, "Internal Error::invalid \'root\' value");
+				}
+
+				systemPath = (*foundRoot)[0];
+			}
 		}
 
 		// we need to combine root of location block
 		// with the URI that we resolved
-		std::string	combinedPath;
+		std::string	combinedPath = systemPath + _targetPath;
 
 		struct stat fileStat;
 		std::memset(&fileStat, 0, sizeof(fileStat));
-		if (stat(_targetPath.c_str(), &fileStat) != 0)
+		if (stat(combinedPath.c_str(), &fileStat) != 0)
 		{
 			std::string ErrMsg = "Http::stat()::target_path " + _targetPath + "::";
 			ErrMsg += strerror(errno);
+			if (errno == EACCES)
+				throw HttpThrowStatus(403, ErrMsg);
 			throw HttpThrowStatus(404, ErrMsg);
 		}
 
-		// check if target
+		//
+		if (S_ISDIR(fileStat.st_mode))
+		{
+			// work differently for each method
+			if (_method == "POST")
+		}
+
 	}
 
 
 
-	//	// now we check the method
-	//	{
-	//		// we should have target server now
-	//		if (_targetServer == NULL)
-	//		{
-	//			httpError(500, "Internal Error:: _targetServer Not Found");
-	//			_process_return = 0;
-	//			return ;
-	//		}
-
-	//		const std::vector<std::string>* allowMethodVec = _targetServer->getLocationData(_targetPath, "allowed_methods");
-	//		// must found, if not then config file is wrong, or something is wrong
-	//		if (allowMethodVec == NULL)
-	//		{
-	//			httpError(500, "Internal Error:: cannot find allowed_methods");
-	//			_process_return = 0;
-	//			return ;
-	//		}
-
-	//		bool match = false;
-			
-	//		for (size_t i = 0; i < allowMethodVec->size(); i++)
-	//		{
-	//			if (_method == (*allowMethodVec)[i])
-	//			{
-	//				match = true;
-	//				break ;
-	//			}
-	//		}
-	//		// Method not alowed
-	//		if (match == false)
-	//		{
-	//			httpError(405, "Method not allowed");
-	//			_process_return = 0;
-	//			return ;
-	//		}
-
-	//	}
 
 }
 

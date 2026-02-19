@@ -62,6 +62,7 @@ class Http {
 		std::string		_queryString;
 		std::string		_protocol; // after validating the string will be "HTTP/1.1" => "11"
 		std::string		_cgiPath;
+		std::string 	_uploadStorePath;
 
 		int				_body_type;
 		size_t			_body_size;

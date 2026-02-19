@@ -89,7 +89,7 @@ bool Socket::setupCGI_socket(e_socket_type cgiSocketType, const std::vector<Serv
 	}
 
 	_epollFD = epollFD;
-	_serversConfig = _serversConfig;
+	_serversConfig = serversConfig;
 	_socketType = cgiSocketType;
 	_socketMap = socketMap;
 	_parentSocket = parentSocket;
@@ -155,7 +155,7 @@ bool Socket::setupSocket(e_socket_type socketType, const std::vector<ServerConfi
 			{
 				throw WebservException("Socket::setup ServerSocket needs _serversConfig!");
 			}
-			_serversConfig = _serversConfig;
+			_serversConfig = serversConfig;
 
 			std::set<in_addr_t> temp_addr_set;
 			// put serversConfig ip host together
