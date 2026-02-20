@@ -735,6 +735,12 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 		std::map<std::string, std::set<std::string> >::const_iterator content_length = _headerField.find("content-length");
 		std::map<std::string, std::set<std::string> >::const_iterator tranfer_encoding = _headerField.find("transfer-encoding");
 
+		// I will not allow DELETE method to have body
+		if (_method == "DELETE" && (tranfer_encoding != _headerField.end() || content_length != _headerField.end()))
+		{
+			throw HttpThrowStatus(400, "Bad request:: DELETE method must not contain body");
+		}
+
 		if (tranfer_encoding != _headerField.end() && content_length != _headerField.end())
 			throw HttpThrowStatus(400, "Bad request:: Transfer-Encoding and Content-Length cannot both exist in header");
 
@@ -982,11 +988,11 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 
 		// we need to combine root of location block
 		// with the URI that we resolved
-		std::string	combinedPath = systemPath + _targetPath;
+		_combinedPath = systemPath + _targetPath;
 
 		struct stat fileStat;
 		std::memset(&fileStat, 0, sizeof(fileStat));
-		if (stat(combinedPath.c_str(), &fileStat) != 0)
+		if (stat(_combinedPath.c_str(), &fileStat) != 0)
 		{
 			std::string ErrMsg = "Http::stat()::target_path " + _targetPath + "::";
 			ErrMsg += strerror(errno);
@@ -995,11 +1001,59 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 			throw HttpThrowStatus(404, ErrMsg);
 		}
 
+		//check for DELETE method first
+		/*
+			my implement is whether the file 
+			is a directory or regular file
+			the DELETE just
+			called std::remove()
+			and return value would work
+			the same and don't need those
+			CGI and any other process to work	
+		*/
+		if (_method == "DELETE")
+		{
+
+		}
+
 		//
 		if (S_ISDIR(fileStat.st_mode))
 		{
 			// work differently for each method
 			if (_method == "POST")
+			{
+				// for POST
+				// if 'upload_store' is present and
+				// target is not
+			}
+			else if (_method == "GET")
+			{
+				// GET have to check 'autoindex' is 'on'
+				// in that location block
+				const std::vector<std::string>* foundAutoIndex = _targetServer->getLocationData(_targetLocationBlock, "autoindex");
+
+				// if not found or is not 'on' then would return 403
+				if (foundAutoIndex == NULL)
+					throw HttpThrowStatus(403, "Http::autoindex is not permited here");
+				
+				if (foundAutoIndex->size() != 1)
+					throw HttpThrowStatus(500, "Internal Error::\'autoindex\' in location block is invalid");
+				
+				if ((*foundAutoIndex)[0] != "on")
+					throw HttpThrowStatus(403, "Http::autoindex is not on for this location block");
+			}
+			else 
+			{
+				// here is for DELETE method for directory
+				if (std::remove(_combinedPath.c_str()) != 0)
+				{
+					// check the errno
+				}
+
+				// delete success ?
+				// 200 
+				throw HttpThrowStatus(200, "Delete Success");
+			}
 		}
 
 	}

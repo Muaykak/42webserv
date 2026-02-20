@@ -59,6 +59,7 @@ class Http {
 		std::string		_method;
 		std::string		_requestTarget;	
 		std::string		_targetPath;
+		std::string		_combinedPath;
 		std::string		_queryString;
 		std::string		_protocol; // after validating the string will be "HTTP/1.1" => "11"
 		std::string		_cgiPath;
