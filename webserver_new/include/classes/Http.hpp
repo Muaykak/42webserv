@@ -7,6 +7,7 @@
 # include "../defined_value.hpp"
 # include "./ServerConfig.hpp"
 # include "./HttpThrowStatus.hpp"
+# include "./HttpResponse.hpp"
 
 class Socket;
 
@@ -23,8 +24,10 @@ class Http {
 		std::string _requestBuffer;
 
 		bool	_keepConnection;
+		bool	_isEpollout;
 
 		std::string	_sendBuffer;
+		std::list<HttpResponse>	_httpResponseList;
 
 		/*
 		return value:
@@ -51,9 +54,7 @@ class Http {
 		void	validateRequestBufffer(const Socket& clientSocket);
 		void	validateRequestBufferSelectServer(const Socket& clientSocket, const std::string& authStr);
 
-		
-		void	httpError(int errorCode, const std::string& throwToClient);
-		void	httpError(int errorCode);
+		void	generate4xx5xxErrorReponse(unsigned int errorStatusCode, bool keepAfterResponse, const std::string& throwMsg);
 
 		e_http_process_status	_processStatus;
 		std::string		_method;
@@ -65,6 +66,7 @@ class Http {
 		std::string		_cgiPath;
 		std::string 	_uploadStorePath;
 
+		bool			_readBody;
 		int				_body_type;
 		size_t			_body_size;
 		size_t			_curr_body_read;

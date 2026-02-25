@@ -3,12 +3,40 @@
 
 # include "../defined_value.hpp"
 # include <list>
+# include <map>
+# include <set>
+# include "./WebservException.hpp"
+# include "./utility_function.hpp"
+# include <ctime>
+
+class Socket;
+
+enum e_http_response_body_type
+{
+	HTTP_RESPONSE_NOBODY,
+	HTTP_RESPONSE_BODY_FIXED_STR,
+	HTTP_RESPONSE_BODY_FILE,
+	HTTP_RESPONSE_BODY_CGI
+};
 
 class HttpResponse {
 	private:
 
-		bool	isCgiAlive;
-		bool	isComplete;
+		//bool	isCgiAlive;
+		//bool	isComplete;
+		std::vector<char> _sendBuffer;
+
+		std::map<std::string, std::set<std::string> > _responseHeader;
+		unsigned int _statusCode;
+		std::string	_statusMessage;
+		std::string _contentType;
+		std::string _fixedBodyStr;
+		e_http_response_body_type	_responseBodyType;
+		bool _keepAfterResponse;
+		bool _canModify;
+		bool _isComplete;
+		bool _hasSomethingtoSend;
+
 
 		// if all Buffer is sent. the response has nothing
 		// to send
@@ -17,7 +45,37 @@ class HttpResponse {
 
 	public:
 		HttpResponse();
-		HttpResponse(int errorCode);
+
+
+		void addHeader(const std::string& headerName, const std::string& headerValue);
+
+		void generateResponse();
+
+		bool getKeepAfterResponse() const;
+		void setKeepAfterResponse(bool op);
+
+		int	getStatusCode() const;
+		void setStatusCode(unsigned int statusCode);
+
+		const std::string& getStatusMessage() const;
+		void setStatusMessage(const std::string& statusMessage);
+
+		//
+
+		const std::string& getContentType() const;
+		void setContentType(const std::string& contentType);
+
+		e_http_response_body_type getResponseBodyType() const;
+		void setResponseBodyType(e_http_response_body_type bodyType);
+
+		const std::string& getFixedBodyStr() const;
+		void setFixedBodyStr(const std::string& bodyStr);
+
+		ssize_t	sendHttpResponse(const Socket& clientSocket);
+
+		// ready to remove from the list
+		bool isComplete() const;
+		bool hasSomethingtoSend() const;
 };
 
 #endif

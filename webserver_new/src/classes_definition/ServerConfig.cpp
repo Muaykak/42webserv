@@ -90,8 +90,7 @@ ServerConfig::ServerConfig(const t_config_map& serverConfig, const t_location_ma
 
 	*/
 
-	// check for the client_max_body_size first
-
+	// check for the client_max_body_size first, in server block
 	{
 		t_config_map::const_iterator client_max_body_size_found = _serverConfig.find("client_max_body_size");
 
@@ -126,6 +125,45 @@ ServerConfig::ServerConfig(const t_config_map& serverConfig, const t_location_ma
 			throw WebservException("ServerConfig::server block::root::Invalid Value");
 		}
 	}
+
+	/*
+	check for location block
+	*/ 
+	{
+		t_location_map::const_iterator	locationIt = _locationsConfig.begin();
+		bool	hasDefaultLocationBlock = false;
+
+		t_config_map::const_iterator	locationElementIt;
+		while (locationIt != _locationsConfig.end())
+		{
+
+			// check inside element in each block
+			if (locationIt->first == "/")
+				hasDefaultLocationBlock = true;
+
+			locationElementIt = locationIt->second.begin();
+			while (locationElementIt != locationIt->second.end())
+			{
+				if (locationElementIt->first == "index")
+				{
+					if (locationElementIt->second.size() != 1 || (locationElementIt->second)[0].empty())
+					{
+						throw WebservException("ServerConfig::\'index\' invalid value");
+					}
+					
+					// index must not end with '/'
+					if ((locationElementIt->second)[0][locationElementIt->second.size() - 1] == '/')
+						throw WebservException("ServerConfig::\'index\' invalid value");
+
+				}
+
+				++locationElementIt;
+			}
+
+			++locationIt;
+		}
+	}
+
 
 }
 

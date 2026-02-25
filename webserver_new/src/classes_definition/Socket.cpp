@@ -147,6 +147,7 @@ bool Socket::setupSocket(e_socket_type socketType, const std::vector<ServerConfi
 	_epollFD = epollFD;
 	_socketType = socketType;
 	_socketMap = socketMap;
+	_serversConfig = serversConfig;
 	switch (socketType)
 	{
 		case SERVER_SOCKET:
@@ -391,15 +392,36 @@ bool Socket::handleEvent(const epoll_event &event)
 				// return false to signal to remove from socket map
 				return false;
 			}
-			if (event.events & EPOLLOUT){
-				http.writeToClient(*this, *_socketMap);
-				// Handle http response
-			}
-			if (event.events & EPOLLIN){
-				http.readFromClient(*this, *_socketMap);
-				// Handle http request
+			try {
+
+				if (event.events & EPOLLOUT){
+					http.writeToClient(*this, *_socketMap);
+					// Handle http response
+				}
+				if (event.events & EPOLLIN){
+					http.readFromClient(*this, *_socketMap);
+					// Handle http request
+				}
 
 			}
+			// should not have any throw in normal circum stance
+			/*
+				though the error that got thrown here can be
+
+				epoll_ctl() error because we lose the control
+				and best way to handle is just to close this socket
+			*/
+			catch (std::exception &e)
+			{
+				Logger::log(LC_ERROR, "socket#%d unexpected error occured closing this connection::%s", _socketFD.getFd(), e.what());
+				return (false);
+			}
+			catch (...)
+			{
+				Logger::log(LC_ERROR, "socket#%d unexpected error occured closing this connection", _socketFD.getFd());
+				return (false);
+			}
+
 			return http.isKeepConnection();
 		}
 		case CGI_FD_STDIN: {

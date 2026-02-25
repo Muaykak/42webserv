@@ -7,9 +7,12 @@
 Http::Http()
 : _keepConnection(true),
 _processStatus(NO_STATUS),
-_targetServer(NULL)
+_targetServer(NULL),
+_readBody(false),
+_isEpollout(false)
 {
 	_recvBuffer.reserve(HTTP_RECV_BUFFER);
+	_sendBuffer.reserve(HTTP_SEND_BUFFER);
 }
 
 Http::~Http()
@@ -61,7 +64,8 @@ void	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 	if (_processStatus == READING_REQUEST_LINE){
 
 		if (reqBuffSize > MAX_REQUEST_BUFFER_SIZE)
-			throw HttpThrowStatus(400, "request buffer should not higher than MAX_REQUEST_BUFFER_SIZE");
+			generate4xx5xxErrorReponse(400, false,"request buffer should not higher than MAX_REQUEST_BUFFER_SIZE");
+
 		if (_method.empty())
 		{
 
@@ -70,7 +74,7 @@ void	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 				if (_requestBuffer[currIndex] == '\r') {
 					// '\r' must always followed by '\n'
 					if (_requestBuffer[currIndex + 1] != '\n')
-						throw HttpThrowStatus(400);
+						generate4xx5xxErrorReponse(400, false, "the \'\\r\' must always followed by \'\\n\'");
 					currIndex += 2;
 					continue;
 				}
@@ -102,41 +106,41 @@ void	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 			_method = pos == _requestBuffer.npos ? _requestBuffer.substr(currIndex) : _requestBuffer.substr(currIndex, pos - currIndex);
 
 			if (_method.empty() || alphaAtoZ().isNotMatch(_method) == true)
-				throw HttpThrowStatus(400);
+				generate4xx5xxErrorReponse(400, false, "the method must not empty. Or method must contain only A-Z in uppercase");
 
 			// skip 1 pos which is the first whitespace
 			currIndex = pos + 1;
 			// should not reach endlinePos yet
 			if (currIndex >= endLinePos)
-				throw HttpThrowStatus(400);
+				generate4xx5xxErrorReponse(400, false, "bad spacing in request line");
 			// now get the request target.
 			pos = htabSp().findFirstCharset(_requestBuffer, currIndex, endLinePos - currIndex);
 			// must can find next whitespace.. it IS the format
 			if (pos == _requestBuffer.npos)
-				throw HttpThrowStatus(400);
+				generate4xx5xxErrorReponse(400, false, "bad formating in request line");
 			_requestTarget = _requestBuffer.substr(currIndex, pos - currIndex);
 
 			// must not empty
 			if (_requestTarget.empty())
-				throw HttpThrowStatus(400);
+				generate4xx5xxErrorReponse(400, false, "request target in request line must not empty");
 
 			// also check if contain any forbidden chars
 			if (allowRequestTargetChar().isMatch(_requestTarget) == false)
-				throw HttpThrowStatus(400);
+				generate4xx5xxErrorReponse(400, false, "request target must not contain any forbidden char");
 
 			// then move our currIndex
 			currIndex = pos + 1;
 			// prevent edge case where now currIndex might right at the endLinepos
 			// should not reach endlinePos yet
 			if (currIndex >= endLinePos)
-				throw HttpThrowStatus(400);
+				generate4xx5xxErrorReponse(400, false, "bad request line. the protocol version is missing");
 
 			// now the last part is protocol version
 			_protocol = _requestBuffer.substr(currIndex, endLinePos - currIndex);
 
 			// check must not empty
 			if (_protocol.empty())
-				throw HttpThrowStatus(400);
+				generate4xx5xxErrorReponse(400, false, "request line protocol must not empty");
 			// we get all the request line then we move to reading the header field
 			currIndex = endLinePos + 2;
 		}
@@ -199,19 +203,19 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 		colonPos = _requestBuffer.find_first_of(':', currIndex);
 		// not separate by :  must reject
 		if (colonPos == _requestBuffer.npos || colonPos >= endLinePos)
-			throw HttpThrowStatus(400);
+			generate4xx5xxErrorReponse(400, false, "name and value in the header field must seperated by \':\'");
 		// then get the field name in temp first
 		tempFieldName = _requestBuffer.substr(currIndex, colonPos - currIndex);
 
 		// must not empty
 		if (tempFieldName.empty())
-			throw HttpThrowStatus(400);
+			generate4xx5xxErrorReponse(400, false, "name in header field must not empty string");
 
 		// We can check field name length here
 
 		// simple checking that it must not contain any forbidden char
 		if (allowedFieldNameChar().isMatch(tempFieldName) == false)
-			throw HttpThrowStatus(400);
+			generate4xx5xxErrorReponse(400, false, "name in header field must not contain any forbidden char");
 
 		// now we got field name, next we want field value
 		currIndex = colonPos + 1;
@@ -246,7 +250,7 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 					newStr = tempSep.substr(i, j - i + 1);
 				//check if field value doesn't contain any forbidden char
 				if (forbiddenFieldValueChar().isNotMatch(newStr) == false)
-					throw HttpThrowStatus(400);
+					generate4xx5xxErrorReponse(400, false, "value in header field must not contain any forbidden char");
 				tempSet.insert(newStr);
 				newStr.clear();
 				
@@ -311,8 +315,174 @@ static bool	pathDecoding(std::string& pathStr)
 	return true;
 }
 
+void	Http::generate4xx5xxErrorReponse(unsigned int errorStatusCode, bool keepAfterResponse, const std::string& throwMsg)
+{
+	// first we check if there is already default error page
+	bool	hasDefaultErrorPageFile = false;
+
+	const std::vector<std::string>* foundErrorPageVec = NULL;
+	if (_targetServer != NULL)
+	{
+		if (_targetLocationBlock != NULL)
+		{
+			foundErrorPageVec = _targetServer->getLocationData(_targetLocationBlock, "error_page");
+		}
+		else
+		{
+			// found targetServer but not _target location
+			foundErrorPageVec = _targetServer->getServerData("error_page");
+		}
+	}
+
+	std::string errorPageFilePath;
+
+	size_t	convertCode;
+
+	if (foundErrorPageVec != NULL)
+	{
+		size_t i = 0;
+		while (i < foundErrorPageVec->size())
+		{
+			if (string_to_size_t((*foundErrorPageVec)[i], convertCode) == false)
+			{
+				i += 2;
+				continue;
+			}
+
+			if (convertCode == errorStatusCode)
+			{
+				if (++i < foundErrorPageVec->size())
+				{
+					errorPageFilePath = (*foundErrorPageVec)[i];
+					break ;
+				}
+				else
+					break ;
+			}
+			else
+			{
+				i += 2;
+			}
+		}
+	}
+
+	// testing if the file is open and readable
+	FileDescriptor errorFileFD;
+
+	if (!errorPageFilePath.empty())
+	{
+		int fd = open(errorPageFilePath.c_str(), O_RDONLY);
+		if (fd > -1)
+		{
+			errorFileFD = fd;
+			hasDefaultErrorPageFile = true;
+		}
+	}
+
+	// try to 
+	_httpResponseList.push_back(HttpResponse());
+
+	HttpResponse& targetResponse = _httpResponseList.back();
+
+	targetResponse.setKeepAfterResponse(keepAfterResponse);
+	targetResponse.setStatusCode(errorStatusCode);
+	targetResponse.setContentType("text/html");
+
+	// set status message
+	{
+		switch (errorStatusCode)
+		{
+			case (400):
+			{
+				targetResponse.setStatusMessage("Bad Request");
+				break;
+			}
+			case (404):
+			{
+				targetResponse.setStatusMessage("Not Found");
+				break;
+			}
+			case (500):
+			{
+				targetResponse.setStatusMessage("Internal Error");
+				break;
+			}
+			case (403):
+			{
+				targetResponse.setStatusMessage("Forbidden");
+				break;
+			}
+			default:
+			{
+				targetResponse.setStatusMessage("");
+				break;
+			}
+		}
+
+
+	}
+
+	//if (hasDefaultErrorPageFile == true)
+	//{
+	//	targetResponse.setResponseBodyType(HTTP_RESPONSE_BODY_FILE);
+	//}
+	//else
+	{
+		targetResponse.setResponseBodyType(HTTP_RESPONSE_BODY_FIXED_STR);
+
+		std::string htmlMsg = toString(errorStatusCode) + " " + targetResponse.getStatusMessage();
+
+		std::string bodyStr =
+		"<html>\r\n"
+		"<head><title>";
+
+		bodyStr += htmlMsg;
+
+		bodyStr +=
+		"</title></head>\r\n"
+		"<body>\r\n"
+		"<center><h1>";
+
+		bodyStr += htmlMsg;
+
+		bodyStr += "</h1>\r\n";
+
+		bodyStr += throwMsg;
+		
+		"</center>\r\n"
+		"</body>\r\n"
+		"</html>\r\n";
+
+		targetResponse.setFixedBodyStr(bodyStr);
+	}
+
+	targetResponse.generateResponse();
+
+	// clear the storing request data
+	_processStatus = NO_STATUS;
+	_method.clear();
+	_requestTarget.clear();
+	_targetPath.clear();
+	_combinedPath.clear();
+	_queryString.clear();
+	_protocol.clear();
+	_cgiPath.clear();
+	_uploadStorePath.clear();
+	_readBody = false;
+	_body_type = 0;
+	_body_size = 0;
+	_curr_body_read = 0;
+	_headerField.clear();
+	_targetServer = NULL;
+	_targetLocationBlock = NULL;
+
+	throw HttpThrowStatus(errorStatusCode, throwMsg);
+}
+
 void	Http::validateRequestBufferSelectServer(const Socket& clientSocket,const std::string& authStr)
 {
+	if (_processStatus != VALIDATING_REQUEST)
+		return ;
 	//separate port and host from authStr
 	int			portNum;
 	std::string	host;
@@ -329,11 +499,11 @@ void	Http::validateRequestBufferSelectServer(const Socket& clientSocket,const st
 		{
 			host = authStr.substr(0, colonPos);
 			if (host.empty())
-				throw HttpThrowStatus(400, "Invalid::URI Authority::");
+				generate4xx5xxErrorReponse(400, false, "Invalid::URI Authority::");
 
 			portStr = authStr.substr(colonPos + 1);
 			if (portStr.empty() || portStr.size() > 5 || digitChar().isMatch(portStr) == false)
-				throw HttpThrowStatus(400, "Invalid::URI Authority::");
+				generate4xx5xxErrorReponse(400, false, "Invalid::URI Authority::");
 		}
 		portNum = std::atoi(portStr.c_str());
 	}
@@ -344,7 +514,7 @@ void	Http::validateRequestBufferSelectServer(const Socket& clientSocket,const st
 		// 400 bad request
 		if (portNum > 65535)
 		{
-			throw HttpThrowStatus(400, "Invalid::URI Authority::Port is out of range");
+			generate4xx5xxErrorReponse(400, false, "Invalid::URI Authority::Port is out of range");
 		}
 
 		// if the port is in the range but doesn't match with
@@ -354,7 +524,7 @@ void	Http::validateRequestBufferSelectServer(const Socket& clientSocket,const st
 		if (portNum != clientSocket.getServerListenPort())
 		{
 			std::string msg = "Invalid::URI Authority::Port mismatch request_target:" + toString(portNum) + " server_port:" + toString(clientSocket.getServerListenPort());
-			throw HttpThrowStatus(403, msg);
+			generate4xx5xxErrorReponse(403, false, msg);
 		}
 	}
 
@@ -367,11 +537,11 @@ void	Http::validateRequestBufferSelectServer(const Socket& clientSocket,const st
 			in_addr_t	tempAddr;
 			// conversion failed
 			if (string_to_in_addr_t(host, tempAddr) == false)
-				throw HttpThrowStatus(400, "Invalid::URI Authority::failed to convert IP");
+				generate4xx5xxErrorReponse(400, false, "Invalid::URI Authority::failed to convert IP");
 
 			// correct syntax but should not allow, it is broadcast address
 			if (tempAddr == 0xFFFFFFFF)
-				throw HttpThrowStatus(403, "Invalid::URI Authority:: IP cannot be 255.255.255.255");
+				generate4xx5xxErrorReponse(403, false, "Invalid::URI Authority:: IP cannot be 255.255.255.255");
 
 			/*
 			Remember the accept() function that we
@@ -409,7 +579,7 @@ void	Http::validateRequestBufferSelectServer(const Socket& clientSocket,const st
 			if (tempAddr != clientSocket._client_addr_in)
 			{
 				std::string msg = "Invalid::URI Authority::IP mismatch:: server_ip:" + in_addr_t_to_string(clientSocket._client_addr_in) + " request_target:" + in_addr_t_to_string(tempAddr);
-				throw HttpThrowStatus(403, msg);
+				generate4xx5xxErrorReponse(403, false, msg);
 			}
 		}
 		else
@@ -492,7 +662,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 			// whether what version you are
 			// must start with "HTTP/"
 			if (_protocol.size() != 8 || _protocol.compare(0, 5, "HTTP/") != 0 || _protocol[6] != '.')
-				throw HttpThrowStatus(400, "ERROR::protocol version wrong format");
+				generate4xx5xxErrorReponse(400, false, "ERROR::protocol version wrong format");
 
 			maj = _protocol[5];
 			if (maj != '1')
@@ -500,12 +670,12 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 				if (maj >= '0' && maj <= '3')
 				{
 					// response with unsupported version
-					throw HttpThrowStatus(505, "Error::version not supported");
+					generate4xx5xxErrorReponse(505, false, "Error::version not supported");
 				}
 				else 
 				{
 					// some weird characters
-					throw HttpThrowStatus(400, "ERROR::protocol version wrong format");
+					generate4xx5xxErrorReponse(400, false, "ERROR::protocol version wrong format");
 				}
 			}
 
@@ -513,7 +683,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 			if (min < '0' || min > '9')
 			{
 				// must be digit
-				throw HttpThrowStatus(400, "ERROR::protocal version wrong format");
+				generate4xx5xxErrorReponse(400, false, "ERROR::protocal version wrong format");
 			}
 
 			_protocol.clear();
@@ -528,7 +698,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 		if (_headerField.find("host") == _headerField.end())
 		{
 			// treated as bad request
-			throw HttpThrowStatus(400, "Bad request::cannot find \'host\' in header field");
+			generate4xx5xxErrorReponse(400, false, "Bad request::cannot find \'host\' in header field");
 		}
 		// we need to check the 'request target' first
 		// this is the tedious process
@@ -544,12 +714,12 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 					//this request targen legth if in absolute form must
 					// longer than  characters
 					if (_requestTarget.size() <= 7)
-						throw HttpThrowStatus(400, "Invalid::URI Scheme::");
+						generate4xx5xxErrorReponse(400, false, "Invalid::URI Scheme::");
 
 
 					// allow only this scheme
 					if (_requestTarget.compare(0, 7, "http://") != 0)
-						throw HttpThrowStatus(400, "Invalid::URI Scheme::allowed only \"http://\"");
+						generate4xx5xxErrorReponse(400, false, "Invalid::URI Scheme::allowed only \"http://\"");
 
 					// check the authority part
 					{
@@ -564,7 +734,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 
 						// authority cannot empty
 						if (authStr.empty())
-							throw HttpThrowStatus(400, "Invalid::URI Scheme::");
+							generate4xx5xxErrorReponse(400, false, "Invalid::URI Scheme::");
 
 						validateRequestBufferSelectServer(clientSocket, authStr);
 
@@ -589,7 +759,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 
 					// must have only 1 value in host:
 					if (fieldValueSet.size() != 1)
-						throw HttpThrowStatus(400, "Http::Invalid field value:: host must have only 1 element");
+						generate4xx5xxErrorReponse(400, false, "Http::Invalid field value:: host must have only 1 element");
 
 					std::set<std::string>::const_iterator	fieldValueSetIt = fieldValueSet.begin();
 
@@ -623,7 +793,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 
 				//split vector should not empty
 				if (splitList.size() == 0)
-					throw HttpThrowStatus(400, "Bad Path. Or my bad parser lol");
+					generate4xx5xxErrorReponse(400, false, "Bad Path. Or my bad parser lol");
 
 				bool isEndwithSlash = _targetPath[_targetPath.size() - 1] == '/' ? true : false;
 
@@ -660,7 +830,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 						{
 							// failed to decode 
 							// wrong use of '%'
-							throw HttpThrowStatus(400, "request target::'%' encoding invalid::");
+							generate4xx5xxErrorReponse(400, false, "request target::'%' encoding invalid::");
 						}
 
 						// we proved this string is valid path name
@@ -704,12 +874,12 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 	{
 		// we should have target server now
 		if (_targetServer == NULL)
-			throw HttpThrowStatus(500, "Internal Error:: _targetServer Not Found");
+			generate4xx5xxErrorReponse(500, false, "Internal Error:: _targetServer Not Found");
 
 		_targetLocationBlock = _targetServer->findLocationBlock(_targetPath);
 		// must not be null also
 		if (_targetLocationBlock == NULL)
-			throw HttpThrowStatus(500, "Internal Error:: _targetServer Not Found");
+			generate4xx5xxErrorReponse(500, false, "Internal Error:: _targetServer Not Found");
 
 	}
 
@@ -728,21 +898,21 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 		if (clientMaxBodySizePtr == NULL || clientMaxBodySizePtr->size() != 1)
 		{
 			// treat as internal error
-			throw HttpThrowStatus(500, "Internal Error::cannot find client_max_body_size, Or it has no matching element");
+			generate4xx5xxErrorReponse(500, false, "Internal Error::cannot find client_max_body_size, Or it has no matching element");
 		}
 
 		// 
 		std::map<std::string, std::set<std::string> >::const_iterator content_length = _headerField.find("content-length");
 		std::map<std::string, std::set<std::string> >::const_iterator tranfer_encoding = _headerField.find("transfer-encoding");
 
-		// I will not allow DELETE method to have body
-		if (_method == "DELETE" && (tranfer_encoding != _headerField.end() || content_length != _headerField.end()))
+		// I will not allow DELETE or GET method to have body
+		if (_method != "POST" && (tranfer_encoding != _headerField.end() || content_length != _headerField.end()))
 		{
-			throw HttpThrowStatus(400, "Bad request:: DELETE method must not contain body");
+			generate4xx5xxErrorReponse(400, false, "Bad request:: DELETE or GET method must not contain body");
 		}
 
 		if (tranfer_encoding != _headerField.end() && content_length != _headerField.end())
-			throw HttpThrowStatus(400, "Bad request:: Transfer-Encoding and Content-Length cannot both exist in header");
+			generate4xx5xxErrorReponse(400, false, "Bad request:: Transfer-Encoding and Content-Length cannot both exist in header");
 
 		// if Content-Length is found, check if it exceeds the client_max_body_size
 		else if (content_length != _headerField.end())
@@ -751,19 +921,19 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 			if (content_length->second.size() != 1)
 			{
 				// treat this as a bad request
-				throw HttpThrowStatus(400, "Bad request:: Content-Length:: must have only one element in this field");
+				generate4xx5xxErrorReponse(400, false, "Bad request:: Content-Length:: must have only one element in this field");
 			}
 
 			std::string numstr = *(content_length->second.begin());
 
 			// must contain only digit
 			if (digitChar().isMatch(numstr) == false)
-				throw HttpThrowStatus(400, "Bad request:: Content-Length:: value must be numeric characters (0-9)");
+				generate4xx5xxErrorReponse(400, false, "Bad request:: Content-Length:: value must be numeric characters (0-9)");
 
 
 			// conversion to number with myfunction
 			if (string_to_size_t(numstr, _body_size) == false)
-				throw HttpThrowStatus(400, "Bad request:: Content-Length::exceeds size_t value or something");
+				generate4xx5xxErrorReponse(400, false, "Bad request:: Content-Length::exceeds size_t value or something");
 
 			// type 1 is body size that specified by Content-Length
 			_body_type = 1;
@@ -774,17 +944,18 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 
 				// internal error
 				if (client_max_body_size_ptr == NULL || client_max_body_size_ptr->size() != 1 || digitChar().isMatch((*client_max_body_size_ptr)[0]) == false)
-					throw HttpThrowStatus(500, "Internal Error::cannot find client_max_body_size value, or the value is not correct");
+					generate4xx5xxErrorReponse(500, false, "Internal Error::cannot find client_max_body_size value, or the value is not correct");
 
 				size_t	maxBodySize;
 				if (string_to_size_t((*client_max_body_size_ptr)[0], maxBodySize) == false)
 				{
 					// cannot torelate because no boundary to check client request
-					throw HttpThrowStatus(500, "Internal Error:: client_max_body_size value conversion failed");
+					generate4xx5xxErrorReponse(500, false, "Internal Error:: client_max_body_size value conversion failed");
 				}
 				
 				if (_body_size > maxBodySize)
-					throw HttpThrowStatus(413, "HTTP::request Content-Length is Larger than client_max_body_size");
+					generate4xx5xxErrorReponse(413, false, "HTTP::request Content-Length is Larger than client_max_body_size");
+				_readBody = true;
 			}
 		}
 		else if (tranfer_encoding != _headerField.end())
@@ -806,12 +977,13 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 					++it;
 				}
 				
-				throw HttpThrowStatus(400, msg);
+				generate4xx5xxErrorReponse(400, false, msg);
 			}
 
 			// chunked found then this is chunked encoding.
 			_body_type = 2;
 			_body_size = 0;
+			_readBody = true;
 		}
 		// both Content-Length and Transfer-Encoding not found
 		else
@@ -830,16 +1002,19 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 		{
 			// it must have 2 elements or treat as internal error
 			if (return_redirect->size() != 2)
-				throw HttpThrowStatus(500, "Internal Error:: 'return' redirect in config file must have 2 elements");
+				generate4xx5xxErrorReponse(500, false, "Internal Error:: 'return' redirect in config file must have 2 elements");
 			
 			const std::string& returnCodeStr = (*return_redirect)[0];
 
 			size_t	returnCode = 0;
 			// the string size must be 3 digit and dont start with '0'
 			if (returnCodeStr.size() != 3 || string_to_size_t(returnCodeStr, returnCode) == false || returnCode < 300 || returnCode > 399)
-				throw HttpThrowStatus(500, "Internal Error::config file::redirect contains wrong status code, or wrong format idk");
+				generate4xx5xxErrorReponse(500, false, "Internal Error::config file::redirect contains wrong status code, or wrong format idk");
 				
-			throw HttpThrowStatus(returnCode, (*return_redirect)[1]);
+			if (returnCode >= 300 && returnCode < 400)
+				throw HttpThrowStatus(returnCode, (*return_redirect)[1]);
+			else
+				generate4xx5xxErrorReponse(500, false, "Internal Error::config file::redirect contain status code that is not 3xx");
 		}
 	}
 
@@ -870,61 +1045,81 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 			throw HttpThrowStatus(405, "Http::method::not implemented::" + _method);
 	}
 
+	bool isEndWithSlash = _targetPath[_targetPath.size() - 1] == '/' ? true : false;
+
+	if (_method != "DELETE")
+	{
+
+		// should not delete file with 'index' seems to make sense to me
+		if (isEndWithSlash == true)
+		{
+			// if the path end with slash
+			// try to find the 'index' in that location block
+			
+			const std::vector<std::string>* foundIndex = _targetServer->getLocationData(_targetLocationBlock, "index");
+
+			// only append if found
+			if (foundIndex)
+			{
+				if (foundIndex->size() != 1)
+				{
+					throw HttpThrowStatus(500, "Internal Error:: invalid \'index\' directive in location block");
+				}
+
+				_targetPath += (*foundIndex)[0];
+				isEndWithSlash = false;
+			}
+		}
+
+		{
+			size_t dotPos = _targetPath.find_last_of('.');
+
+			// mean that the target having some extensions to check
+			if (dotPos != _targetPath.npos)
+			{
+				std::string	extensionStr = _targetPath.substr(dotPos);
+				// here, we need cgi_pass directive in configuration file
+
+				/*
+				the cgi pass should consist of 2 elements
+				first is the extension of the CGI type (like .php, .py)
+				and second is their executable in absolute path
+				*/
+
+				// first we get the cgi_pass vector
+
+				const std::vector<std::string>* cgi_pass_vec = _targetServer->getLocationData(_targetLocationBlock, "cgi_pass");
+
+				// if found then check
+				if (cgi_pass_vec != NULL)
+				{
+					// check the whole vector if it matches
+					size_t i = 0;
+
+					while (i < cgi_pass_vec->size())
+					{
+						// process here is simple, if some thing doesn't work as expected
+						// the config file parsing is bad
+						if (extensionStr == (*cgi_pass_vec)[i])
+						{
+							// the next index should be the path
+							if (i + 1 == cgi_pass_vec->size())
+								throw HttpThrowStatus(500, "Internal Error::'cgi_pass' in configuration file is wrong:: must be [CGI extension] followed by [absolute path to CGI]");
+							else
+								_cgiPath = (*cgi_pass_vec)[i + 1];
+						}
+						i += 2;
+					}
+				}
+
+				// now we know if the request target is CGI or not by
+				// checking _cgiPath.empty()
+			}
+		}
+	}
+
 	// now we can check the file existence
 	{
-		bool isEndWithSlash = _targetPath[_targetPath.size() - 1] == '/' ? true : false;
-		// check if the target is a 
-
-		// check if target wants to point to CGI or not
-		{
-			if (isEndWithSlash == false)
-			{
-				size_t dotPos = _targetPath.find_last_of('.');
-
-				// mean that the target having some extensions to check
-				if (dotPos != _targetPath.npos)
-				{
-					std::string	extensionStr = _targetPath.substr(dotPos);
-					// here, we need cgi_pass directive in configuration file
-
-					/*
-					the cgi pass should consist of 2 elements
-					first is the extension of the CGI type (like .php, .py)
-					and second is their executable in absolute path
-					*/
-
-					// first we get the cgi_pass vector
-
-					const std::vector<std::string>* cgi_pass_vec = _targetServer->getLocationData(_targetLocationBlock, "cgi_pass");
-
-					// if found then check
-					if (cgi_pass_vec != NULL)
-					{
-						// check the whole vector if it matches
-						size_t i = 0;
-
-						while (i < cgi_pass_vec->size())
-						{
-							// process here is simple, if some thing doesn't work as expected
-							// the config file parsing is bad
-							if (extensionStr == (*cgi_pass_vec)[i])
-							{
-								// the next index should be the path
-								if (i + 1 == cgi_pass_vec->size())
-									throw HttpThrowStatus(500, "Internal Error::'cgi_pass' in configuration file is wrong:: must be [CGI extension] followed by [absolute path to CGI]");
-								else
-									_cgiPath = (*cgi_pass_vec)[i + 1];
-							}
-							i += 2;
-						}
-					}
-
-					// now we know if the request target is CGI or not by
-					// checking _cgiPath.empty()
-				}
-			}
-
-		}
 
 		// we need to get the system path first
 		std::string systemPath;
@@ -941,6 +1136,8 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 		{
 			if (_method == "POST" && _cgiPath.empty())
 			{
+
+
 
 				// should use 'upload_store' may be we can give this as a must in configuration file ??
 				// try with this method first
@@ -990,16 +1187,16 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 		// with the URI that we resolved
 		_combinedPath = systemPath + _targetPath;
 
-		struct stat fileStat;
-		std::memset(&fileStat, 0, sizeof(fileStat));
-		if (stat(_combinedPath.c_str(), &fileStat) != 0)
-		{
-			std::string ErrMsg = "Http::stat()::target_path " + _targetPath + "::";
-			ErrMsg += strerror(errno);
-			if (errno == EACCES)
-				throw HttpThrowStatus(403, ErrMsg);
-			throw HttpThrowStatus(404, ErrMsg);
-		}
+		//struct stat fileStat;
+		//std::memset(&fileStat, 0, sizeof(fileStat));
+		//if (stat(_combinedPath.c_str(), &fileStat) != 0)
+		//{
+		//	std::string ErrMsg = "Http::stat()::target_path " + _targetPath + "::";
+		//	ErrMsg += strerror(errno);
+		//	if (errno == EACCES)
+		//		throw HttpThrowStatus(403, ErrMsg);
+		//	throw HttpThrowStatus(404, ErrMsg);
+		//}
 
 		//check for DELETE method first
 		/*
@@ -1013,46 +1210,93 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 		*/
 		if (_method == "DELETE")
 		{
+			if (std::remove(_combinedPath.c_str()) != 0)
+			{
+				if (errno == ENOENT)
+					throw HttpThrowStatus(404, "Http::DELETE method::file not found");
+				else if (errno == EACCES)
+					throw HttpThrowStatus(403, "Http::DELETE method::permission denied");
+				else
+					throw HttpThrowStatus(500, "Internal Error::DELETE method::std::remove()::failed::" + std::string(strerror(errno)));
+				
+			}
+			else
+			{
+				/*
+				DELETE on success can return 2 ways
+				
+				200 ok need to have body to return
+				and
+				204 no content means that the operation
+				is success but will not send the body
+				*/
 
+				// but i don't know yet so just
+				// 204
+				throw HttpThrowStatus(204, "Http::DELETE method::success no content");
+			}
 		}
-
-		//
-		if (S_ISDIR(fileStat.st_mode))
+		else if (_method == "GET")
 		{
-			// work differently for each method
-			if (_method == "POST")
+ 
+			/*
+			GET	method need to check if the path
+			i wants is exist and whether it is
+			a directory or not
+			*/
+			struct stat fileStat;
+			std::memset(&fileStat, 0, sizeof(fileStat));
+			if (stat(_combinedPath.c_str(), &fileStat) != 0)
 			{
-				// for POST
-				// if 'upload_store' is present and
-				// target is not
+				std::string ErrMsg = "Http::stat()::target_path " + _targetPath + "::";
+				ErrMsg += strerror(errno);
+				if (errno == EACCES)
+					throw HttpThrowStatus(403, ErrMsg);
+				throw HttpThrowStatus(404, ErrMsg);
 			}
-			else if (_method == "GET")
-			{
-				// GET have to check 'autoindex' is 'on'
-				// in that location block
-				const std::vector<std::string>* foundAutoIndex = _targetServer->getLocationData(_targetLocationBlock, "autoindex");
 
-				// if not found or is not 'on' then would return 403
-				if (foundAutoIndex == NULL)
-					throw HttpThrowStatus(403, "Http::autoindex is not permited here");
-				
-				if (foundAutoIndex->size() != 1)
-					throw HttpThrowStatus(500, "Internal Error::\'autoindex\' in location block is invalid");
-				
-				if ((*foundAutoIndex)[0] != "on")
-					throw HttpThrowStatus(403, "Http::autoindex is not on for this location block");
-			}
-			else 
+			if (S_ISDIR(fileStat.st_mode))
 			{
-				// here is for DELETE method for directory
-				if (std::remove(_combinedPath.c_str()) != 0)
+				// check if it target ends with '/' or not
+				if (isEndWithSlash == true)
 				{
-					// check the errno
-				}
+					// check
+					// check for directory listing (auto index)
 
-				// delete success ?
-				// 200 
-				throw HttpThrowStatus(200, "Delete Success");
+					const std::vector<std::string>* foundAutoIndex = _targetServer->getLocationData(_targetLocationBlock, "autoindex");
+
+					// if not found then should return 403 forbidden or not found
+					if (foundAutoIndex == NULL)
+						throw HttpThrowStatus(403, "Http::\"autoindex\" is not found in this block.");
+
+					if (foundAutoIndex->size() != 1)
+						throw HttpThrowStatus(403, "Http::\"autoindex\" invalid value");
+
+					if ((*foundAutoIndex)[0] == "on")
+					{
+						// generate auto indexing 
+					}
+					else
+						throw HttpThrowStatus(403, "Http::\"autoindex\" is not on for directory listing");
+				
+				}
+				else
+				{
+					// make redirections
+
+					_httpResponseList.push_back(HttpResponse());
+
+					HttpResponse& responseTarget = _httpResponseList.back();
+
+					responseTarget.setResponseBodyType(HTTP_RESPONSE_NOBODY);
+					responseTarget.setKeepAfterResponse(true);
+					responseTarget.setStatusCode(301);
+					responseTarget.setStatusMessage("Moved Permanently");
+					responseTarget.addHeader("Location", _targetPath + '/');
+
+					responseTarget.generateResponse();
+					throw HttpThrowStatus(301, "Move Permanently");
+				}
 			}
 		}
 
@@ -1072,10 +1316,12 @@ void	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Soc
 		size_t	currIndex = 0;
 		size_t	reqBuffSize = _requestBuffer.size();
 
+		generate4xx5xxErrorReponse(500, false, "test throwing");
 		// put into structure
 		parsingHttpRequestLine(currIndex, reqBuffSize);
 		parsingHttpHeader(currIndex, reqBuffSize);
 
+		validateRequestBufffer(clientSocket);
 
 	}
 	catch (std::exception &e)
@@ -1091,41 +1337,99 @@ void Http::readFromClient(const Socket& clientSocket, std::map<int, Socket>& soc
 {
 	ssize_t	readAmount;
 
-	while (_keepConnection == true)
+	readAmount = recv(clientSocket.getSocketFD().getFd(), &_recvBuffer[0], HTTP_RECV_BUFFER, 0);
+	if (readAmount == 0)
 	{
-		readAmount = recv(clientSocket.getSocketFD().getFd(), &_recvBuffer[0], HTTP_RECV_BUFFER, 0);
-		if (readAmount == 0)
+		Logger::log(LC_CONN_LOG, "Disconnecting client Socket#%d", clientSocket.getSocketFD().getFd());
+		_keepConnection = false;
+		return ;
+	}
+	else if (readAmount < 0)
+	{
+		return ;
+	}
+	else 
+	{
+		_requestBuffer.append(_recvBuffer.data(), readAmount);
+		try
 		{
-			Logger::log(LC_CONN_LOG, "Disconnecting client Socket#%d", clientSocket.getSocketFD().getFd());
-			_keepConnection = false;
+			processingRequestBuffer(clientSocket, socketMap);
 		}
-		else if (readAmount < 0)
-			break ;
-		else 
+		catch (HttpThrowStatus &status)
 		{
-			_requestBuffer.append(_recvBuffer.data(), readAmount);
-			try
-			{
-				processingRequestBuffer(clientSocket, socketMap);
-			}
-			catch (HttpThrowStatus &status)
-			{
+			Logger::log(LC_INFO, "Http::socket#%d::reponse with status code %d::%s", clientSocket.getSocketFD().getFd(), status.statusCode(), status.message().c_str());
+		}
+		catch (std::exception &e)
+		{
 
-			}
-			catch (std::exception &e)
-			{
-
-			}
-			catch (...)
-			{
-				// what 
-			}
+		}
+		catch (...)
+		{
+			// what 
 		}
 	}
-	_keepConnection = false;
+	
+	if (_isEpollout == false && _httpResponseList.empty() == false && _httpResponseList.front().hasSomethingtoSend() == true)
+	{
+		epoll_event	event;
+		std::memset(&event, 0, sizeof(event));
+		event.events = EPOLLIN | EPOLLOUT;
+		event.data.fd = clientSocket.getSocketFD().getFd();
+
+		if (epoll_ctl(clientSocket.getEpollFD().getFd(), EPOLL_CTL_MOD, clientSocket.getSocketFD().getFd(), &event) == -1)
+		{
+			std::string msg = "epoll_ctl()::error::";
+			msg += std::strerror(errno);
+			throw WebservException(msg);
+		}
+		_isEpollout = true;
+	}
+	//_keepConnection = false;
 }
 
 void	Http::writeToClient(const Socket& clientSocket, std::map<int, Socket>& SocketMap)
 {
+	HttpResponse *response_block = NULL;
 
+	// check if it is empty or what
+	if (_httpResponseList.empty() || _httpResponseList.front().isComplete())
+	{
+		Logger::log(LC_DEBUG, "WHAAAAAAT");
+		return ;
+	}
+	response_block = &_httpResponseList.front();
+
+	ssize_t	sendReturn = response_block->sendHttpResponse(clientSocket);
+
+	if (sendReturn < 0)
+	{
+		Logger::log(LC_DEBUG, "WHATTT2");
+		return ;
+	}
+
+	// remove this reponse from list if complete
+	if (response_block->isComplete())
+	{
+		//check keepafterresponse
+		_keepConnection = response_block->getKeepAfterResponse();
+		_httpResponseList.pop_front();
+	}
+
+	// then if the response list is empty now
+	// we close the EPOLLOUT
+	if (_httpResponseList.empty() || _httpResponseList.front().hasSomethingtoSend() == false)
+	{
+		epoll_event	event;
+		std::memset(&event, 0, sizeof(event));
+		event.events = EPOLLIN;
+		event.data.fd = clientSocket.getSocketFD().getFd();
+
+		if (epoll_ctl(clientSocket.getEpollFD().getFd(), EPOLL_CTL_MOD, clientSocket.getSocketFD().getFd(), &event) == -1)
+		{
+			std::string msg = "epoll_ctl()::error::";
+			msg += std::strerror(errno);
+			throw WebservException(msg);
+		}
+		_isEpollout = false;
+	}
 }

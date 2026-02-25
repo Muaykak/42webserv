@@ -21,6 +21,7 @@ private:
 	t_location_map _locationsConfig;
 	int				_listenPort;
 	std::vector<std::string> _serverNameVec;
+	std::map<unsigned int, std::string> _errorPageMap;
 
 	// set of ipv4 address host server
 	std::set<in_addr_t>	_host_ip_set;
