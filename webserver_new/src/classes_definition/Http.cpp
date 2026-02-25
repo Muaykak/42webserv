@@ -9,7 +9,9 @@ Http::Http()
 _processStatus(NO_STATUS),
 _targetServer(NULL),
 _readBody(false),
-_isEpollout(false)
+_isEpollout(false),
+_body_type(0),
+_targetLocationBlock(NULL)
 {
 	_recvBuffer.reserve(HTTP_RECV_BUFFER);
 	_sendBuffer.reserve(HTTP_SEND_BUFFER);
@@ -192,7 +194,7 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 			else
 				_requestBuffer.erase(0, currIndex);
 			currIndex = 0;
-			printHeaderField();
+			//printHeaderField();
 			break ;
 		}
 
@@ -422,11 +424,13 @@ void	Http::generate4xx5xxErrorReponse(unsigned int errorStatusCode, bool keepAft
 
 	}
 
-	//if (hasDefaultErrorPageFile == true)
-	//{
-	//	targetResponse.setResponseBodyType(HTTP_RESPONSE_BODY_FILE);
-	//}
-	//else
+	if (hasDefaultErrorPageFile == true)
+	{
+		targetResponse.setResponseBodyType(HTTP_RESPONSE_BODY_FILE);
+		targetResponse.setFileFd(errorFileFD);
+		
+	}
+	else
 	{
 		targetResponse.setResponseBodyType(HTTP_RESPONSE_BODY_FIXED_STR);
 
@@ -649,7 +653,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 		{
 			// rough check for method first
 			if (_method != "GET" && _method != "POST" && _method != "DELETE")
-				throw HttpThrowStatus(501, "Http::Method not implemented: " + _method);
+				generate4xx5xxErrorReponse(501, false, "Http::Method not implemented: " + _method);
 		}
 
 		// before anything, we check the protocol version first
@@ -768,6 +772,8 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 
 			}
 
+			generate4xx5xxErrorReponse(400, false, "testing");
+
 			// separate query and path
 			{
 				size_t	pos = _requestTarget.find_first_of('?');
@@ -791,9 +797,9 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 				std::list<std::string> splitList;
 				splitString(_targetPath, "/", splitList);
 
-				//split vector should not empty
-				if (splitList.size() == 0)
-					generate4xx5xxErrorReponse(400, false, "Bad Path. Or my bad parser lol");
+				////split vector should not empty
+				//if (splitList.size() == 0)
+				//	generate4xx5xxErrorReponse(400, false, "Bad Path. Or my bad parser lol");
 
 				bool isEndwithSlash = _targetPath[_targetPath.size() - 1] == '/' ? true : false;
 
@@ -1027,7 +1033,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 		const std::vector<std::string>* allowMethodPtr = _targetServer->getLocationData(_targetLocationBlock, "allowed_methods");
 
 		if (allowMethodPtr == NULL)
-			throw HttpThrowStatus(500, "Internal Error::allowed_methods not found in the targeted location block");
+			generate4xx5xxErrorReponse(500, false, "Internal Error::allowed_methods not found in the targeted location block");
 		
 		bool found = false;
 		for (size_t i = 0; i < allowMethodPtr->size(); i++)
@@ -1042,7 +1048,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 		// the method is not allowed in this location block
 		// return 405 Not Implemented
 		if (found == false)
-			throw HttpThrowStatus(405, "Http::method::not implemented::" + _method);
+			generate4xx5xxErrorReponse(405, false, "Http::method::not implemented::" + _method);
 	}
 
 	bool isEndWithSlash = _targetPath[_targetPath.size() - 1] == '/' ? true : false;
@@ -1063,7 +1069,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 			{
 				if (foundIndex->size() != 1)
 				{
-					throw HttpThrowStatus(500, "Internal Error:: invalid \'index\' directive in location block");
+					generate4xx5xxErrorReponse(500, false, "Internal Error:: invalid \'index\' directive in location block");
 				}
 
 				_targetPath += (*foundIndex)[0];
@@ -1104,7 +1110,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 						{
 							// the next index should be the path
 							if (i + 1 == cgi_pass_vec->size())
-								throw HttpThrowStatus(500, "Internal Error::'cgi_pass' in configuration file is wrong:: must be [CGI extension] followed by [absolute path to CGI]");
+								generate4xx5xxErrorReponse(500, false, "Internal Error::'cgi_pass' in configuration file is wrong:: must be [CGI extension] followed by [absolute path to CGI]");
 							else
 								_cgiPath = (*cgi_pass_vec)[i + 1];
 						}
@@ -1149,12 +1155,12 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 				block in configuration file	
 				*/
 				if (foundUploadStore == NULL)
-					throw HttpThrowStatus(500, "Internal Error::using POST to upload file to server requires \'upload_store\' to be defined in configuration file");
+					generate4xx5xxErrorReponse(500, false, "Internal Error::using POST to upload file to server requires \'upload_store\' to be defined in configuration file");
 
 				// just for sure checking
 				if (foundUploadStore->size() != 1 || (*foundUploadStore)[0].empty())
 				{
-					throw HttpThrowStatus(500, "Internal Error::invalid \'root\' value");
+					generate4xx5xxErrorReponse(500, false, "Internal Error::invalid \'root\' value");
 				}
 
 				_uploadStorePath = (*foundUploadStore)[0];
@@ -1170,13 +1176,13 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 				// it should not be null but if so then treat as internal error
 				if (foundRoot == NULL)
 				{
-					throw HttpThrowStatus(500, "Internal Error::require 'root' in this location block");
+					generate4xx5xxErrorReponse(500, false, "Internal Error::require 'root' in this location block");
 				}
 
 				// just for sure checking
 				if (foundRoot->size() != 1 || (*foundRoot)[0].empty())
 				{
-					throw HttpThrowStatus(500, "Internal Error::invalid \'root\' value");
+					generate4xx5xxErrorReponse(500, false, "Internal Error::invalid \'root\' value");
 				}
 
 				systemPath = (*foundRoot)[0];
@@ -1213,11 +1219,11 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 			if (std::remove(_combinedPath.c_str()) != 0)
 			{
 				if (errno == ENOENT)
-					throw HttpThrowStatus(404, "Http::DELETE method::file not found");
+					generate4xx5xxErrorReponse(404, false, "Http::DELETE method::file not found");
 				else if (errno == EACCES)
-					throw HttpThrowStatus(403, "Http::DELETE method::permission denied");
+					generate4xx5xxErrorReponse(403, false, "Http::DELETE method::permission denied");
 				else
-					throw HttpThrowStatus(500, "Internal Error::DELETE method::std::remove()::failed::" + std::string(strerror(errno)));
+					generate4xx5xxErrorReponse(500, false, "Internal Error::DELETE method::std::remove()::failed::" + std::string(strerror(errno)));
 				
 			}
 			else
@@ -1251,8 +1257,8 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 				std::string ErrMsg = "Http::stat()::target_path " + _targetPath + "::";
 				ErrMsg += strerror(errno);
 				if (errno == EACCES)
-					throw HttpThrowStatus(403, ErrMsg);
-				throw HttpThrowStatus(404, ErrMsg);
+					generate4xx5xxErrorReponse(403, false, ErrMsg);
+				generate4xx5xxErrorReponse(404, false, ErrMsg);
 			}
 
 			if (S_ISDIR(fileStat.st_mode))
@@ -1267,17 +1273,17 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 
 					// if not found then should return 403 forbidden or not found
 					if (foundAutoIndex == NULL)
-						throw HttpThrowStatus(403, "Http::\"autoindex\" is not found in this block.");
+						generate4xx5xxErrorReponse(403, false, "Http::\"autoindex\" is not found in this block.");
 
 					if (foundAutoIndex->size() != 1)
-						throw HttpThrowStatus(403, "Http::\"autoindex\" invalid value");
+						generate4xx5xxErrorReponse(403, false, "Http::\"autoindex\" invalid value");
 
 					if ((*foundAutoIndex)[0] == "on")
 					{
 						// generate auto indexing 
 					}
 					else
-						throw HttpThrowStatus(403, "Http::\"autoindex\" is not on for directory listing");
+						generate4xx5xxErrorReponse(403, false, "Http::\"autoindex\" is not on for directory listing");
 				
 				}
 				else
@@ -1316,7 +1322,9 @@ void	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Soc
 		size_t	currIndex = 0;
 		size_t	reqBuffSize = _requestBuffer.size();
 
-		generate4xx5xxErrorReponse(500, false, "test throwing");
+		// for testing
+		//generate4xx5xxErrorReponse(400, false, "Just testing");
+
 		// put into structure
 		parsingHttpRequestLine(currIndex, reqBuffSize);
 		parsingHttpHeader(currIndex, reqBuffSize);
@@ -1350,7 +1358,7 @@ void Http::readFromClient(const Socket& clientSocket, std::map<int, Socket>& soc
 	}
 	else 
 	{
-		_requestBuffer.append(_recvBuffer.data(), readAmount);
+		_requestBuffer.append(&(_recvBuffer[0]), readAmount);
 		try
 		{
 			processingRequestBuffer(clientSocket, socketMap);
@@ -1404,6 +1412,7 @@ void	Http::writeToClient(const Socket& clientSocket, std::map<int, Socket>& Sock
 	if (sendReturn < 0)
 	{
 		Logger::log(LC_DEBUG, "WHATTT2");
+		_keepConnection = false;
 		return ;
 	}
 

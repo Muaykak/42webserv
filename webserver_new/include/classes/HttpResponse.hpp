@@ -8,6 +8,7 @@
 # include "./WebservException.hpp"
 # include "./utility_function.hpp"
 # include <ctime>
+# include "../../include/classes/FileDescriptor.hpp"
 
 class Socket;
 
@@ -25,17 +26,23 @@ class HttpResponse {
 		//bool	isCgiAlive;
 		//bool	isComplete;
 		std::vector<char> _sendBuffer;
+		size_t			_sendBufferOffset;
 
 		std::map<std::string, std::set<std::string> > _responseHeader;
 		unsigned int _statusCode;
 		std::string	_statusMessage;
 		std::string _contentType;
+		FileDescriptor _fileFd;
 		std::string _fixedBodyStr;
 		e_http_response_body_type	_responseBodyType;
 		bool _keepAfterResponse;
 		bool _canModify;
 		bool _isComplete;
 		bool _hasSomethingtoSend;
+		bool _isReachEOF;
+
+		// need to fix this later
+		bool _isCgiFinished;
 
 
 		// if all Buffer is sent. the response has nothing
@@ -70,6 +77,9 @@ class HttpResponse {
 
 		const std::string& getFixedBodyStr() const;
 		void setFixedBodyStr(const std::string& bodyStr);
+
+		const FileDescriptor& getFileFd() const;
+		void setFileFd(const FileDescriptor& fd);
 
 		ssize_t	sendHttpResponse(const Socket& clientSocket);
 

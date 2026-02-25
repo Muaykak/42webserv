@@ -61,7 +61,8 @@ SRC_FUNC_FILE = chartables.cpp \
 				signal_handler.cpp \
 				tolower.cpp \
 				ip_conversion.cpp \
-				string_to_size_t.cpp
+				string_to_size_t.cpp \
+				size_t_to_hex.cpp
 				
 
 SOURCE_MAIN_FILE = main.cpp

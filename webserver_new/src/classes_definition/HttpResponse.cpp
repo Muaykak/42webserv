@@ -7,7 +7,10 @@ _canModify(true),
 _keepAfterResponse(false),
 _responseBodyType(HTTP_RESPONSE_NOBODY),
 _isComplete(false),
-_hasSomethingtoSend(false)
+_hasSomethingtoSend(false),
+_isReachEOF(false),
+_isCgiFinished(false),
+_sendBufferOffset(0)
 {
 _sendBuffer.reserve(HTTP_SEND_BUFFER);
 }
@@ -98,6 +101,19 @@ void HttpResponse::setFixedBodyStr(const std::string& bodyStr)
 	_fixedBodyStr = bodyStr;
 }
 
+const FileDescriptor& HttpResponse::getFileFd() const
+{
+	return (_fileFd);
+}
+
+void HttpResponse::setFileFd(const FileDescriptor& fd)
+{
+	if (_canModify == false)
+		throw WebservException("HttpResponse::cannot modify response when not in modifying state");
+
+	_fileFd = fd;
+}
+
 void	HttpResponse::generateResponse()
 {
 	if (_canModify = false)
@@ -124,10 +140,10 @@ void	HttpResponse::generateResponse()
 
 		std::vector<char> tempTimeBuffer(100);
 
-		std::strftime(tempTimeBuffer.data(), tempTimeBuffer.size(), "%a, %d %b %Y %H:%M:%S GMT", timeGmt);
+		std::strftime(&tempTimeBuffer[0], tempTimeBuffer.size(), "%a, %d %b %Y %H:%M:%S GMT", timeGmt);
 
 		tempStr += "Date: ";
-		tempStr += tempTimeBuffer.data();
+		tempStr += &tempTimeBuffer[0];
 		tempStr += "\r\n";
 	}
 
@@ -140,6 +156,10 @@ void	HttpResponse::generateResponse()
 			tempStr += "Content-Length: ";
 			tempStr += toString(_fixedBodyStr.size());
 			tempStr += "\r\n";
+		}
+		else if (_responseBodyType == HTTP_RESPONSE_BODY_FILE)
+		{
+			tempStr += "Transfer-Encoding: chunked\r\n";
 		}
 		else
 		{
@@ -228,39 +248,100 @@ ssize_t	HttpResponse::sendHttpResponse(const Socket& clientSocket)
 	if (_bufferList.empty() && _sendBuffer.empty())
 		return (0);
 
+	size_t	needToappendSize = HTTP_RECV_BUFFER - _sendBuffer.size();
 	// appending buffer
+
+	std::list<s_response_buff>::iterator bufferListIt;
+	while (needToappendSize > 0)
 	{
-		std::list<s_response_buff>::iterator bufferListIt;
-		size_t	needToappendSize = HTTP_RECV_BUFFER - _sendBuffer.size();
-		while (needToappendSize > 0 && !_bufferList.empty())
+		if (_bufferList.empty())
 		{
-			// what left to fill
-			bufferListIt = _bufferList.begin();
-			if (needToappendSize < bufferListIt->buffer.size() - bufferListIt->currentIndex)
+			if (_responseBodyType == HTTP_RESPONSE_BODY_FILE && _isReachEOF == false)
 			{
-				_sendBuffer.insert(_sendBuffer.end(), bufferListIt->buffer.begin() + bufferListIt->currentIndex, bufferListIt->buffer.begin() + bufferListIt->currentIndex + needToappendSize);
-				bufferListIt->currentIndex += needToappendSize;
-				needToappendSize = 0;
+				_bufferList.push_back(s_response_buff());
+
+				s_response_buff& targetResBuff = _bufferList.back();
+
+				targetResBuff.currentIndex = 0;
+
+				std::vector<char> temp(HTTP_SEND_BUFFER);
+
+				// read to buffer
+				ssize_t	readAmount = read(_fileFd.getFd(), &temp[0], HTTP_SEND_BUFFER);
+
+				if (readAmount < 0)
+				{
+					// fatal error
+					if (errno != EINTR)
+					{
+						return (-1);
+					}
+					continue;
+				}
+				else if (readAmount == 0)
+				{
+					// reach EOF
+					_isReachEOF = true;
+					std::string tempchunkStr = "0\r\n\r\n";
+					targetResBuff.buffer.insert(targetResBuff.buffer.end(), tempchunkStr.begin(), tempchunkStr.end());
+				}
+				else
+				{
+					std::string startchunkhex = size_t_to_hex(readAmount);
+
+					startchunkhex += "\r\n";
+
+					targetResBuff.buffer.insert(targetResBuff.buffer.end(), startchunkhex.begin(), startchunkhex.end());
+					targetResBuff.buffer.insert(targetResBuff.buffer.end(), temp.begin(), temp.begin() + readAmount);
+
+					std::string endlind = "\r\n";
+
+					targetResBuff.buffer.insert(targetResBuff.buffer.end(), endlind.begin(), endlind.end());
+				}
+
 			}
 			else
-			{
-				_sendBuffer.insert(_sendBuffer.end(), bufferListIt->buffer.begin() + bufferListIt->currentIndex, bufferListIt->buffer.end());
-				needToappendSize -= bufferListIt->buffer.size() - bufferListIt->currentIndex;
-				_bufferList.pop_front();
-			}
+				break ;
+		}
+
+		bufferListIt = _bufferList.begin();
+
+		if (needToappendSize < bufferListIt->buffer.size() - bufferListIt->currentIndex)
+		{
+			_sendBuffer.insert(_sendBuffer.end(), bufferListIt->buffer.begin() + bufferListIt->currentIndex, bufferListIt->buffer.begin() + bufferListIt->currentIndex + needToappendSize);
+
+			bufferListIt->currentIndex += needToappendSize;
+			needToappendSize = 0;
+		}
+		else
+		{
+			_sendBuffer.insert(_sendBuffer.end(), bufferListIt->buffer.begin() + bufferListIt->currentIndex, bufferListIt->buffer.end());
+			needToappendSize -= bufferListIt->buffer.size() - bufferListIt->currentIndex;
+			_bufferList.pop_front();
 		}
 	}
 
-	ssize_t	sendAmount = send(clientSocket.getSocketFD().getFd(), _sendBuffer.data(), _sendBuffer.size(), 0);
+	ssize_t	sendAmount = send(clientSocket.getSocketFD().getFd(), &_sendBuffer[_sendBufferOffset], _sendBuffer.size() - _sendBufferOffset, 0);
 
 	if (sendAmount > 0)
-		_sendBuffer.erase(_sendBuffer.begin(), _sendBuffer.begin() + sendAmount);
+	{
+		_sendBufferOffset += sendAmount;
+		if (_sendBufferOffset >= _sendBuffer.size())
+		{
+			_sendBuffer.clear();
+			_sendBufferOffset = 0;
+		}
+
+	}
 
 	// temporary
 	if (_sendBuffer.empty() && _bufferList.empty())
 	{
 		_hasSomethingtoSend = false;
 		_isComplete = true;
+
+		if (_responseBodyType == HTTP_RESPONSE_BODY_FILE && _isReachEOF == false)
+			_isComplete = false;
 	}
 	
 	return (sendAmount);
