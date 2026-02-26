@@ -700,11 +700,67 @@ void	Http::validateRequestBufferSelectServer(const Socket& clientSocket,const st
 
 			-> for us we can response with 403 Forbidden. this way we can avoid trouble the most.
 			*/
-			if (tempAddr != clientSocket._client_addr_in)
+			//const std::set<in_addr_t>& serverIpHost = clientSocket.getServerIpHost();
+
+			//if (serverIpHost.size() != 0)
+			//{
+			//	if (serverIpHost.find(tempAddr) == serverIpHost.end())
+			//	{
+			//		std::string msg = "Need fixing::Invalid::URI Authority::IP mismatch:: server_ip:" + in_addr_t_to_string(clientSocket._client_addr_in) + " request_target:" + in_addr_t_to_string(tempAddr);
+			//		generate4xx5xxErrorReponse(403, false, msg);
+			//	}
+			//	else
+			//	{
+
+			//	}
+			//}
+
 			{
-				std::string msg = "Invalid::URI Authority::IP mismatch:: server_ip:" + in_addr_t_to_string(clientSocket._client_addr_in) + " request_target:" + in_addr_t_to_string(tempAddr);
-				generate4xx5xxErrorReponse(403, false, msg);
+				const ServerConfig* fallback_server = NULL;
+
+				const std::vector<ServerConfig>* ptr = clientSocket.getServersConfigPtr();
+				std::vector<ServerConfig>::const_iterator serverVecIt = ptr->begin();
+				const std::set<in_addr_t>* sethostipptr = NULL;
+				_targetServer = NULL;
+				while (_targetServer == NULL && serverVecIt != ptr->end())
+				{
+					sethostipptr = &serverVecIt->getHostIp();
+					if (sethostipptr->size() == 0)
+					{
+						if (fallback_server == NULL)
+							fallback_server = &(*serverVecIt);
+					}
+					else
+					{
+						// if found
+						if (sethostipptr->find(tempAddr) != sethostipptr->end())
+						{
+							_targetServer = &(*serverVecIt);
+							break;
+						}
+					}
+					++serverVecIt;
+				}
+
+				if (_targetServer == NULL)
+				{
+					if (fallback_server)
+						_targetServer = fallback_server;
+					else
+					{
+						std::string msg = "Need fixing::Invalid::URI Authority::IP mismatch:: server_ip:" + in_addr_t_to_string(clientSocket._client_addr_in) + " request_target:" + in_addr_t_to_string(tempAddr);
+						generate4xx5xxErrorReponse(403, false, msg);
+					}
+				}
+
 			}
+
+
+			//if (tempAddr != clientSocket._client_addr_in)
+			//{
+			//	std::string msg = "Invalid::URI Authority::IP mismatch:: server_ip:" + in_addr_t_to_string(clientSocket._client_addr_in) + " request_target:" + in_addr_t_to_string(tempAddr);
+			//	generate4xx5xxErrorReponse(403, false, msg);
+			//}
 		}
 		else
 		{
@@ -1412,8 +1468,8 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 				std::string ErrMsg = "Http::stat()::target_path " + _targetPath + "::";
 				ErrMsg += strerror(errno);
 				if (errno == EACCES)
-					generate4xx5xxErrorReponse(403, false, ErrMsg);
-				generate4xx5xxErrorReponse(404, false, ErrMsg);
+					generate4xx5xxErrorReponse(403, true, ErrMsg);
+				generate4xx5xxErrorReponse(404, true, ErrMsg);
 			}
 
 			if (S_ISDIR(fileStat.st_mode))
@@ -1428,17 +1484,18 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 
 					// if not found then should return 403 forbidden or not found
 					if (foundAutoIndex == NULL)
-						generate4xx5xxErrorReponse(403, false, "Http::\"autoindex\" is not found in this block.");
+						generate4xx5xxErrorReponse(403, true, "Http::\"autoindex\" is not found in this block.");
 
 					if (foundAutoIndex->size() != 1)
-						generate4xx5xxErrorReponse(403, false, "Http::\"autoindex\" invalid value");
+						generate4xx5xxErrorReponse(403, true, "Http::\"autoindex\" invalid value");
 
 					if ((*foundAutoIndex)[0] == "on")
 					{
 						// generate auto indexing 
+						generate4xx5xxErrorReponse(500, true, "Http::autoindex is allowed but Not implemented yet");
 					}
 					else
-						generate4xx5xxErrorReponse(403, false, "Http::\"autoindex\" is not on for directory listing");
+						generate4xx5xxErrorReponse(403, true, "Http::\"autoindex\" is not on for directory listing");
 				
 				}
 				else
@@ -1469,7 +1526,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 					if (fd < 0)
 					{
 						if (errno == EACCES)
-							generate4xx5xxErrorReponse(403, false, "Http::GET to regular file failed::open() failed");
+							generate4xx5xxErrorReponse(403, true, "Http::GET to regular file failed::open() failed");
 
 						else if (errno == EMFILE || errno == ENFILE)
 						{
@@ -1477,7 +1534,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 						}
 						else if (errno == ENOENT)
 						{
-							generate4xx5xxErrorReponse(404, false, "Http:: Get to regular file:: file is missing");
+							generate4xx5xxErrorReponse(404, true, "Http:: Get to regular file:: file is missing");
 						}
 						// some unknown error
 						else
@@ -1518,6 +1575,8 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 
 					_processStatus = FINISHED_READ_BODY;
 					targetResponse.generateResponse();
+
+					clearRequestData();
 					return ;
 				}
 				else

@@ -65,6 +65,17 @@ const FileDescriptor& Socket::getEpollFD() const
 	return (_epollFD);
 }
 
+
+void Socket::setServerIpHost(const std::set<in_addr_t>& obj)
+{
+	_server_ip_host = obj;
+}
+
+const std::set<in_addr_t>& Socket::getServerIpHost() const
+{
+	return (_server_ip_host);
+}
+
 bool Socket::setupCGI_socket(e_socket_type cgiSocketType, const std::vector<ServerConfig>* serversConfig, const FileDescriptor &epollFD,
 	Socket* parentSocket, std::map<int, Socket>* socketMap, CgiProcess& cgiProcess)
 {
@@ -345,6 +356,8 @@ bool Socket::handleEvent(const epoll_event &event)
 						_socketMap->insert(std::make_pair(client_socket, Socket(client_socket)));
 						(*_socketMap)[client_socket].setupSocket(CLIENT_SOCKET, _serversConfig, _epollFD, _socketMap);
 						(*_socketMap)[client_socket]._client_addr_in = client_address.sin_addr.s_addr;
+						(*_socketMap)[client_socket].setServerIpHost(_server_ip_host);
+
 						continue;
 					}
 					if (errno == EAGAIN || errno == EWOULDBLOCK)

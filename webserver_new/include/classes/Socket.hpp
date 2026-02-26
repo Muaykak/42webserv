@@ -75,6 +75,8 @@ public:
 	// return false means this Socket should be DESTROYED after handleEVENT
 	bool handleEvent(const epoll_event &event);
 
+	void setServerIpHost(const std::set<in_addr_t>& obj);
+	const std::set<in_addr_t>& getServerIpHost() const;
 };
 
 #endif

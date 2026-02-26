@@ -198,6 +198,29 @@
             padding: 3rem 0;
             font-size: 0.95rem;
         }
+
+        /* --- Mobile Responsiveness (iPhone & smaller devices) --- */
+        @media (max-width: 768px) {
+            header { padding: 3rem 1rem 4rem 1rem; }
+            header h1 { font-size: 2rem; }
+            header p { font-size: 1rem; }
+            
+            nav { padding: 1rem; margin-top: -2rem; }
+            nav ul { gap: 0.5rem; flex-direction: column; }
+            nav a { padding: 0.6rem 1rem; display: block; text-align: center; }
+            
+            section { padding: 1.5rem; margin: 1.5rem 0; }
+            h2 { font-size: 1.3rem; }
+            
+            /* Make table scrollable horizontally on small screens */
+            table { display: block; overflow-x: auto; white-space: nowrap; }
+            
+            fieldset { padding: 1rem; }
+            
+            blockquote { padding: 1rem; margin: 1rem 0; font-size: 0.95rem; }
+            
+            input[type="submit"] { width: 100%; }
+        }
     </style>
 </head>
 <body>
@@ -207,8 +230,7 @@
         <p>This is a purely structural HTML page designed to test server payload handling, buffering, and content delivery limits.</p>
         <hr>
     </header>
-
-    <nav>
+        <nav>
         <h2>Table of Contents</h2>
         <ul>
             <li><a href="#section-text">1. Large Text Blocks</a></li>
@@ -216,6 +238,7 @@
             <li><a href="#section-table">3. Data Table</a></li>
             <li><a href="#section-form">4. HTML Form</a></li>
             <li><a href="#section-code">5. Code Blocks</a></li>
+            <li><a href="#section-image">6. Image Hyperlink</a></li>
         </ul>
         <hr>
     </nav>
@@ -396,6 +419,28 @@ int main(int argc, char **argv) {
 }
 </code>
 </pre>
+        </section>
+
+        <hr>
+
+        <section id="section-image">
+            <h2>6. Image Hyperlink (Testing Binary Serving)</h2>
+            <p>Click the image below to open the full-resolution JPEG. <strong>Server Test:</strong> Replace the URL with a local path like <code>/images/test.jpg</code> to test if your C++ server correctly sends <code>image/jpeg</code> binary headers without corrupting the file payload.</p>
+            <div style="text-align: center; margin-top: 2rem;">
+                <a href="./images/test4.jpg" target="_blank" title="Click to open full JPEG">
+                    <img src="./images/test4.jpg" alt="Sample JPEG Test" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); transition: transform 0.2s; border: 1px solid var(--border);">
+                </a>
+            </div>
+            <div style="text-align: center; margin-top: 2rem;">
+                <a href="./images/test5.jpg" target="_blank" title="Click to open full JPEG">
+                    <img src="./images/test5.jpg" alt="Sample JPEG Test" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); transition: transform 0.2s; border: 1px solid var(--border);">
+                </a>
+            </div>
+            <div style="text-align: center; margin-top: 2rem;">
+                <a href="./images/test6.jpg" target="_blank" title="Click to open full JPEG">
+                    <img src="./images/test6.jpg" alt="Sample JPEG Test" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); transition: transform 0.2s; border: 1px solid var(--border);">
+                </a>
+            </div>
         </section>
 
     </main>

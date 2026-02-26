@@ -124,8 +124,15 @@ void HttpResponse::setFileFd(const FileDescriptor& fd)
 
 void	HttpResponse::generateResponse()
 {
-	if (_canModify = false)
+	if (_canModify == false)
 		throw WebservException("HttpResponse:: can only generate response 1 time only");
+
+	// tell the browser to not caching
+	{
+		this->addHeader("Cache-Control", "no-store");
+		this->addHeader("Cache-Control", "no-cache");
+		this->addHeader("Cache-Control", "must-revalidate");
+	}
 	
 	_canModify = false;
 
@@ -220,6 +227,7 @@ void	HttpResponse::generateResponse()
 			++responseHeaderIt;
 		}
 	}
+
 
 	// end the header part with another "\r\n"
 	tempStr += "\r\n";
