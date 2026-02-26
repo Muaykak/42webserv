@@ -460,15 +460,24 @@ void	Http::generate4xx5xxErrorReponse(unsigned int errorStatusCode, bool keepAft
 
 	// testing if the file is open and readable
 	FileDescriptor errorFileFD;
+	size_t			fileSize = 0;
 
 	if (!errorPageFilePath.empty())
 	{
-		int fd = open(errorPageFilePath.c_str(), O_RDONLY);
-		if (fd > -1)
+		// check stat to get the file 
+		struct stat fileStat;
+		std::memset(&fileStat, 0, sizeof(fileStat));
+		if (stat(_combinedPath.c_str(), &fileStat) == 0)
 		{
-			errorFileFD = fd;
-			hasDefaultErrorPageFile = true;
+			int fd = open(errorPageFilePath.c_str(), O_RDONLY);
+			if (fd > -1)
+			{
+				fileSize = fileStat.st_size;
+				errorFileFD = fd;
+				hasDefaultErrorPageFile = true;
+			}
 		}
+
 	}
 
 	// try to 
@@ -539,6 +548,7 @@ void	Http::generate4xx5xxErrorReponse(unsigned int errorStatusCode, bool keepAft
 	{
 		targetResponse.setResponseBodyType(HTTP_RESPONSE_BODY_FILE);
 		targetResponse.setFileFd(errorFileFD);
+		targetResponse.setFileSize(fileSize);
 		
 	}
 	else
@@ -1569,6 +1579,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 					targetResponse.setContentType(contentTypeTable().extensionToContentType(_combinedPath));
 					targetResponse.setResponseBodyType(HTTP_RESPONSE_BODY_FILE);
 					targetResponse.setFileFd(tempFd);
+					targetResponse.setFileSize(fileStat.st_size);
 					targetResponse.setKeepAfterResponse(true);
 					targetResponse.setStatusCode(200);
 					targetResponse.setStatusMessage("OK");

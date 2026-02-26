@@ -10,7 +10,8 @@ _isComplete(false),
 _hasSomethingtoSend(false),
 _isReachEOF(false),
 _isCgiFinished(false),
-_sendBufferOffset(0)
+_sendBufferOffset(0),
+_fileSize(0)
 {
 _sendBuffer.reserve(HTTP_SEND_BUFFER);
 }
@@ -122,6 +123,19 @@ void HttpResponse::setFileFd(const FileDescriptor& fd)
 	_fileFd = fd;
 }
 
+size_t	HttpResponse::getFileSize() const
+{
+	return (_fileSize);
+}
+
+void HttpResponse::setFileSize(size_t fileSize)
+{
+	if (_canModify == false)
+		throw WebservException("HttpResponse::cannot modify response when not in modifying state");
+	
+	_fileSize = fileSize;
+}
+
 void	HttpResponse::generateResponse()
 {
 	if (_canModify == false)
@@ -174,7 +188,9 @@ void	HttpResponse::generateResponse()
 		}
 		else if (_responseBodyType == HTTP_RESPONSE_BODY_FILE)
 		{
-			tempStr += "Transfer-Encoding: chunked\r\n";
+			tempStr += "Content-Length: ";
+			tempStr += toString(_fileSize);
+			tempStr += "\r\n";
 		}
 		else
 		{
@@ -298,21 +314,21 @@ ssize_t	HttpResponse::sendHttpResponse(const Socket& clientSocket)
 				{
 					// reach EOF
 					_isReachEOF = true;
-					std::string tempchunkStr = "0\r\n\r\n";
-					targetResBuff.buffer.insert(targetResBuff.buffer.end(), tempchunkStr.begin(), tempchunkStr.end());
+					//std::string tempchunkStr = "0\r\n\r\n";
+					//targetResBuff.buffer.insert(targetResBuff.buffer.end(), tempchunkStr.begin(), tempchunkStr.end());
 				}
 				else
 				{
-					std::string startchunkhex = size_t_to_hex(readAmount);
+					//std::string startchunkhex = size_t_to_hex(readAmount);
 
-					startchunkhex += "\r\n";
+					//startchunkhex += "\r\n";
 
-					targetResBuff.buffer.insert(targetResBuff.buffer.end(), startchunkhex.begin(), startchunkhex.end());
+					//targetResBuff.buffer.insert(targetResBuff.buffer.end(), startchunkhex.begin(), startchunkhex.end());
 					targetResBuff.buffer.insert(targetResBuff.buffer.end(), temp.begin(), temp.begin() + readAmount);
 
-					std::string endlind = "\r\n";
+					//std::string endlind = "\r\n";
 
-					targetResBuff.buffer.insert(targetResBuff.buffer.end(), endlind.begin(), endlind.end());
+					//targetResBuff.buffer.insert(targetResBuff.buffer.end(), endlind.begin(), endlind.end());
 				}
 
 			}

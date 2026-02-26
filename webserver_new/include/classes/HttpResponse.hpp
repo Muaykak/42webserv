@@ -33,6 +33,8 @@ class HttpResponse {
 		std::string	_statusMessage;
 		std::string _contentType;
 		FileDescriptor _fileFd;
+		size_t	_fileSize;
+
 		std::string _fixedBodyStr;
 		e_http_response_body_type	_responseBodyType;
 		bool _keepAfterResponse;
@@ -81,6 +83,9 @@ class HttpResponse {
 
 		const FileDescriptor& getFileFd() const;
 		void setFileFd(const FileDescriptor& fd);
+
+		size_t	getFileSize() const;
+		void	setFileSize(size_t fileSize);
 
 		ssize_t	sendHttpResponse(const Socket& clientSocket);
 
