@@ -55,6 +55,7 @@ class HttpResponse {
 
 
 		void addHeader(const std::string& headerName, const std::string& headerValue);
+		std::map<std::string, std::set<std::string> >& getHeader();
 
 		void generateResponse();
 

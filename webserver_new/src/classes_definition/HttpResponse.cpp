@@ -26,6 +26,14 @@ void	HttpResponse::addHeader(const std::string& headerName, const std::string &h
 	}
 }
 
+std::map<std::string, std::set<std::string> >& HttpResponse::getHeader()
+{
+	if (_canModify == false)
+		throw WebservException("HttpResponse::cannot modify response when not in modifying state");
+
+	return (_responseHeader);
+}
+
 bool HttpResponse::getKeepAfterResponse() const
 {
 	return (_keepAfterResponse);

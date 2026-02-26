@@ -15,7 +15,9 @@ enum e_http_process_status {
 	NO_STATUS,
 	READING_REQUEST_LINE,
 	READING_HEADER,
-	VALIDATING_REQUEST
+	VALIDATING_REQUEST,
+	READING_BODY,
+	FINISHED_READ_BODY
 };
 
 class Http {
@@ -55,7 +57,10 @@ class Http {
 		void	validateRequestBufferSelectServer(const Socket& clientSocket, const std::string& authStr);
 
 		void	generate4xx5xxErrorReponse(unsigned int errorStatusCode, bool keepAfterResponse, const std::string& throwMsg);
+		void	generate3xxRedirectResponse(unsigned int statusCode);
 
+
+		void	clearRequestData();
 		e_http_process_status	_processStatus;
 		std::string		_method;
 		std::string		_requestTarget;	
@@ -65,7 +70,9 @@ class Http {
 		std::string		_protocol; // after validating the string will be "HTTP/1.1" => "11"
 		std::string		_cgiPath;
 		std::string 	_uploadStorePath;
+		std::string		_authorityPart;
 
+		bool			_checkExpectBody;
 		bool			_readBody;
 		int				_body_type;
 		size_t			_body_size;

@@ -1,8 +1,410 @@
 <!DOCTYPE html>
-<head><title>TEST</title></head>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webserv - Long Test Page</title>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --bg: #f3f4f6;
+            --surface: #ffffff;
+            --text: #1f2937;
+            --text-light: #6b7280;
+            --border: #e5e7eb;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+        }
+
+        header {
+            background-color: var(--primary);
+            color: white;
+            padding: 4rem 1rem 5rem 1rem;
+            text-align: center;
+        }
+
+        header h1 { margin: 0 0 1rem 0; font-size: 2.5rem; }
+        header p { margin: 0; opacity: 0.9; font-size: 1.2rem; }
+        header hr { display: none; }
+
+        main, nav, footer {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 0 1rem;
+        }
+
+        nav {
+            background: var(--surface);
+            padding: 1.5rem 2rem;
+            margin-top: -3rem;
+            border-radius: 12px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            position: relative;
+            z-index: 10;
+        }
+
+        nav h2 { margin-top: 0; color: var(--text); border-bottom: none; padding-bottom: 0; }
+        nav ul { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 1rem; }
+        
+        nav a {
+            text-decoration: none;
+            color: var(--text);
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            background: var(--bg);
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
+        
+        nav a:hover { background: var(--primary); color: white; }
+        nav hr { display: none; }
+
+        section {
+            background: var(--surface);
+            padding: 3rem;
+            margin: 2rem 0;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+
+        h2 {
+            color: var(--text);
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 0.75rem;
+            margin-top: 0;
+            margin-bottom: 1.5rem;
+        }
+
+        main > hr {
+            display: none; /* Hide standard HRs since sections are styled as cards */
+        }
+
+        blockquote {
+            border-left: 4px solid var(--primary);
+            background: #eef2ff;
+            margin: 2rem 0;
+            padding: 1.5rem 2rem;
+            border-radius: 0 8px 8px 0;
+            font-style: italic;
+            color: #3730a3;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 0 0 1px var(--border);
+            border: none;
+        }
+
+        th, td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            background-color: #f9fafb;
+            font-weight: 600;
+            color: var(--text-light);
+            text-transform: uppercase;
+            font-size: 0.85rem;
+        }
+
+        tr:last-child td { border-bottom: none; }
+        tr:hover { background-color: #f9fafb; }
+
+        fieldset {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 2rem;
+            margin-top: 1rem;
+            background: #fdfdfd;
+        }
+
+        legend {
+            font-weight: 600;
+            color: var(--primary);
+            padding: 0 0.5rem;
+            background: var(--surface);
+            border-radius: 4px;
+        }
+
+        label { font-weight: 500; color: var(--text); }
+
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 0.75rem;
+            margin-top: 0.5rem;
+            margin-bottom: 1rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-family: inherit;
+            transition: all 0.2s;
+            box-sizing: border-box;
+        }
+
+        input[type="text"]:focus, textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+        }
+
+        input[type="radio"], input[type="checkbox"] {
+            margin-right: 0.5rem;
+            accent-color: var(--primary);
+        }
+
+        input[type="submit"] {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.75rem 2rem;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-top: 1rem;
+            font-size: 1rem;
+        }
+
+        input[type="submit"]:hover { background: var(--primary-hover); }
+
+        pre {
+            background: #1e293b;
+            color: #f8fafc;
+            padding: 1.5rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 0.95rem;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        code { font-family: 'Fira Code', 'Consolas', monospace; }
+
+        footer {
+            text-align: center;
+            color: var(--text-light);
+            padding: 3rem 0;
+            font-size: 0.95rem;
+        }
+    </style>
+</head>
 <body>
-	<center>
-		<h1> Hello World.</h1>
-	</center>
+
+    <header>
+        <h1>Welcome to the Webserv Test Page</h1>
+        <p>This is a purely structural HTML page designed to test server payload handling, buffering, and content delivery limits.</p>
+        <hr>
+    </header>
+
+    <nav>
+        <h2>Table of Contents</h2>
+        <ul>
+            <li><a href="#section-text">1. Large Text Blocks</a></li>
+            <li><a href="#section-lists">2. Nested Lists</a></li>
+            <li><a href="#section-table">3. Data Table</a></li>
+            <li><a href="#section-form">4. HTML Form</a></li>
+            <li><a href="#section-code">5. Code Blocks</a></li>
+        </ul>
+        <hr>
+    </nav>
+
+    <main>
+        <section id="section-text">
+            <h2>1. Large Text Blocks</h2>
+            <p><strong>Testing continuous text parsing and byte buffering.</strong></p>
+            <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
+            <p>Curabitur pretium tincidunt lacus. Nulla gravida orci a odio. Nullam varius, turpis et commodo pharetra, est eros bibendum elit, nec luctus magna felis sollicitudin mauris. Integer in mauris eu nibh euismod gravida. Duis ac tellus et risus vulputate vehicula. Donec lobortis risus a elit. Etiam tempor. Ut ullamcorper, ligula eu tempor congue, eros est euismod turpis, id tincidunt sapien risus a quam. Maecenas fermentum consequat mi. Donec fermentum. Pellentesque malesuada nulla a mi. Duis sapien sem, aliquet nec, commodo eget, consequat quis, neque.</p>
+            <p>Aliquam faucibus, elit ut dictum aliquet, felis nisl adipiscing sapien, sed malesuada diam lacus eget erat. Cras mollis scelerisque nunc. Nullam arcu. Aliquam consequat. Curabitur augue lorem, dapibus quis, laoreet et, pretium ac, nisi. Aenean magna nisl, mollis quis, molestie eu, feugiat in, orci. In hac habitasse platea dictumst.</p>
+            <p>Phasellus ultrices nulla quis nibh. Quisque a lectus. Donec consectetuer ligula vulputate sem tristique cursus. Nam nulla quam, gravida non, commodo a, sodales sit amet, nisi. Pellentesque fermentum dolor. Aliquam quam lectus, facilisis auctor, ultrices ut, elementum vulputate, nunc.</p>
+            <p>Sed egestas, ante et vulputate volutpat, eros pede semper est, vitae luctus metus libero eu augue. Morbi purus libero, faucibus adipiscing, commodo quis, gravida id, est. Sed lectus. Praesent elementum hendrerit tortor. Sed semper lorem at felis. Vestibulum volutpat, lacus a ultrices sagittis, mi neque euismod dui, eu pulvinar nunc sapien ornare nisl. Phasellus pede arcu, dapibus eu, fermentum et, dapibus sed, urna.</p>
+            <br>
+            <blockquote>
+                "This blockquote represents an inline nested structure that your server is just serving as raw bytes. If you see this perfectly rendered without cutoffs, your `send()` loop is likely working well!"
+            </blockquote>
+        </section>
+
+        <hr>
+
+        <section id="section-lists">
+            <h2>2. Nested Lists</h2>
+            <p>Testing deep nesting of HTML tags.</p>
+            <ul>
+                <li>Level 1 - Item A</li>
+                <li>Level 1 - Item B
+                    <ul>
+                        <li>Level 2 - Item 1</li>
+                        <li>Level 2 - Item 2
+                            <ol>
+                                <li>Level 3 - Step X</li>
+                                <li>Level 3 - Step Y</li>
+                                <li>Level 3 - Step Z</li>
+                            </ol>
+                        </li>
+                        <li>Level 2 - Item 3</li>
+                    </ul>
+                </li>
+                <li>Level 1 - Item C</li>
+            </ul>
+        </section>
+
+        <hr>
+
+        <section id="section-table">
+            <h2>3. Data Table</h2>
+            <p>Testing repetitive tags and tabular data formatting.</p>
+            <table border="1" cellpadding="5" cellspacing="0">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Status Code</th>
+                        <th>Message</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>1</td>
+                        <td>200</td>
+                        <td>OK</td>
+                        <td>The request succeeded normally.</td>
+                    </tr>
+                    <tr>
+                        <td>2</td>
+                        <td>201</td>
+                        <td>Created</td>
+                        <td>The request succeeded, and a new resource was created as a result.</td>
+                    </tr>
+                    <tr>
+                        <td>3</td>
+                        <td>400</td>
+                        <td>Bad Request</td>
+                        <td>The server could not understand the request due to invalid syntax.</td>
+                    </tr>
+                    <tr>
+                        <td>4</td>
+                        <td>403</td>
+                        <td>Forbidden</td>
+                        <td>The client does not have access rights to the content.</td>
+                    </tr>
+                    <tr>
+                        <td>5</td>
+                        <td>404</td>
+                        <td>Not Found</td>
+                        <td>The server can not find the requested resource.</td>
+                    </tr>
+                    <tr>
+                        <td>6</td>
+                        <td>405</td>
+                        <td>Method Not Allowed</td>
+                        <td>The request method is known by the server but is not supported by the target resource.</td>
+                    </tr>
+                    <tr>
+                        <td>7</td>
+                        <td>413</td>
+                        <td>Payload Too Large</td>
+                        <td>Request entity is larger than limits defined by server.</td>
+                    </tr>
+                    <tr>
+                        <td>8</td>
+                        <td>500</td>
+                        <td>Internal Server Error</td>
+                        <td>The server has encountered a situation it does not know how to handle.</td>
+                    </tr>
+                    <tr>
+                        <td>9</td>
+                        <td>501</td>
+                        <td>Not Implemented</td>
+                        <td>The request method is not supported by the server and cannot be handled.</td>
+                    </tr>
+                    <tr>
+                        <td>10</td>
+                        <td>505</td>
+                        <td>HTTP Version Not Supported</td>
+                        <td>The HTTP version used in the request is not supported by the server.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <hr>
+
+        <section id="section-form">
+            <h2>4. HTML Form (Testing POST / GET targets)</h2>
+            <p>Use this form to test your server's CGI or POST request handling.</p>
+            <form action="/cgi-bin/test.cgi" method="POST">
+                <fieldset>
+                    <legend>User Information</legend>
+                    
+                    <label for="fname">First Name:</label><br>
+                    <input type="text" id="fname" name="fname" value="John"><br><br>
+                    
+                    <label for="lname">Last Name:</label><br>
+                    <input type="text" id="lname" name="lname" value="Doe"><br><br>
+                    
+                    <label>Choose your favorite HTTP Method:</label><br>
+                    <input type="radio" id="get" name="method_pref" value="GET">
+                    <label for="get">GET</label><br>
+                    <input type="radio" id="post" name="method_pref" value="POST">
+                    <label for="post">POST</label><br>
+                    <input type="radio" id="delete" name="method_pref" value="DELETE">
+                    <label for="delete">DELETE</label><br><br>
+                    
+                    <input type="checkbox" id="keepalive" name="keepalive" value="true" checked>
+                    <label for="keepalive"> Use Keep-Alive Connection</label><br><br>
+
+                    <label for="bio">Tell us about your server:</label><br>
+                    <textarea id="bio" name="bio" rows="4" cols="50">My server is built in C++98 and uses epoll/kqueue!</textarea><br><br>
+
+                    <input type="submit" value="Submit Request">
+                </fieldset>
+            </form>
+        </section>
+
+        <hr>
+
+        <section id="section-code">
+            <h2>5. Code Blocks</h2>
+            <p>Testing preformatted text tags preserving whitespace.</p>
+<pre>
+<code>
+int main(int argc, char **argv) {
+    if (argc != 2) {
+        std::cerr << "Usage: ./webserv [config_file]" << std::endl;
+        return (1);
+    }
+    
+    try {
+        WebServ server(argv[1]);
+        server.run();
+    } catch (std::exception &e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+    }
+    
+    return (0);
+}
+</code>
+</pre>
+        </section>
+
+    </main>
+
+    <footer>
+        <hr>
+        <p>&copy; 2026 Webserv Testing Protocol. Built for C++98 Socket Programming.</p>
+        <p>End of HTML Document.</p>
+    </footer>
+
 </body>
 </html>

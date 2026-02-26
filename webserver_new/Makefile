@@ -14,6 +14,7 @@ CLASS_HEADER_FILE =	ConfigData.hpp \
 					FileDescriptor.hpp \
 					Http.hpp \
 					CgiProcess.hpp \
+					ContentTypeTable.hpp \
 					Logger.hpp \
 					ServerConfig.hpp \
 					ResponseBuffer.hpp \
@@ -43,6 +44,7 @@ SRC_CLASS_DIR = classes_definition/
 SRC_CLASSES_FILE =	ConfigData.cpp \
 					CgiProcess.cpp \
 					CharTable.cpp \
+					ContentTypeTable.cpp \
 					EnvpWrapper.cpp \
 					FileDescriptor.cpp \
 					Http.cpp \
@@ -62,7 +64,8 @@ SRC_FUNC_FILE = chartables.cpp \
 				tolower.cpp \
 				ip_conversion.cpp \
 				string_to_size_t.cpp \
-				size_t_to_hex.cpp
+				size_t_to_hex.cpp \
+				contentTypeTable.cpp
 				
 
 SOURCE_MAIN_FILE = main.cpp

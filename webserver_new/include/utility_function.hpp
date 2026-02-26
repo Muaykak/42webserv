@@ -8,6 +8,7 @@
 # include <csignal>
 # include <netinet/in.h>
 # include <list>
+# include "classes/ContentTypeTable.hpp"
 
 template <typename T>
 std::string toString(const T &value)
@@ -16,6 +17,8 @@ std::string toString(const T &value)
 	ss << value;
 	return (ss.str());
 }
+
+const ContentTypeTable& contentTypeTable();
 
 const CharTable&	whiteSpaceTable();
 const CharTable&	hostipChar();
