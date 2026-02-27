@@ -14,7 +14,9 @@ _body_type(0),
 _checkExpectBody(false),
 _body_size(0),
 _curr_body_read(0),
-_targetLocationBlock(NULL)
+_targetLocationBlock(NULL),
+_tempRequestBodyFileNum(0),
+_discardBody(false)
 {
 	_recvBuffer.reserve(HTTP_RECV_BUFFER);
 	_sendBuffer.reserve(HTTP_SEND_BUFFER);
@@ -609,6 +611,8 @@ void Http::clearRequestData()
 	_headerField.clear();
 	_targetServer = NULL;
 	_targetLocationBlock = NULL;
+	_tempRequestBodyFileNum = 0;
+	_discardBody = false;
 
 }
 
@@ -831,6 +835,7 @@ void	Http::validateRequestBufferSelectServer(const Socket& clientSocket,const st
 
 void	Http::validateRequestBufffer(const Socket& clientSocket)
 {
+
 	if (_processStatus != VALIDATING_REQUEST)
 		return ;
 
@@ -1211,6 +1216,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 		}
 	}
 
+
 	// check for redirection
 	{
 		// check for 'return' in location block
@@ -1232,6 +1238,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 			if (returnCode >= 300 && returnCode < 400)
 			{
 				generate3xxRedirectResponse(returnCode);
+				_discardBody = true;
 				_processStatus = READING_BODY;
 				return ;
 			}
@@ -1613,6 +1620,11 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 
 
 
+}
+
+void Http::readingRequestBody(size_t& currIndex, size_t& reqBuffSize)
+{
+	// read the body using
 }
 
 

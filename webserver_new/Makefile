@@ -21,6 +21,7 @@ CLASS_HEADER_FILE =	ConfigData.hpp \
 					HttpResponse.hpp \
 					HttpThrowStatus.hpp \
 					Socket.hpp \
+					TempFileManager.hpp \
 					WebServ.hpp \
 					WebservException.hpp \
 					CharTable.hpp
@@ -54,6 +55,7 @@ SRC_CLASSES_FILE =	ConfigData.cpp \
 					ResponseBuffer.cpp \
 					ServerConfig.cpp \
 					Socket.cpp \
+					TempFileManager.cpp \
 					WebServ.cpp \
 					WebservException.cpp
 
@@ -65,7 +67,8 @@ SRC_FUNC_FILE = chartables.cpp \
 				ip_conversion.cpp \
 				string_to_size_t.cpp \
 				size_t_to_hex.cpp \
-				contentTypeTable.cpp
+				contentTypeTable.cpp \
+				tempFileManager.cpp \
 				
 
 SOURCE_MAIN_FILE = main.cpp
@@ -82,7 +85,7 @@ OBJ_TEST = ${patsubst ${SRC_DIR}%.cpp, ${OBJ_DIR}%.o, ${SRC_TEST}}
 # ========== COMPILE DIRECTIVES ======
 CC = c++
 
-CFLAGS = -std=c++98 -pedantic-errors -I./${HEADERS_DIR} -DTEMP_FILE_DIR='${TEMP_DIR}'#-Wall -Wextra -Werror
+CFLAGS = -std=c++98 -pedantic-errors -I./${HEADERS_DIR} -DTEMP_FILE_DIR='"${TEMP_DIR}"'#-Wall -Wextra -Werror
 
 NAME = Webserv
 TEST_NAME = ${NAME}_unittest
@@ -108,10 +111,11 @@ ${TEST_NAME}: ${OBJ_TEST}
 	${CC} ${CFLAGS} ${OBJ_TEST} -o $@
 
 clean:
-	rm -rf ${OBJ_DIR} ${TEMP_DIR}
+	rm -rf ${OBJ_DIR}
+	rm -rf ${TEMP_DIR}*
 
 fclean: clean
-	rm -rf ${NAME} ${TEST_NAME}
+	rm -rf ${NAME} ${TEST_NAME} ${TEMP_DIR}
 
 re: fclean all
 

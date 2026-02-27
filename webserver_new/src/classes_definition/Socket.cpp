@@ -54,7 +54,6 @@ Socket& Socket::operator=(const Socket &obj)
 }
 Socket::~Socket()
 {
-
 }
 const FileDescriptor& Socket::getSocketFD() const
 {

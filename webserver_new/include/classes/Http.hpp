@@ -55,6 +55,7 @@ class Http {
 		void	parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize);
 		void	validateRequestBufffer(const Socket& clientSocket);
 		void	validateRequestBufferSelectServer(const Socket& clientSocket, const std::string& authStr);
+		void	readingRequestBody(size_t& currIndex, size_t& reqBuffSize);
 
 		void	generate4xx5xxErrorReponse(unsigned int errorStatusCode, bool keepAfterResponse, const std::string& throwMsg);
 		void	generate3xxRedirectResponse(unsigned int statusCode);
@@ -72,17 +73,19 @@ class Http {
 		std::string 	_uploadStorePath;
 		std::string		_authorityPart;
 
+		unsigned int	_tempRequestBodyFileNum;
 		bool			_checkExpectBody;
 		bool			_readBody;
-		int				_body_type;
-		size_t			_body_size;
-		size_t			_curr_body_read;
+		bool			_discardBody; // whether to drain down the body
 		/*
 			_body_type
 			0 = no body
 			1 = content-lenth body
 			2 = transfer-encoding body
 		*/
+		int				_body_type;
+		size_t			_body_size;
+		size_t			_curr_body_read;
 
 		void	printHeaderField() const;
 		std::map<std::string, std::set<std::string> > _headerField;

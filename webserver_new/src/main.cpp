@@ -1,5 +1,6 @@
 #include "../include/classes/WebServ.hpp"
 #include "../include/classes/EnvpWrapper.hpp"
+#include "../include/classes/TempFileManager.hpp"
 
 int main(int argc, char **argv, char** envp){
 	signal(SIGPIPE, SIG_IGN);

@@ -9,6 +9,7 @@
 # include <netinet/in.h>
 # include <list>
 # include "classes/ContentTypeTable.hpp"
+# include "classes/TempFileManager.hpp"
 
 template <typename T>
 std::string toString(const T &value)
@@ -19,6 +20,7 @@ std::string toString(const T &value)
 }
 
 const ContentTypeTable& contentTypeTable();
+TempFileManager& tempfileManager();
 
 const CharTable&	whiteSpaceTable();
 const CharTable&	hostipChar();
