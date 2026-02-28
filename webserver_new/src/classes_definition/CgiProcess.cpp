@@ -90,3 +90,11 @@ void	CgiProcess::release()
 		}
 	}
 }
+
+size_t	CgiProcess::getRefCount() const
+{
+	if (_reference_count)
+		return (*_reference_count);
+	else
+		return (0);
+}

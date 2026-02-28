@@ -19,6 +19,7 @@ class CgiProcess {
 		CgiProcess& operator=(pid_t pid);
 		~CgiProcess();
 		pid_t	getPid() const;
+		size_t	getRefCount() const;
 };
 
 #endif

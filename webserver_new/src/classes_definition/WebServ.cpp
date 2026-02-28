@@ -19,7 +19,7 @@ WebServ::WebServ(const std::string &configPath) : _webservConfigPath(configPath)
 		while (serversConfigIterator != serversConfigMapPtr->end()){
 			try {
 				Socket tempSocket = socket(AF_INET, SOCK_STREAM, 0);
-				tempSocket.setupSocket(SERVER_SOCKET, &serversConfigIterator->second, _epollFD, &sockets);
+				tempSocket.setupServerSocket(&serversConfigIterator->second, _epollFD, &sockets);
 				sockets.insert(std::make_pair(tempSocket.getSocketFD().getFd(), tempSocket));
 			} 
 			catch (std::exception &e) {

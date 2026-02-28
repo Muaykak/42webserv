@@ -1,6 +1,6 @@
-#include "../../include/utility_function.hpp"
+#include "../../include/classes/TempFileManager.hpp"
 
-TempFileManager& tempfileManager()
+TempFileManager& tempFileManager()
 {
 	static TempFileManager tempmanager;
 

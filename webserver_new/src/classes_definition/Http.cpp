@@ -1,6 +1,7 @@
 #include "../../include/classes/Http.hpp"
 #include "../../include/classes/Socket.hpp"
 #include "../../include/utility_function.hpp"
+#include "../../include/classes/EnvpWrapper.hpp"
 #include <cctype>
 #include <sys/stat.h>
 
@@ -16,7 +17,8 @@ _body_size(0),
 _curr_body_read(0),
 _targetLocationBlock(NULL),
 _tempRequestBodyFileNum(0),
-_discardBody(false)
+_discardBody(false),
+_isUseTempFile(false)
 {
 	_recvBuffer.reserve(HTTP_RECV_BUFFER);
 	_sendBuffer.reserve(HTTP_SEND_BUFFER);
@@ -377,7 +379,7 @@ void	Http::generate3xxRedirectResponse(unsigned int statusCode)
 	std::string absoluteRedirectPath = "http://";
 	{
 		absoluteRedirectPath += _authorityPart;
-		absoluteRedirectPath += _targetPath;
+		absoluteRedirectPath += _redirectPath;
 
 		targetResponse.addHeader("Location", absoluteRedirectPath);
 	}
@@ -405,6 +407,15 @@ void	Http::generate3xxRedirectResponse(unsigned int statusCode)
 
 
 	targetResponse.setFixedBodyStr(tempHtml);
+
+	if (_body_type != 0)
+	{
+		_processStatus = READ_BODY;
+		_discardBody = true;
+	}
+	else
+		_processStatus = FINISHED_READ_BODY;
+
 	//throw HttpThrowStatus(returnCode, (*return_redirect)[1]);
 
 }
@@ -613,6 +624,7 @@ void Http::clearRequestData()
 	_targetLocationBlock = NULL;
 	_tempRequestBodyFileNum = 0;
 	_discardBody = false;
+	_isUseTempFile = false;
 
 }
 
@@ -1237,9 +1249,8 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 				
 			if (returnCode >= 300 && returnCode < 400)
 			{
+				_redirectPath = (*return_redirect)[1];
 				generate3xxRedirectResponse(returnCode);
-				_discardBody = true;
-				_processStatus = READING_BODY;
 				return ;
 			}
 			else
@@ -1302,51 +1313,88 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 			}
 		}
 
+	}
+
+	{
+		// need to check first if this location block
+		// has the cgi_pass
+
+		const std::vector<std::string>* foundCgiPass = _targetServer->getLocationData(_targetLocationBlock, "cgi_pass");
+		// if found then we check
+		if (foundCgiPass != NULL)
 		{
-			size_t dotPos = _targetPath.find_last_of('.');
+			if (foundCgiPass->size() < 2 || foundCgiPass->size() % 2 != 0)
+				generate4xx5xxErrorReponse(500, false, "Internal Error::CgiPass on this location block is misconfigured");
 
-			// mean that the target having some extensions to check
-			if (dotPos != _targetPath.npos)
+			// convert into temporary map
+			std::map<std::string, std::string>	tempCgiPassMap;
 			{
-				std::string	extensionStr = _targetPath.substr(dotPos);
-				// here, we need cgi_pass directive in configuration file
-
-				/*
-				the cgi pass should consist of 2 elements
-				first is the extension of the CGI type (like .php, .py)
-				and second is their executable in absolute path
-				*/
-
-				// first we get the cgi_pass vector
-
-				const std::vector<std::string>* cgi_pass_vec = _targetServer->getLocationData(_targetLocationBlock, "cgi_pass");
-
-				// if found then check
-				if (cgi_pass_vec != NULL)
+				size_t i = 0;
+				while (i < foundCgiPass->size())
 				{
-					// check the whole vector if it matches
-					size_t i = 0;
+					if ((*foundCgiPass)[i][0] != '.')
+						generate4xx5xxErrorReponse(500, false, "Internal Error::CgiPass on this location block is misconfigured");
+					
+					tempCgiPassMap[(*foundCgiPass)[i]] = (*foundCgiPass)[i + 1];
 
-					while (i < cgi_pass_vec->size())
+					i += 2;
+				}
+			}
+
+			std::string tempPath = (*_targetServer->getLocationData(_targetLocationBlock, "location_name"))[0];
+			// devide into segment
+
+			std::string tempTofil = _targetPath.substr(tempPath.size());
+			size_t	slashPos;
+			size_t	dotPos;
+			std::string tempExtensionStr;
+			std::map<std::string, std::string>::iterator it;
+			while (!tempTofil.empty())
+			{
+				slashPos = tempTofil.find_first_of('/');
+				if (slashPos == tempTofil.npos)
+				{
+					tempPath += tempTofil;
+					tempTofil.clear();
+				}
+				else
+				{
+					tempPath += tempTofil.substr(0, slashPos);
+					tempTofil.erase(0, slashPos + 1);
+				}
+
+				dotPos = tempPath.find_last_of('.');
+				if (dotPos == tempPath.npos)
+				{
+					tempPath += '/';
+					continue;
+				}
+				else 
+				{
+					tempExtensionStr = tempPath.substr(dotPos);
+					// check if found mathing 
+					it = tempCgiPassMap.find(tempExtensionStr);
+					// not found then continue
+					if (it == tempCgiPassMap.end())
 					{
-						// process here is simple, if some thing doesn't work as expected
-						// the config file parsing is bad
-						if (extensionStr == (*cgi_pass_vec)[i])
-						{
-							// the next index should be the path
-							if (i + 1 == cgi_pass_vec->size())
-								generate4xx5xxErrorReponse(500, false, "Internal Error::'cgi_pass' in configuration file is wrong:: must be [CGI extension] followed by [absolute path to CGI]");
-							else
-								_cgiPath = (*cgi_pass_vec)[i + 1];
-						}
-						i += 2;
+						tempPath += '/';
+						continue;
+					}
+					else
+					{
+						_cgiPath = it->second;
+						_cgiScriptPath = tempPath;
+						_cgiVirtualPath = tempTofil;
+						break ;
 					}
 				}
 
-				// now we know if the request target is CGI or not by
-				// checking _cgiPath.empty()
 			}
+
 		}
+
+		// now we know if the request target is CGI or not by
+		// checking _cgiPath.empty()
 	}
 
 	// now we can check the file existence
@@ -1416,7 +1464,17 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 
 		// we need to combine root of location block
 		// with the URI that we resolved
-		_combinedPath = systemPath + _targetPath;
+		if (!_cgiPath.empty())
+		{
+			if (!_cgiVirtualPath.empty())
+				_cgiPathTranslated = systemPath + _cgiVirtualPath;
+			_combinedPath = systemPath + _cgiScriptPath;
+		}
+		else
+		{
+			_combinedPath = systemPath + _targetPath;
+		}
+
 
 		//struct stat fileStat;
 		//std::memset(&fileStat, 0, sizeof(fileStat));
@@ -1518,9 +1576,8 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 				else
 				{
 					// make redirections
-					_targetPath += "/";
+					_redirectPath = _targetPath + '/';
 					generate3xxRedirectResponse(301);
-					_processStatus = READING_BODY;
 					return ;
 
 				}
@@ -1543,7 +1600,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 					if (fd < 0)
 					{
 						if (errno == EACCES)
-							generate4xx5xxErrorReponse(403, true, "Http::GET to regular file failed::open() failed");
+							generate4xx5xxErrorReponse(403, false, "Http::GET to regular file failed::open() failed");
 
 						else if (errno == EMFILE || errno == ENFILE)
 						{
@@ -1551,7 +1608,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 						}
 						else if (errno == ENOENT)
 						{
-							generate4xx5xxErrorReponse(404, true, "Http:: Get to regular file:: file is missing");
+							generate4xx5xxErrorReponse(404, false, "Http:: Get to regular file:: file is missing");
 						}
 						// some unknown error
 						else
@@ -1599,6 +1656,26 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 				}
 				else
 				{
+					s_cgidata	tempCgiData;
+
+
+					tempCgiData.modifyEnvpMap["REQUEST_METHOD"] = _method;
+					tempCgiData.modifyEnvpMap["QUERY_STRING"] = _queryString;
+
+					// GET method don't have body 
+					// so skip CONTENT_LENGTH and CONTENT_TYPE
+
+					tempCgiData.modifyEnvpMap["SCRIPT_NAME"] = _cgiScriptPath;
+					if (!_cgiVirtualPath.empty())
+					{
+						tempCgiData.modifyEnvpMap["PATH_INFO"] = _cgiVirtualPath;
+						tempCgiData.modifyEnvpMap["PATH_TRANSLATED"] = _cgiPathTranslated;
+					}
+
+					tempCgiData.headerFieldPtr = &_headerField;
+					tempCgiData.isCgiProcessOpen = &_isCgiProcessOpen;
+
+
 					// GET to CGI didn't build yet so
 					generate4xx5xxErrorReponse(500, false, "Not CGI yet");
 				}
@@ -1625,6 +1702,33 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 void Http::readingRequestBody(size_t& currIndex, size_t& reqBuffSize)
 {
 	// read the body using
+	if (_processStatus != READ_BODY)
+		return ;
+
+	if (_body_type == 0)
+	{
+		_processStatus = FINISHED_READ_BODY;
+		return ;
+	}
+
+	if (_discardBody == true)
+	{
+		// 2 is transter-encoding body
+		// 1 is content-length body
+
+		if (_body_type == 1)
+		{
+
+		}
+		else
+		{
+
+		}
+	}
+	/*
+	if finishing validate 	
+	*/
+
 }
 
 
@@ -1642,6 +1746,12 @@ void	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Soc
 
 		validateRequestBufffer(clientSocket);
 
+		if (_processStatus == FINISHED_READ_BODY)
+		{
+			// generate the complete response
+			_httpResponseList.back().generateResponse();
+			clearRequestData();
+		}
 	}
 	catch (std::exception &e)
 	{

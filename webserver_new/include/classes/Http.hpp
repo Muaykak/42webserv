@@ -16,7 +16,7 @@ enum e_http_process_status {
 	READING_REQUEST_LINE,
 	READING_HEADER,
 	VALIDATING_REQUEST,
-	READING_BODY,
+	READ_BODY,
 	FINISHED_READ_BODY
 };
 
@@ -69,10 +69,16 @@ class Http {
 		std::string		_combinedPath;
 		std::string		_queryString;
 		std::string		_protocol; // after validating the string will be "HTTP/1.1" => "11"
+		std::string		_cgiScriptPath;
+		std::string		_cgiVirtualPath;
+		std::string		_cgiPathTranslated;
 		std::string		_cgiPath;
+		bool			_isCgiProcessOpen;
 		std::string 	_uploadStorePath;
 		std::string		_authorityPart;
+		std::string		_redirectPath;
 
+		bool			_isUseTempFile;
 		unsigned int	_tempRequestBodyFileNum;
 		bool			_checkExpectBody;
 		bool			_readBody;

@@ -19,6 +19,11 @@
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
 
+struct s_cgidata {
+	std::map<std::string, std::string> modifyEnvpMap;
+	const std::map<std::string, std::set<std::string> >* _headerFieldPtr;
+};
+
 
 enum e_socket_type
 {
@@ -66,12 +71,15 @@ public:
 	const std::vector<ServerConfig> *getServersConfigPtr() const;
 	int getServerListenPort() const;
 
-	// Be sure that epollFD still available !
-	bool setupSocket(e_socket_type socketType, const std::vector<ServerConfig> *_serversConfigVec,
+	bool setupServerSocket(const std::vector<ServerConfig> *_serversConfigVec,
+		const FileDescriptor &epollFD, std::map<int, Socket>* socketMap);
+	bool setupClientSocket(const std::vector<ServerConfig> *_serversConfigVec,
+		const FileDescriptor &epollFD, std::map<int, Socket>* socketMap);
+	bool setupCGIINSocket(const std::vector<ServerConfig> *_serversConfigVec,
 		const FileDescriptor &epollFD, std::map<int, Socket>* socketMap);
 
-	bool setupCGI_socket(e_socket_type cgiSocketType, const std::vector<ServerConfig> *_serversConfigVec, const FileDescriptor &epollFD,
-		Socket* parentSocket, std::map<int, Socket>* socketMap, CgiProcess& cgiProcess);
+	// Be sure that epollFD still available !
+
 	// return false means this Socket should be DESTROYED after handleEVENT
 	bool handleEvent(const epoll_event &event);
 

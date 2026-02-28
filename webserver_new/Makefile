@@ -68,6 +68,7 @@ SRC_FUNC_FILE = chartables.cpp \
 				string_to_size_t.cpp \
 				size_t_to_hex.cpp \
 				contentTypeTable.cpp \
+				envData.cpp \
 				tempFileManager.cpp \
 				
 

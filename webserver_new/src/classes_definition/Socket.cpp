@@ -75,34 +75,83 @@ const std::set<in_addr_t>& Socket::getServerIpHost() const
 	return (_server_ip_host);
 }
 
-bool Socket::setupCGI_socket(e_socket_type cgiSocketType, const std::vector<ServerConfig>* serversConfig, const FileDescriptor &epollFD,
-	Socket* parentSocket, std::map<int, Socket>* socketMap, CgiProcess& cgiProcess)
+bool Socket::setupCGIINSocket(const std::vector<ServerConfig> *serversConfig,
+	const FileDescriptor &epollFD, std::map<int, Socket>* socketMap)
 {
-	if (cgiSocketType != CGI_FD_STDIN && cgiSocketType != CGI_FD_STDOUT)
+
+	if (_socketType != NO_TYPE)
 	{
-		Logger::log(LC_RED, "ERROR::Socket::setupCGISocket::INVALID SOCKET TYPE!");
-		return (false);
+		Logger::log(LC_RED, "ERROR::Socket::setSocketType::SET NEW TYPE TO THE ALREADY SET ONE");
+		return true;
 	}
 
 	if (socketMap == NULL)
 	{
 		Logger::log(LC_RED, "ERROR::Socket::setupSocket::socketMap should not be null!");
-		return (false);
-	}
-	if (parentSocket == NULL)
-	{
-		Logger::log(LC_RED, "ERROR::Socket::setupSocket::parenSocket should not be null!");
-		return (false);
+		return (true);
 	}
 	if (_socketFD.getFd() < 0){
 		throw WebservException("Socket::setupSocket::_socketFD cannot < 0");
 	}
 
 	_epollFD = epollFD;
-	_serversConfig = serversConfig;
-	_socketType = cgiSocketType;
+	_socketType = CGI_FD_STDIN;
 	_socketMap = socketMap;
-	_parentSocket = parentSocket;
+	_serversConfig = serversConfig;
+
+
+}
+
+
+bool Socket::setupServerSocket(const std::vector<ServerConfig> *serversConfig,
+		const FileDescriptor &epollFD, std::map<int, Socket>* socketMap)
+{
+	if (_socketType != NO_TYPE)
+	{
+		Logger::log(LC_RED, "ERROR::Socket::setSocketType::SET NEW TYPE TO THE ALREADY SET ONE");
+		return true;
+	}
+
+	if (socketMap == NULL)
+	{
+		Logger::log(LC_RED, "ERROR::Socket::setupSocket::socketMap should not be null!");
+		return (true);
+	}
+	if (_socketFD.getFd() < 0){
+		throw WebservException("Socket::setupSocket::_socketFD cannot < 0");
+	}
+
+	_epollFD = epollFD;
+	_socketType = SERVER_SOCKET;
+	_socketMap = socketMap;
+	_serversConfig = serversConfig;
+
+	if (!_serversConfig)
+	{
+		throw WebservException("Socket::setup ServerSocket needs _serversConfig!");
+	}
+	_serversConfig = serversConfig;
+
+	std::set<in_addr_t> temp_addr_set;
+	// put serversConfig ip host together
+	{
+		std::vector<ServerConfig>::const_iterator	vecServerIt = _serversConfig->begin();
+		while (vecServerIt != _serversConfig->end())
+		{
+			temp_addr_set = vecServerIt->getHostIp();
+
+			// if any of server config doesn't have host ip. 
+			// meaning that server socket should accept any ip connection
+			if (temp_addr_set.size() == 0)
+			{
+				_server_ip_host.clear();
+				break ;
+			}
+			else
+				_server_ip_host.insert(temp_addr_set.begin(), temp_addr_set.end());
+			++vecServerIt;
+		}
+	}
 
 	if (fcntl(_socketFD.getFd(), F_SETFL, O_NONBLOCK) != 0)
 	{
@@ -111,22 +160,77 @@ bool Socket::setupCGI_socket(e_socket_type cgiSocketType, const std::vector<Serv
 		throw WebservException(errorMsg);
 	}
 
+	// reusable socket if the server was restart before port allocation timeout
+	int opt = 1;
+	if (setsockopt(_socketFD.getFd(), SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
+		Logger::log(LC_NOTE, "Fail to set socket#%d for reuse socket", _socketFD.getFd());
+
+	sockaddr_in sv_addr;
+	std::memset(&sv_addr, 0, sizeof(sockaddr));
+	sv_addr.sin_family = AF_INET;
+	sv_addr.sin_addr.s_addr = INADDR_ANY;
+	/*################### NEED TO FIX THIS */
+	_server_listen_port = (*_serversConfig)[0].getPort();
+	sv_addr.sin_port = htons(_server_listen_port);
+
+	if (bind(_socketFD.getFd(), (struct sockaddr *)&sv_addr, sizeof(sv_addr)) != 0)
+	{
+		std::string errorMsg = "Socket::bind() failed::";
+		errorMsg += std::strerror(errno);
+		throw WebservException(errorMsg);
+	}
+
+	if (listen(_socketFD.getFd(), MAX_LISTENSOCKET_CONNECTION) != 0)
+	{
+		std::string errorMsg = "Socket::listen() failed::";
+		errorMsg += std::strerror(errno);
+		throw WebservException(errorMsg);
+	}
+
 	// Add the server socket to epoll monitoring event
 	epoll_event event;
 	std::memset(&event, 0, sizeof(event));
-	event.events = _socketType == CGI_FD_STDIN ? EPOLLOUT : EPOLLIN;
+	event.events = EPOLLIN;
 	event.data.fd = _socketFD.getFd();
 	if (epoll_ctl(_epollFD.getFd(), EPOLL_CTL_ADD, _socketFD.getFd(), &event) != 0)
 	{
-		std::string errorMsg = "Socket::setupSocket::CLIENT_SCOKET::epoll_ctl() Error::";
+		std::string errorMsg = "Socket::setupSocket::SERVER_SCOKET::epoll_ctl() Error::";
 		errorMsg += std::strerror(errno);
 		throw(WebservException(errorMsg));
 	}
+
+	// print Success
+	// Could have better solution
+	size_t	_serversConfigIndex = 0;
+	size_t	serverNameVecIndex = 0;
+	const std::vector<std::string> * tempServerNameVec = NULL;
+	std::stringstream ss;
+	ss << _server_listen_port;
+	std::string portStr;
+	ss >> portStr;
+	while (_serversConfigIndex < _serversConfig->size())
+	{
+		tempServerNameVec = &(*_serversConfig)[_serversConfigIndex].getServerNameVec();
+		if (tempServerNameVec == NULL)
+			Logger::log(LC_SYSTEM, "Server is listening on port " + portStr);
+		else {
+			std::string serverNameString;
+			serverNameVecIndex = 0;
+			while (serverNameVecIndex < tempServerNameVec->size()){
+				if (serverNameVecIndex > 0)
+					serverNameString += ", ";
+				serverNameString += (*tempServerNameVec)[serverNameVecIndex];
+				++serverNameVecIndex;
+			}
+			Logger::log(LC_SYSTEM, "Server <%s> is listening on port " + portStr + " (fd %d)", serverNameString.c_str(), _socketFD.getFd());
+		}
+		++_serversConfigIndex;
+	}
+
 	return (true);
 }
 
-// Be sure that epollFD still available !
-bool Socket::setupSocket(e_socket_type socketType, const std::vector<ServerConfig>* serversConfig,
+bool Socket::setupClientSocket(const std::vector<ServerConfig> *serversConfig,
 	const FileDescriptor &epollFD, std::map<int, Socket>* socketMap)
 {
 	if (_socketType != NO_TYPE)
@@ -134,16 +238,7 @@ bool Socket::setupSocket(e_socket_type socketType, const std::vector<ServerConfi
 		Logger::log(LC_RED, "ERROR::Socket::setSocketType::SET NEW TYPE TO THE ALREADY SET ONE");
 		return true;
 	}
-	if (socketType == NO_TYPE)
-	{
-		Logger::log(LC_RED, "ERROR::Socket::setSocketType::NO_TYPE MUST NOT SETUP");
-		return true;
-	}
-	if (socketType == CGI_FD_STDIN || socketType == CGI_FD_STDOUT)
-	{
-		Logger::log(LC_RED, "ERROR::Socket::setSocketType::WRONG FUNCTION TO SETUP CGI SOCKET");
-		return true;
-	}
+
 	if (socketMap == NULL)
 	{
 		Logger::log(LC_RED, "ERROR::Socket::setupSocket::socketMap should not be null!");
@@ -153,153 +248,39 @@ bool Socket::setupSocket(e_socket_type socketType, const std::vector<ServerConfi
 		throw WebservException("Socket::setupSocket::_socketFD cannot < 0");
 	}
 
-
 	_epollFD = epollFD;
-	_socketType = socketType;
+	_socketType = CLIENT_SOCKET;
 	_socketMap = socketMap;
 	_serversConfig = serversConfig;
-	switch (socketType)
+
+	_server_listen_port = (*_serversConfig)[0].getPort();
+	if (fcntl(_socketFD.getFd(), F_SETFL, O_NONBLOCK) != 0)
 	{
-		case SERVER_SOCKET:
-		{
-			if (!_serversConfig)
-			{
-				throw WebservException("Socket::setup ServerSocket needs _serversConfig!");
-			}
-			_serversConfig = serversConfig;
-
-			std::set<in_addr_t> temp_addr_set;
-			// put serversConfig ip host together
-			{
-				std::vector<ServerConfig>::const_iterator	vecServerIt = _serversConfig->begin();
-				while (vecServerIt != _serversConfig->end())
-				{
-					temp_addr_set = vecServerIt->getHostIp();
-
-					// if any of server config doesn't have host ip. 
-					// meaning that server socket should accept any ip connection
-					if (temp_addr_set.size() == 0)
-					{
-						_server_ip_host.clear();
-						break ;
-					}
-					else
-						_server_ip_host.insert(temp_addr_set.begin(), temp_addr_set.end());
-					++vecServerIt;
-				}
-			}
-		
-			if (fcntl(_socketFD.getFd(), F_SETFL, O_NONBLOCK) != 0)
-			{
-				std::string errorMsg = "Socket::fcntl() O_NONBLOCK Error::";
-				errorMsg += std::strerror(errno);
-				throw WebservException(errorMsg);
-			}
-		
-			// reusable socket if the server was restart before port allocation timeout
-			int opt = 1;
-			if (setsockopt(_socketFD.getFd(), SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
-				Logger::log(LC_NOTE, "Fail to set socket#%d for reuse socket", _socketFD.getFd());
-		
-			sockaddr_in sv_addr;
-			std::memset(&sv_addr, 0, sizeof(sockaddr));
-			sv_addr.sin_family = AF_INET;
-			sv_addr.sin_addr.s_addr = INADDR_ANY;
-			/*################### NEED TO FIX THIS */
-			_server_listen_port = (*_serversConfig)[0].getPort();
-			sv_addr.sin_port = htons(_server_listen_port);
-		
-			if (bind(_socketFD.getFd(), (struct sockaddr *)&sv_addr, sizeof(sv_addr)) != 0)
-			{
-				std::string errorMsg = "Socket::bind() failed::";
-				errorMsg += std::strerror(errno);
-				throw WebservException(errorMsg);
-			}
-		
-			if (listen(_socketFD.getFd(), MAX_LISTENSOCKET_CONNECTION) != 0)
-			{
-				std::string errorMsg = "Socket::listen() failed::";
-				errorMsg += std::strerror(errno);
-				throw WebservException(errorMsg);
-			}
-		
-			// Add the server socket to epoll monitoring event
-			epoll_event event;
-			std::memset(&event, 0, sizeof(event));
-			event.events = EPOLLIN;
-			event.data.fd = _socketFD.getFd();
-			if (epoll_ctl(_epollFD.getFd(), EPOLL_CTL_ADD, _socketFD.getFd(), &event) != 0)
-			{
-				std::string errorMsg = "Socket::setupSocket::SERVER_SCOKET::epoll_ctl() Error::";
-				errorMsg += std::strerror(errno);
-				throw(WebservException(errorMsg));
-			}
-		
-			// print Success
-			// Could have better solution
-			size_t	_serversConfigIndex = 0;
-			size_t	serverNameVecIndex = 0;
-			const std::vector<std::string> * tempServerNameVec = NULL;
-			std::stringstream ss;
-			ss << _server_listen_port;
-			std::string portStr;
-			ss >> portStr;
-			while (_serversConfigIndex < _serversConfig->size())
-			{
-				tempServerNameVec = &(*_serversConfig)[_serversConfigIndex].getServerNameVec();
-				if (tempServerNameVec == NULL)
-					Logger::log(LC_SYSTEM, "Server is listening on port " + portStr);
-				else {
-					std::string serverNameString;
-					serverNameVecIndex = 0;
-					while (serverNameVecIndex < tempServerNameVec->size()){
-						if (serverNameVecIndex > 0)
-							serverNameString += ", ";
-						serverNameString += (*tempServerNameVec)[serverNameVecIndex];
-						++serverNameVecIndex;
-					}
-					Logger::log(LC_SYSTEM, "Server <%s> is listening on port " + portStr + " (fd %d)", serverNameString.c_str(), _socketFD.getFd());
-				}
-				++_serversConfigIndex;
-			}
-		
-			break;
-		}
-		case CLIENT_SOCKET:
-		{
-			_server_listen_port = (*_serversConfig)[0].getPort();
-			if (fcntl(_socketFD.getFd(), F_SETFL, O_NONBLOCK) != 0)
-			{
-				std::string errorMsg = "Socket::fcntl() O_NONBLOCK Error::";
-				errorMsg += std::strerror(errno);
-				throw WebservException(errorMsg);
-			}
-			if (socketMap == NULL)
-			{
-				Logger::log(LC_RED, "ERROR::Socket::setupSocket::socketMap should not be null!");
-				return (true);
-			}
-
-			// Add the server socket to epoll monitoring event
-			epoll_event event;
-			std::memset(&event, 0, sizeof(event));
-			event.events = EPOLLIN;
-			event.data.fd = _socketFD.getFd();
-			if (epoll_ctl(_epollFD.getFd(), EPOLL_CTL_ADD, _socketFD.getFd(), &event) != 0)
-			{
-				std::string errorMsg = "Socket::setupSocket::CLIENT_SCOKET::epoll_ctl() Error::";
-				errorMsg += std::strerror(errno);
-				throw(WebservException(errorMsg));
-			}
-		}
-		default: {
-
-			break;
-		}
+		std::string errorMsg = "Socket::fcntl() O_NONBLOCK Error::";
+		errorMsg += std::strerror(errno);
+		throw WebservException(errorMsg);
+	}
+	if (socketMap == NULL)
+	{
+		Logger::log(LC_RED, "ERROR::Socket::setupSocket::socketMap should not be null!");
 		return (true);
 	}
+
+	// Add the server socket to epoll monitoring event
+	epoll_event event;
+	std::memset(&event, 0, sizeof(event));
+	event.events = EPOLLIN;
+	event.data.fd = _socketFD.getFd();
+	if (epoll_ctl(_epollFD.getFd(), EPOLL_CTL_ADD, _socketFD.getFd(), &event) != 0)
+	{
+		std::string errorMsg = "Socket::setupSocket::CLIENT_SCOKET::epoll_ctl() Error::";
+		errorMsg += std::strerror(errno);
+		throw(WebservException(errorMsg));
+	}
+
 	return (true);
 }
+
 // return false means this Socket should be DESTROYED after handleEVENT
 bool Socket::handleEvent(const epoll_event &event)
 {
@@ -353,7 +334,7 @@ bool Socket::handleEvent(const epoll_event &event)
 
 						// set up client Socket
 						_socketMap->insert(std::make_pair(client_socket, Socket(client_socket)));
-						(*_socketMap)[client_socket].setupSocket(CLIENT_SOCKET, _serversConfig, _epollFD, _socketMap);
+						(*_socketMap)[client_socket].setupClientSocket(_serversConfig, _epollFD, _socketMap);
 						(*_socketMap)[client_socket]._client_addr_in = client_address.sin_addr.s_addr;
 						(*_socketMap)[client_socket].setServerIpHost(_server_ip_host);
 

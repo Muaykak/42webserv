@@ -3,6 +3,7 @@
 #include "../include/classes/TempFileManager.hpp"
 
 int main(int argc, char **argv, char** envp){
+	envData() = EnvpWrapper(envp);
 	signal(SIGPIPE, SIG_IGN);
 	signal(SIGINT, serverStopHandler);
 	signal(SIGQUIT, serverStopHandler);
@@ -27,10 +28,6 @@ int main(int argc, char **argv, char** envp){
 //	conf.printConfigData();
 //}
 
-//EnvpWrapper& envData(){
-//	static EnvpWrapper data;
-//	return (data);
-//}
 
 //int main(int argc, char **argv, char** envp)
 //{
