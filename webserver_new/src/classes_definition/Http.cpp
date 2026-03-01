@@ -4,6 +4,8 @@
 #include "../../include/classes/EnvpWrapper.hpp"
 #include <cctype>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 Http::Http()
 : _keepConnection(true),
@@ -41,8 +43,8 @@ void Http::printHeaderField() const
 			std::cout << _method << " " << _requestTarget << " " << _protocol << std::endl;
 		}
 
-		std::map<std::string, std::set<std::string> >::const_iterator	it = _headerField.begin();
-		std::set<std::string>::const_iterator vecIt;
+		std::map<std::string, std::vector<std::string> >::const_iterator	it = _headerField.begin();
+		std::vector<std::string>::const_iterator vecIt;
 		while (it != _headerField.end())
 		{
 			std::cout << it->first << ": ";
@@ -175,7 +177,7 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 	std::string	tempFieldName;
 	std::string	tempFieldValue;
 	std::string	tempSep;
-	std::set<std::string> tempSet;
+	std::vector<std::string> tempVec;
 	size_t	colonPos;
 	size_t	temp;
 
@@ -260,7 +262,7 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 				//check if field value doesn't contain any forbidden char
 				if (forbiddenFieldValueChar().isNotMatch(newStr) == false)
 					generate4xx5xxErrorReponse(400, false, "value in header field must not contain any forbidden char");
-				tempSet.insert(newStr);
+				tempVec.push_back(newStr);
 				newStr.clear();
 				
 				i = commaPos + 1;
@@ -270,9 +272,9 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 		// normalize field name because it is case insensitive
 		tempFieldName = stringToLower(tempFieldName);
 
-		if (!tempSet.empty())
-			_headerField[tempFieldName].insert(tempSet.begin(), tempSet.end());
-		tempSet.clear();
+		if (!tempVec.empty())
+			_headerField[tempFieldName].insert(_headerField[tempFieldName].end(), tempVec.begin(), tempVec.end());
+		tempVec.clear();
 		
 		// successfully read one field name and value, move to next one
 		currIndex = endLinePos + 2;
@@ -845,7 +847,7 @@ void	Http::validateRequestBufferSelectServer(const Socket& clientSocket,const st
 	_authorityPart = authStr;
 }
 
-void	Http::validateRequestBufffer(const Socket& clientSocket)
+void	Http::validateRequestBufffer(const Socket& clientSocket, std::map<int, Socket>& socketMap)
 {
 
 	if (_processStatus != VALIDATING_REQUEST)
@@ -962,13 +964,13 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 					in this case we need to check the host:
 					in header
 				*/
-					std::set<std::string>& fieldValueSet = _headerField.find("host")->second;
+					std::vector<std::string>& fieldValueVec = _headerField.find("host")->second;
 
 					// must have only 1 value in host:
-					if (fieldValueSet.size() != 1)
+					if (fieldValueVec.size() != 1)
 						generate4xx5xxErrorReponse(400, false, "Http::Invalid field value:: host must have only 1 element");
 
-					std::set<std::string>::const_iterator	fieldValueSetIt = fieldValueSet.begin();
+					std::vector<std::string>::const_iterator	fieldValueSetIt = fieldValueVec.begin();
 
 					validateRequestBufferSelectServer(clientSocket, *fieldValueSetIt);
 				}
@@ -1109,8 +1111,8 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 		}
 
 		// 
-		std::map<std::string, std::set<std::string> >::const_iterator content_length = _headerField.find("content-length");
-		std::map<std::string, std::set<std::string> >::const_iterator tranfer_encoding = _headerField.find("transfer-encoding");
+		std::map<std::string, std::vector<std::string> >::const_iterator content_length = _headerField.find("content-length");
+		std::map<std::string, std::vector<std::string> >::const_iterator tranfer_encoding = _headerField.find("transfer-encoding");
 
 		// I will not allow DELETE or GET method to have body
 		if (_method != "POST" && (tranfer_encoding != _headerField.end() || content_length != _headerField.end()))
@@ -1123,12 +1125,12 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 
 		// check Expect the body
 		{
-			std::map<std::string, std::set<std::string> >::const_iterator foundExpect = _headerField.find("expect");
+			std::map<std::string, std::vector<std::string> >::const_iterator foundExpect = _headerField.find("expect");
 			
 			// if found
 			if (foundExpect != _headerField.end())
 			{
-				const std::set<std::string>& targetValue = foundExpect->second;
+				const std::vector<std::string>& targetValue = foundExpect->second;
 
 				if (targetValue.size() != 1)
 				{
@@ -1196,17 +1198,24 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 		else if (tranfer_encoding != _headerField.end())
 		{
 			// here need to check the Transfer Encoding
-			const std::set<std::string>& valueSet = tranfer_encoding->second;
+			const std::vector<std::string>& valueVec = tranfer_encoding->second;
 
 			// mean that chunked is not found in the list
-			if (valueSet.find("chunked") == valueSet.end())
+			bool isFoundChunked = false;
+			for (size_t i = 0; i < valueVec.size(); i++)
+			{
+				if (valueVec[i] == "chunked")
+					isFoundChunked = true;
+			}
+
+			if (isFoundChunked == false)
 			{
 				std::string msg = "Http::request Transfer-Encoding:: \"chunked\" not found::key=";
 				
-				std::set<std::string>::const_iterator it = valueSet.begin();
-				while (it != valueSet.end())
+				std::vector<std::string>::const_iterator it = valueVec.begin();
+				while (it != valueVec.end())
 				{
-					if (it != valueSet.begin())
+					if (it != valueVec.begin())
 						msg += ", ";
 					msg += *it;
 					++it;
@@ -1656,25 +1665,145 @@ void	Http::validateRequestBufffer(const Socket& clientSocket)
 				}
 				else
 				{
-					s_cgidata	tempCgiData;
+					// pipe that let cgi write down and us to read
+					int pipe_out[2];
 
+					if (pipe(pipe_out) != 0)
+						generate4xx5xxErrorReponse(500, false, "Internal Error::CGI:: pipe() failed::" + std::string(std::strerror(errno)));
 
-					tempCgiData.modifyEnvpMap["REQUEST_METHOD"] = _method;
-					tempCgiData.modifyEnvpMap["QUERY_STRING"] = _queryString;
+					pid_t	pid = fork();
 
-					// GET method don't have body 
-					// so skip CONTENT_LENGTH and CONTENT_TYPE
-
-					tempCgiData.modifyEnvpMap["SCRIPT_NAME"] = _cgiScriptPath;
-					if (!_cgiVirtualPath.empty())
+					if (pid < 0)
 					{
-						tempCgiData.modifyEnvpMap["PATH_INFO"] = _cgiVirtualPath;
-						tempCgiData.modifyEnvpMap["PATH_TRANSLATED"] = _cgiPathTranslated;
+						close(pipe_out[0]);
+						close(pipe_out[1]);
+						generate4xx5xxErrorReponse(500, false, "Internal Error::CGI:: fork() failed::" + std::string(std::strerror(errno)));
 					}
 
-					tempCgiData.headerFieldPtr = &_headerField;
-					tempCgiData.isCgiProcessOpen = &_isCgiProcessOpen;
+					// child proc
+					else if (pid == 0)
+					{
+						try 
+						{
+							// for this particular
+							// close the read end of pipe
+							close(pipe_out[0]);
 
+
+							// then dup2 to replace the stdout
+							if (dup2(pipe_out[1], STDOUT_FILENO) != 0)
+							{
+								// cannot even sent the error message to parent proc
+								throw int(42);
+							}
+
+							// then close all the unused fds
+							//  leave only 0, 1, 2
+							for (int i = 3; i < MAX_FD; i++)
+								close(i);
+
+							// then we would set up the environment here
+							envData().assignEnv("REQUEST_METHOD", _method);
+							envData().assignEnv("QUERY_STRING", _queryString);
+
+							// GET method don't have body 
+							// so skip CONTENT_LENGTH and CONTENT_TYPE
+
+							envData().assignEnv("SCRIPT_NAME", _cgiScriptPath);
+							if (!_cgiVirtualPath.empty())
+							{
+								envData().assignEnv("PATH_INFO", _cgiVirtualPath);
+								envData().assignEnv("PATH_TRANSLATED", _cgiPathTranslated);
+							}
+
+							// convert the http header to env
+							{
+								std::map<std::string, std::vector<std::string> >::const_iterator headerIt = _headerField.begin();
+								std::string headerConvertedStr;
+								std::string convertValueStr;
+
+								while (headerIt != _headerField.end())
+								{
+									// skip these header
+									if (headerIt->first != "content-length"
+									&& headerIt->first != "content-type"
+									&& headerIt->first != "authorization"
+									&& headerIt->first != "proxy-authorization"
+									&& headerIt->first != "transfer-encoding"
+									&& headerIt->first != "connection")
+									{
+										headerConvertedStr = "HTTP_" + headerIt->first;
+
+										// convert to all capital letters and '-' to '_'
+										for (size_t i = 0; i < headerConvertedStr.size(); i++)
+										{
+											if (headerConvertedStr[i] == '-')
+												headerConvertedStr[i] = '_';
+											else
+											{
+												headerConvertedStr[i] = static_cast<unsigned char>(std::toupper(headerConvertedStr[i]));
+											}
+										}
+
+										const std::vector<std::string>& valueVec = headerIt->second;
+										// create convert value string
+										for (size_t i = 0; i < valueVec.size(); i++)
+										{
+											if (i != 0)
+												convertValueStr += ", ";
+											convertValueStr += valueVec[i];
+										}
+
+										// lastly assign it to env
+										envData().assignEnv(headerConvertedStr, convertValueStr);
+										convertValueStr.clear();
+									}
+
+									++headerIt;
+								}
+
+								// assume that we finish modifying env
+								// what left if execve
+
+								char* argv[3];
+								argv[2] = NULL;
+								argv[0] = const_cast<char *>(_cgiPath.c_str());
+								argv[1] = const_cast<char *>(_combinedPath.c_str());
+
+								execve(_cgiPath.c_str(), argv, envData().getEnvp());
+
+								// should say something back to parent with reasons
+
+							}
+						}
+						catch (...)
+						{
+						}
+						throw int(1);
+					}
+					else
+					{
+						close(pipe_out[1]);
+						/*
+
+
+						*/
+
+						if (fcntl(pipe_out[0], F_SETFL, O_NONBLOCK) != 0)
+						{
+							// stop the process immediately
+							kill(pid, SIGTERM);
+							waitpid(pid, NULL, 0);
+							generate4xx5xxErrorReponse(500, false, "Internal Error::CGI::fcntl() error to set O_NONBLOCK");
+						}
+
+						{
+
+							socketMap.insert(std::make_pair(pipe_out[0], Socket(pipe_out[0])));
+							socketMap[pipe_out[0]].setupCGIOUTSocket(clientSocket.getServersConfigPtr(),
+							clientSocket.getEpollFD(), &socketMap, );
+						}
+					}
 
 					// GET to CGI didn't build yet so
 					generate4xx5xxErrorReponse(500, false, "Not CGI yet");
@@ -1744,7 +1873,7 @@ void	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Soc
 		parsingHttpRequestLine(currIndex, reqBuffSize);
 		parsingHttpHeader(currIndex, reqBuffSize);
 
-		validateRequestBufffer(clientSocket);
+		validateRequestBufffer(clientSocket, socketMap);
 
 		if (_processStatus == FINISHED_READ_BODY)
 		{
@@ -1793,10 +1922,10 @@ void Http::readFromClient(const Socket& clientSocket, std::map<int, Socket>& soc
 		{
 
 		}
-		catch (...)
-		{
-			// what 
-		}
+		//catch (...)
+		//{
+		//	// what 
+		//}
 	}
 	
 	if (_isEpollout == false && _httpResponseList.empty() == false && _httpResponseList.front().hasSomethingtoSend() == true)

@@ -4,8 +4,7 @@ Socket::Socket() :
 _socketType(NO_TYPE),
 _server_listen_port(-1),
 _socketMap(NULL),
-_serversConfig(NULL),
-_parentSocket(NULL)
+_serversConfig(NULL)
 {}
 Socket::Socket(const Socket &obj) :
 _socketFD(obj._socketFD),
@@ -14,7 +13,6 @@ _socketType(obj._socketType),
 _serversConfig(obj._serversConfig),
 _server_listen_port(obj._server_listen_port),
 _socketMap(obj._socketMap),
-_parentSocket(obj._parentSocket),
 _server_ip_host(obj._server_ip_host)
 {
 }
@@ -23,7 +21,6 @@ _socketFD(fd),
 _socketType(NO_TYPE),
 _server_listen_port(-1),
 _socketMap(NULL),
-_parentSocket(NULL),
 _serversConfig(NULL)
 {
 
@@ -33,7 +30,6 @@ _socketFD(fd),
 _socketType(NO_TYPE),
 _server_listen_port(-1),
 _socketMap(NULL),
-_parentSocket(NULL),
 _serversConfig(NULL)
 {
 }
@@ -47,7 +43,6 @@ Socket& Socket::operator=(const Socket &obj)
 		_server_listen_port = obj._server_listen_port;
 		_serversConfig = obj._serversConfig;
 		_socketMap = obj._socketMap;
-		_parentSocket = obj._parentSocket;
 		_server_ip_host = obj._server_ip_host;
 	}
 	return (*this);
@@ -75,6 +70,36 @@ const std::set<in_addr_t>& Socket::getServerIpHost() const
 	return (_server_ip_host);
 }
 
+bool Socket::setupCGIOUTSocket(const std::vector<ServerConfig> *serversConfig,
+	const FileDescriptor &epollFD, std::map<int, Socket>* socketMap, const HttpCgi& cgiData)
+{
+
+	if (_socketType != NO_TYPE)
+	{
+		Logger::log(LC_RED, "ERROR::Socket::setSocketType::SET NEW TYPE TO THE ALREADY SET ONE");
+		return true;
+	}
+
+	if (socketMap == NULL)
+	{
+		Logger::log(LC_RED, "ERROR::Socket::setupSocket::socketMap should not be null!");
+		return (true);
+	}
+	if (_socketFD.getFd() < 0){
+		throw WebservException("Socket::setupSocket::_socketFD cannot < 0");
+	}
+
+	_epollFD = epollFD;
+	_socketType = CGI_FD_STDOUT;
+	_socketMap = socketMap;
+	_serversConfig = serversConfig;
+
+	httpCgi.push_back(cgiData);
+
+
+	return (true);
+}
+
 bool Socket::setupCGIINSocket(const std::vector<ServerConfig> *serversConfig,
 	const FileDescriptor &epollFD, std::map<int, Socket>* socketMap)
 {
@@ -100,6 +125,7 @@ bool Socket::setupCGIINSocket(const std::vector<ServerConfig> *serversConfig,
 	_serversConfig = serversConfig;
 
 
+	return (true);
 }
 
 
@@ -277,6 +303,7 @@ bool Socket::setupClientSocket(const std::vector<ServerConfig> *serversConfig,
 		errorMsg += std::strerror(errno);
 		throw(WebservException(errorMsg));
 	}
+	http.push_back(Http());
 
 	return (true);
 }
@@ -388,11 +415,11 @@ bool Socket::handleEvent(const epoll_event &event)
 			try {
 
 				if (event.events & EPOLLOUT){
-					http.writeToClient(*this, *_socketMap);
+					http[0].writeToClient(*this, *_socketMap);
 					// Handle http response
 				}
 				if (event.events & EPOLLIN){
-					http.readFromClient(*this, *_socketMap);
+					http[0].readFromClient(*this, *_socketMap);
 					// Handle http request
 				}
 
@@ -409,15 +436,24 @@ bool Socket::handleEvent(const epoll_event &event)
 				Logger::log(LC_ERROR, "socket#%d unexpected error occured closing this connection::%s", _socketFD.getFd(), e.what());
 				return (false);
 			}
-			catch (...)
-			{
-				Logger::log(LC_ERROR, "socket#%d unexpected error occured closing this connection", _socketFD.getFd());
-				return (false);
-			}
+			//catch (...)
+			//{
+			//	Logger::log(LC_ERROR, "socket#%d unexpected error occured closing this connection", _socketFD.getFd());
+			//	return (false);
+			//}
 
-			return http.isKeepConnection();
+			return http[0].isKeepConnection();
 		}
-		case CGI_FD_STDIN: {
+		case CGI_FD_STDOUT: {
+			// EPOLLIN is coming here 
+			if (event.events & EPOLLIN)
+			{
+
+			}
+			else 
+			{
+				//if (event.events)
+			}
 			return true;
 		}
 		default:

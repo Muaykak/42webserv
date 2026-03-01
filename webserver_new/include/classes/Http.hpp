@@ -53,7 +53,7 @@ class Http {
 		void	processingRequestBuffer(const Socket& clientSocket, std::map<int, Socket>& socketMap);
 		void	parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize);
 		void	parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize);
-		void	validateRequestBufffer(const Socket& clientSocket);
+		void	validateRequestBufffer(const Socket& clientSocket, std::map<int, Socket>& socketMap);
 		void	validateRequestBufferSelectServer(const Socket& clientSocket, const std::string& authStr);
 		void	readingRequestBody(size_t& currIndex, size_t& reqBuffSize);
 
@@ -69,11 +69,13 @@ class Http {
 		std::string		_combinedPath;
 		std::string		_queryString;
 		std::string		_protocol; // after validating the string will be "HTTP/1.1" => "11"
+
 		std::string		_cgiScriptPath;
 		std::string		_cgiVirtualPath;
 		std::string		_cgiPathTranslated;
 		std::string		_cgiPath;
 		bool			_isCgiProcessOpen;
+
 		std::string 	_uploadStorePath;
 		std::string		_authorityPart;
 		std::string		_redirectPath;
@@ -94,7 +96,7 @@ class Http {
 		size_t			_curr_body_read;
 
 		void	printHeaderField() const;
-		std::map<std::string, std::set<std::string> > _headerField;
+		std::map<std::string, std::vector<std::string> > _headerField;
 		const ServerConfig*	_targetServer;
 		const t_config_map* _targetLocationBlock;
 

@@ -29,6 +29,9 @@ WebServ::WebServ(const std::string &configPath) : _webservConfigPath(configPath)
 		}
 	}
 
+}
+
+void WebServ::run(){
 	//epoll loop
 	{
 		epoll_event	events[MAX_EPOLL_EVENT];
@@ -36,7 +39,7 @@ WebServ::WebServ(const std::string &configPath) : _webservConfigPath(configPath)
 		int lastAmount = 0;
 		int	eventsIndex;
 		Logger::log(LC_DEBUG, "Webserv is Waiting for connection!");
-		while (signal_status() == 1){
+		while (true){
 			returnEventsAmount = epoll_wait(_epollFD.getFd(), events, MAX_EPOLL_EVENT, 1000);
 			if (lastAmount != returnEventsAmount && returnEventsAmount >= 0)
 				Logger::log(LC_CONN_LOG, "Epoll event!:%d Total_Socket: %zu", returnEventsAmount, sockets.size());
@@ -47,8 +50,6 @@ WebServ::WebServ(const std::string &configPath) : _webservConfigPath(configPath)
 			// ERROR but should retry if EINTR
 			if (returnEventsAmount < 0){
 				if (errno == EINTR){
-					if (signal_status() == 0)
-						return ;
 					Logger::log(LC_DEBUG, "epoll_wait() got interrupted. Retrying...");
 					Logger::log(LC_DEBUG, "Webserv is Waiting for connection!");
 					continue;
@@ -65,8 +66,4 @@ WebServ::WebServ(const std::string &configPath) : _webservConfigPath(configPath)
 			}
 		}
 	}
-}
-
-void WebServ::run(){
-
 }

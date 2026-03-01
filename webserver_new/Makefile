@@ -17,7 +17,7 @@ CLASS_HEADER_FILE =	ConfigData.hpp \
 					ContentTypeTable.hpp \
 					Logger.hpp \
 					ServerConfig.hpp \
-					ResponseBuffer.hpp \
+					HttpCgi.hpp \
 					HttpResponse.hpp \
 					HttpThrowStatus.hpp \
 					Socket.hpp \
@@ -49,10 +49,10 @@ SRC_CLASSES_FILE =	ConfigData.cpp \
 					EnvpWrapper.cpp \
 					FileDescriptor.cpp \
 					Http.cpp \
+					HttpCgi.cpp \
 					HttpResponse.cpp \
 					HttpThrowStatus.cpp \
 					Logger.cpp \
-					ResponseBuffer.cpp \
 					ServerConfig.cpp \
 					Socket.cpp \
 					TempFileManager.cpp \

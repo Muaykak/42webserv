@@ -15,13 +15,15 @@
 # include "../utility_function.hpp"
 # include "Http.hpp"
 # include "CgiProcess.hpp"
+# include "HttpCgi.hpp"
 
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
 
 struct s_cgidata {
 	std::map<std::string, std::string> modifyEnvpMap;
-	const std::map<std::string, std::set<std::string> >* _headerFieldPtr;
+	const std::map<std::string, std::set<std::string> >* headerFieldPtr;
+	bool *isCgiProcessOpen;
 };
 
 
@@ -45,17 +47,11 @@ private:
 	const std::vector<ServerConfig>* _serversConfig;
 	int _server_listen_port;
 	std::set<in_addr_t>	_server_ip_host;
-	Http	http;
+	std::vector<Http>	http;
+	std::vector<HttpCgi> httpCgi;
 
 	// for CGI part
 	std::map<int, Socket>	*_socketMap;
-
-	// cgi target to parent
-	Socket	*_parentSocket;
-	
-
-	CgiProcess	_cgiProcess;
-
 
 public:
 	in_addr_t	_client_addr_in;
@@ -77,6 +73,8 @@ public:
 		const FileDescriptor &epollFD, std::map<int, Socket>* socketMap);
 	bool setupCGIINSocket(const std::vector<ServerConfig> *_serversConfigVec,
 		const FileDescriptor &epollFD, std::map<int, Socket>* socketMap);
+	bool setupCGIOUTSocket(const std::vector<ServerConfig> *serversConfig,
+		const FileDescriptor &epollFD, std::map<int, Socket>* socketMap, const HttpCgi& cgiData);
 
 	// Be sure that epollFD still available !
 
