@@ -1,40 +1,32 @@
 #include "../../include/classes/HttpCgi.hpp"
 
 HttpCgi::HttpCgi()
-: _cgiProcessOpen(NULL),
-_httpResponseList(NULL)
+:_clientSocketHttp(NULL)
 {
-
+	_readCgiBuffer.reserve(HTTP_READ_FROM_CGI_BUFFER_SIZE);
 }
 
 
-HttpCgi::HttpCgi(bool* cgiProcOpenPtr,
-std::list<HttpResponse>* httpResponseListPtr)
-: _cgiProcessOpen(cgiProcOpenPtr),
-_httpResponseList(_httpResponseList)
+HttpCgi::HttpCgi(Http* clientSocketHttp, const FileDescriptor& mainHttpSocketFd)
+:_clientSocketHttp(clientSocketHttp),
+_mainHttpSocketFd(mainHttpSocketFd)
 {
-
+	_readCgiBuffer.reserve(HTTP_READ_FROM_CGI_BUFFER_SIZE);
 }
 
 HttpCgi::HttpCgi(const HttpCgi& obj)
-:_cgiProcessOpen(obj._cgiProcessOpen),
-_httpResponseList(obj._httpResponseList)
+:_clientSocketHttp(obj._clientSocketHttp),
+_mainHttpSocketFd(obj._mainHttpSocketFd)
 {
-
-}
-
-HttpCgi& HttpCgi::operator=(const HttpCgi& obj)
-{
-	if (this != &obj)
-	{
-		_cgiProcessOpen = obj._cgiProcessOpen;
-		_httpResponseList = obj._httpResponseList;
-	}
-	
-	return (*this);
+	_readCgiBuffer.reserve(HTTP_READ_FROM_CGI_BUFFER_SIZE);
 }
 
 HttpCgi::~HttpCgi()
 {
 	
+}
+
+Http* HttpCgi::getClientSocketHttp() const
+{
+	return (_clientSocketHttp);
 }

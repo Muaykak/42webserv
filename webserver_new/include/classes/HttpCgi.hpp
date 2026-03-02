@@ -5,21 +5,28 @@
 
 class HttpCgi {
 	private:
-		bool*	_cgiProcessOpen;
-		std::list<HttpResponse>* _httpResponseList;
+		Http*	_clientSocketHttp;
 
+		// need the parent client socket to set the
+		// epoll_ctl()
+		FileDescriptor	_mainHttpSocketFd;
 
+		std::vector<char> _readCgiBuffer;
 
 
 	public:
 		HttpCgi();
 		HttpCgi(const HttpCgi& obj);
 
-		HttpCgi(bool* cgiProcOpenPtr,
-		std::list<HttpResponse>* httpResponseListPtr);
+		HttpCgi(Http* clientSocketHttp, const FileDescriptor& mainHttpSocketFd);
 
-		HttpCgi& operator=(const HttpCgi& obj);
+		HttpCgi& operator=(const HttpCgi& obj); // declare but no implement
 		~HttpCgi();
+
+		Http* getClientSocketHttp() const;
+
+		void sendToCGI();
+		void readFromCGI();
 };
 
 #endif

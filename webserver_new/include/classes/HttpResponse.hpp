@@ -33,6 +33,7 @@ class HttpResponse {
 		std::string	_statusMessage;
 		std::string _contentType;
 		FileDescriptor _fileFd;
+		FileDescriptor _cgiOutFd;
 		size_t	_fileSize;
 
 		std::string _fixedBodyStr;

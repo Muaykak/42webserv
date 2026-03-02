@@ -57,10 +57,6 @@ class Http {
 		void	validateRequestBufferSelectServer(const Socket& clientSocket, const std::string& authStr);
 		void	readingRequestBody(size_t& currIndex, size_t& reqBuffSize);
 
-		void	generate4xx5xxErrorReponse(unsigned int errorStatusCode, bool keepAfterResponse, const std::string& throwMsg);
-		void	generate3xxRedirectResponse(unsigned int statusCode);
-
-
 		void	clearRequestData();
 		e_http_process_status	_processStatus;
 		std::string		_method;
@@ -75,6 +71,11 @@ class Http {
 		std::string		_cgiPathTranslated;
 		std::string		_cgiPath;
 		bool			_isCgiProcessOpen;
+		pid_t			_cgiProcessPid;
+		bool			_isCgiInSocketAlive;
+		bool			_isCgiOutSocketAlive;
+		int	_cgiInSocket;
+		int	_cgiOutSocket;
 
 		std::string 	_uploadStorePath;
 		std::string		_authorityPart;
@@ -108,6 +109,11 @@ class Http {
 		void	writeToClient(const Socket& clientSocket, std::map<int, Socket>& SocketMap);
 
 		bool	isKeepConnection() const;
+
+		void	generate4xx5xxErrorReponse(unsigned int errorStatusCode, bool keepAfterResponse, const std::string& throwMsg);
+		void	generate3xxRedirectResponse(unsigned int statusCode);
+
+
 };
 
 #endif

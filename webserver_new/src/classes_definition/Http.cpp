@@ -1220,7 +1220,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket, std::map<int, Sock
 					msg += *it;
 					++it;
 				}
-				
+
 				generate4xx5xxErrorReponse(400, false, msg);
 			}
 
@@ -1772,8 +1772,8 @@ void	Http::validateRequestBufffer(const Socket& clientSocket, std::map<int, Sock
 
 								execve(_cgiPath.c_str(), argv, envData().getEnvp());
 
-								// should say something back to parent with reasons
-
+								// should say something back to parent with reasons								
+								
 							}
 						}
 						catch (...)
@@ -1797,12 +1797,18 @@ void	Http::validateRequestBufffer(const Socket& clientSocket, std::map<int, Sock
 							generate4xx5xxErrorReponse(500, false, "Internal Error::CGI::fcntl() error to set O_NONBLOCK");
 						}
 
+						// clear
 						{
-
 							socketMap.insert(std::make_pair(pipe_out[0], Socket(pipe_out[0])));
 							socketMap[pipe_out[0]].setupCGIOUTSocket(clientSocket.getServersConfigPtr(),
-							clientSocket.getEpollFD(), &socketMap, );
+							clientSocket.getEpollFD(), &socketMap, HttpCgi(this, clientSocket.getSocketFD()));
 						}
+
+						_isCgiOutSocketAlive = true;
+						_cgiOutSocket = pipe_out[0];
+						_isCgiProcessOpen = true;
+						_cgiProcessPid = pid;
+
 					}
 
 					// GET to CGI didn't build yet so
