@@ -45,6 +45,16 @@ class HttpResponse {
 		bool _isReachEOF;
 
 		// need to fix this later
+		
+		// all about cgi
+		bool _isCgiProcessOpen;
+		pid_t _cgiPid;
+		bool _isCgiInSocketAlive;
+		bool _isCgiOutSocketAlive;
+		int  _cgiInSocketFd;
+		int  _cgiOutSocketFd;
+
+
 		bool _isCgiFinished;
 
 
@@ -56,6 +66,26 @@ class HttpResponse {
 	public:
 		HttpResponse();
 
+		void setIsCgiProcessOpen(bool state);
+		bool getIsCgiProcessOpen() const;
+
+		void setIsCgiFinished(bool state);
+		bool getIsCgiFinished() const;
+
+		void setCgiPid(pid_t cgiPid);
+		pid_t getCgiPid() const;
+
+		void setIsCgiInSocketAlive(bool state);
+		bool getIsCgiInSocketAlive() const;
+
+		void setIsCgiOutSocketAlive(bool state);
+		bool getIsCgiOutSocketAlive() const;
+
+		void setCgiInSocketFd(int fd);
+		int getCgiInSocketFd() const;
+
+		void setCgiOutSocketFd(int fd);
+		int getCgiOutSocketFd() const;
 
 		void addHeader(const std::string& headerName, const std::string& headerValue);
 		std::map<std::string, std::set<std::string> >& getHeader();

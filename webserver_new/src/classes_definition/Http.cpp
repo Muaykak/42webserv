@@ -37,16 +37,6 @@ _socketMapPtr(socketMapPtr)
 
 Http::~Http()
 {
-	if (_isCgiOutSocketAlive)
-		_socketMapPtr->erase(_cgiOutSocket);
-	if (_isCgiInSocketAlive)
-		_socketMapPtr->erase(_cgiInSocket);
-
-	if (_isCgiProcessOpen)
-	{
-		kill(_cgiProcessPid, SIGTERM);
-		waitpid(_cgiProcessPid, NULL, 0);
-	}
 }
 
 void Http::printHeaderField() const
@@ -1839,15 +1829,18 @@ void	Http::validateRequestBufffer(const Socket& clientSocket, std::map<int, Sock
 						{
 							_httpResponseList.push_back(HttpResponse());
 
+							HttpResponse& targetResponse = _httpResponseList.back();
+							
+
 							socketMap.insert(std::make_pair(pipe_out[0], Socket(pipe_out[0])));
 							socketMap[pipe_out[0]].setupCGIOUTSocket(clientSocket.getServersConfigPtr(),
-							clientSocket.getEpollFD(), &socketMap, HttpCgi(&_httpResponseList, &_httpResponseList.back(), clientSocket.getSocketFD()));
+							clientSocket.getEpollFD(), &socketMap, HttpCgi(&_httpResponseList, &_httpResponseList.back(), clientSocket.getSocketFD(), &(socketMap[pipe_out[0]])));
 						}
 
-						_isCgiOutSocketAlive = true;
-						_cgiOutSocket = pipe_out[0];
-						_isCgiProcessOpen = true;
-						_cgiProcessPid = pid;
+						// _isCgiOutSocketAlive = true;
+						// _cgiOutSocket = pipe_out[0];
+						// _isCgiProcessOpen = true;
+						// _cgiProcessPid = pid;
 
 					}
 

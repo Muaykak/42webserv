@@ -74,13 +74,13 @@ class Http {
 		std::string		_cgiVirtualPath;
 		std::string		_cgiPathTranslated;
 		std::string		_cgiPath;
-		bool			_isCgiProcessOpen;
-		pid_t			_cgiProcessPid;
-		bool			_isCgiInSocketAlive;
-		bool			_isCgiOutSocketAlive;
-		std::vector<HttpCgi> _httpCgi;
-		int	_cgiInSocket;
-		int	_cgiOutSocket;
+		// bool			_isCgiProcessOpen;
+		// pid_t			_cgiProcessPid;
+		// bool			_isCgiInSocketAlive;
+		// bool			_isCgiOutSocketAlive;
+		// std::vector<HttpCgi> _httpCgi;
+		// int	_cgiInSocket;
+		// int	_cgiOutSocket;
 
 		std::string 	_uploadStorePath;
 		std::string		_authorityPart;

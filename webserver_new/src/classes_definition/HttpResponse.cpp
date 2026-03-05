@@ -136,6 +136,70 @@ void HttpResponse::setFileSize(size_t fileSize)
 	_fileSize = fileSize;
 }
 
+void HttpResponse::setIsCgiProcessOpen(bool state)
+{
+	_isCgiProcessOpen = state;
+}
+bool HttpResponse::getIsCgiProcessOpen() const
+{
+	return (_isCgiProcessOpen);
+}
+
+void HttpResponse::setIsCgiProcessOpen(bool state)
+{
+	_isCgiFinished = state;
+}
+bool HttpResponse::getIsCgiProcessOpen() const
+{
+	return (_isCgiFinished);
+}
+
+void HttpResponse::setCgiPid(pid_t cgiPid)
+{
+	_cgiPid = cgiPid;
+}
+pid_t HttpResponse::getCgiPid() const
+{
+	return (_cgiPid);
+}
+
+void HttpResponse::setIsCgiInSocketAlive(bool state)
+{
+	_isCgiInSocketAlive = state;
+}
+bool HttpResponse::getIsCgiInSocketAlive() const
+{
+	return (_isCgiInSocketAlive);
+}
+
+void HttpResponse::setIsCgiOutSocketAlive(bool state)
+{
+	_isCgiOutSocketAlive = state;
+}
+bool HttpResponse::getIsCgiOutSocketAlive() const
+{
+	return (_isCgiOutSocketAlive);
+}
+
+void HttpResponse::setCgiInSocketFd(int fd)
+{
+	_cgiInSocketFd = fd;
+}
+int HttpResponse::getCgiInSocketFd() const
+{
+	return (_cgiInSocketFd);
+}
+
+void HttpResponse::setCgiOutSocketFd(int fd)
+{
+	_cgiOutSocketFd = fd;
+}
+int HttpResponse::getCgiOutSocketFd() const
+{
+	return (_cgiOutSocketFd);
+}
+
+
 void	HttpResponse::generateResponse()
 {
 	if (_canModify == false)
@@ -194,7 +258,7 @@ void	HttpResponse::generateResponse()
 		}
 		else
 		{
-			throw WebservException("YOOOOOO");
+			tempStr += "Transfer-Encoding: chunked\r\n";
 		}
 	}
 
