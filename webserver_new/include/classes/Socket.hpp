@@ -41,6 +41,8 @@ enum e_socket_type
 class Socket
 {
 private:
+	time_t	_lastEventTime;
+
 	FileDescriptor _epollFD;
 	FileDescriptor _socketFD;
 	e_socket_type _socketType;
@@ -48,7 +50,7 @@ private:
 	int _server_listen_port;
 	std::set<in_addr_t>	_server_ip_host;
 	std::vector<Http>	http;
-	std::vector<HttpCgi> httpCgi;
+	HttpCgi*			
 
 	// for CGI part
 	std::map<int, Socket>	*_socketMap;
@@ -83,6 +85,10 @@ public:
 
 	void setServerIpHost(const std::set<in_addr_t>& obj);
 	const std::set<in_addr_t>& getServerIpHost() const;
+
+	time_t	getLastEventTime() const;
+	e_socket_type	getServerSockerType() const;
+
 };
 
 #endif

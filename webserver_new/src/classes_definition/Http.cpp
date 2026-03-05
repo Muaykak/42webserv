@@ -9,6 +9,8 @@
 
 Http::Http()
 : _keepConnection(true),
+_clientSocketPtr(NULL),
+_socketMapPtr(NULL),
 _processStatus(NO_STATUS),
 _targetServer(NULL),
 _readBody(false),
@@ -26,9 +28,25 @@ _isUseTempFile(false)
 	_sendBuffer.reserve(HTTP_SEND_BUFFER);
 }
 
-Http::~Http()
+Http::Http(Socket *clientSocketPtr, std::map<int, Socket>* socketMapPtr)
+:_clientSocketPtr(clientSocketPtr),
+_socketMapPtr(socketMapPtr)
 {
 
+}
+
+Http::~Http()
+{
+	if (_isCgiOutSocketAlive)
+		_socketMapPtr->erase(_cgiOutSocket);
+	if (_isCgiInSocketAlive)
+		_socketMapPtr->erase(_cgiInSocket);
+
+	if (_isCgiProcessOpen)
+	{
+		kill(_cgiProcessPid, SIGTERM);
+		waitpid(_cgiProcessPid, NULL, 0);
+	}
 }
 
 void Http::printHeaderField() const
@@ -66,6 +84,125 @@ void Http::printHeaderField() const
 bool Http::isKeepConnection() const
 {
 	return _keepConnection;
+}
+
+void Http::cgiChildProcessNoRequestBody(int pipeForCgiStdOut[2])
+{
+	try 
+	{
+
+
+		// for this particular
+		// close the read end of pipe
+		close(pipeForCgiStdOut[0]);
+
+
+		// then dup2 to replace the stdout
+		if (dup2(pipeForCgiStdOut[1], STDOUT_FILENO) != 0)
+		{
+			for (int i = 3; i < MAX_FD; i++)
+				close(i);
+			// cannot even sent the error message to parent proc
+			throw int(42);
+		}
+
+		// then close all the unused fds
+		//  leave only 0, 1, 2
+		for (int i = 3; i < MAX_FD; i++)
+			close(i);
+
+		// chdir()
+		{
+			size_t	pos = _cgiPath.find_last_of('/');
+			std::string cgiPathDir = _cgiPath.substr(0, pos == _cgiPath.npos ? _cgiPath.size() : pos + 1);
+
+			if (chdir(cgiPathDir.c_str()) != 0)
+			{
+				// just need to tell and may create error reponse
+				// to output
+
+				throw (1);
+			}
+		}
+
+		// then we would set up the environment here
+		envData().assignEnv("REQUEST_METHOD", _method);
+		envData().assignEnv("QUERY_STRING", _queryString);
+
+		// GET method don't have body 
+		// so skip CONTENT_LENGTH and CONTENT_TYPE
+
+		envData().assignEnv("SCRIPT_NAME", _cgiScriptPath);
+		if (!_cgiVirtualPath.empty())
+		{
+			envData().assignEnv("PATH_INFO", _cgiVirtualPath);
+			envData().assignEnv("PATH_TRANSLATED", _cgiPathTranslated);
+		}
+
+		// convert the http header to env
+		{
+			std::map<std::string, std::vector<std::string> >::const_iterator headerIt = _headerField.begin();
+			std::string headerConvertedStr;
+			std::string convertValueStr;
+
+			while (headerIt != _headerField.end())
+			{
+				// skip these header
+				if (headerIt->first != "content-length"
+				&& headerIt->first != "content-type"
+				&& headerIt->first != "authorization"
+				&& headerIt->first != "proxy-authorization"
+				&& headerIt->first != "transfer-encoding"
+				&& headerIt->first != "connection")
+				{
+					headerConvertedStr = "HTTP_" + headerIt->first;
+
+					// convert to all capital letters and '-' to '_'
+					for (size_t i = 0; i < headerConvertedStr.size(); i++)
+					{
+						if (headerConvertedStr[i] == '-')
+							headerConvertedStr[i] = '_';
+						else
+						{
+							headerConvertedStr[i] = static_cast<unsigned char>(std::toupper(headerConvertedStr[i]));
+						}
+					}
+
+					const std::vector<std::string>& valueVec = headerIt->second;
+					// create convert value string
+					for (size_t i = 0; i < valueVec.size(); i++)
+					{
+						if (i != 0)
+							convertValueStr += ", ";
+						convertValueStr += valueVec[i];
+					}
+
+					// lastly assign it to env
+					envData().assignEnv(headerConvertedStr, convertValueStr);
+					convertValueStr.clear();
+				}
+
+				++headerIt;
+			}
+
+			// assume that we finish modifying env
+			// what left if execve
+
+			char* argv[3];
+			argv[2] = NULL;
+			argv[0] = const_cast<char *>(_cgiPath.c_str());
+			argv[1] = const_cast<char *>(_combinedPath.c_str());
+
+			execve(_cgiPath.c_str(), argv, envData().getEnvp());
+
+			// should say something back to parent with reasons								
+			
+		}
+	}
+	catch (...)
+	{
+	}
+	throw int(1);
 }
 
 void	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
@@ -1631,9 +1768,6 @@ void	Http::validateRequestBufffer(const Socket& clientSocket, std::map<int, Sock
 
 					HttpResponse& targetResponse = _httpResponseList.back();
  
-					std::cout << "combined path is: \"" << _combinedPath << "\"" << std::endl;
-					std::cout << "Content-Type: " << contentTypeTable().extensionToContentType(_combinedPath) << std::endl;
-
 					// set Last-Modified
 					{
 						// the st_mtim is time_t
@@ -1683,103 +1817,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket, std::map<int, Sock
 					// child proc
 					else if (pid == 0)
 					{
-						try 
-						{
-							// for this particular
-							// close the read end of pipe
-							close(pipe_out[0]);
-
-
-							// then dup2 to replace the stdout
-							if (dup2(pipe_out[1], STDOUT_FILENO) != 0)
-							{
-								// cannot even sent the error message to parent proc
-								throw int(42);
-							}
-
-							// then close all the unused fds
-							//  leave only 0, 1, 2
-							for (int i = 3; i < MAX_FD; i++)
-								close(i);
-
-							// then we would set up the environment here
-							envData().assignEnv("REQUEST_METHOD", _method);
-							envData().assignEnv("QUERY_STRING", _queryString);
-
-							// GET method don't have body 
-							// so skip CONTENT_LENGTH and CONTENT_TYPE
-
-							envData().assignEnv("SCRIPT_NAME", _cgiScriptPath);
-							if (!_cgiVirtualPath.empty())
-							{
-								envData().assignEnv("PATH_INFO", _cgiVirtualPath);
-								envData().assignEnv("PATH_TRANSLATED", _cgiPathTranslated);
-							}
-
-							// convert the http header to env
-							{
-								std::map<std::string, std::vector<std::string> >::const_iterator headerIt = _headerField.begin();
-								std::string headerConvertedStr;
-								std::string convertValueStr;
-
-								while (headerIt != _headerField.end())
-								{
-									// skip these header
-									if (headerIt->first != "content-length"
-									&& headerIt->first != "content-type"
-									&& headerIt->first != "authorization"
-									&& headerIt->first != "proxy-authorization"
-									&& headerIt->first != "transfer-encoding"
-									&& headerIt->first != "connection")
-									{
-										headerConvertedStr = "HTTP_" + headerIt->first;
-
-										// convert to all capital letters and '-' to '_'
-										for (size_t i = 0; i < headerConvertedStr.size(); i++)
-										{
-											if (headerConvertedStr[i] == '-')
-												headerConvertedStr[i] = '_';
-											else
-											{
-												headerConvertedStr[i] = static_cast<unsigned char>(std::toupper(headerConvertedStr[i]));
-											}
-										}
-
-										const std::vector<std::string>& valueVec = headerIt->second;
-										// create convert value string
-										for (size_t i = 0; i < valueVec.size(); i++)
-										{
-											if (i != 0)
-												convertValueStr += ", ";
-											convertValueStr += valueVec[i];
-										}
-
-										// lastly assign it to env
-										envData().assignEnv(headerConvertedStr, convertValueStr);
-										convertValueStr.clear();
-									}
-
-									++headerIt;
-								}
-
-								// assume that we finish modifying env
-								// what left if execve
-
-								char* argv[3];
-								argv[2] = NULL;
-								argv[0] = const_cast<char *>(_cgiPath.c_str());
-								argv[1] = const_cast<char *>(_combinedPath.c_str());
-
-								execve(_cgiPath.c_str(), argv, envData().getEnvp());
-
-								// should say something back to parent with reasons								
-								
-							}
-						}
-						catch (...)
-						{
-						}
-						throw int(1);
+						cgiChildProcessNoRequestBody(pipe_out);
 					}
 					else
 					{
@@ -1799,9 +1837,11 @@ void	Http::validateRequestBufffer(const Socket& clientSocket, std::map<int, Sock
 
 						// clear
 						{
+							_httpResponseList.push_back(HttpResponse());
+
 							socketMap.insert(std::make_pair(pipe_out[0], Socket(pipe_out[0])));
 							socketMap[pipe_out[0]].setupCGIOUTSocket(clientSocket.getServersConfigPtr(),
-							clientSocket.getEpollFD(), &socketMap, HttpCgi(this, clientSocket.getSocketFD()));
+							clientSocket.getEpollFD(), &socketMap, HttpCgi(&_httpResponseList, &_httpResponseList.back(), clientSocket.getSocketFD()));
 						}
 
 						_isCgiOutSocketAlive = true;
@@ -1898,14 +1938,14 @@ void	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Soc
 	return ;
 }
 
-void Http::readFromClient(const Socket& clientSocket, std::map<int, Socket>& socketMap)
+void Http::readFromClient()
 {
 	ssize_t	readAmount;
 
-	readAmount = recv(clientSocket.getSocketFD().getFd(), &_recvBuffer[0], HTTP_RECV_BUFFER, 0);
+	readAmount = recv(_clientSocketPtr->getSocketFD().getFd(), &_recvBuffer[0], HTTP_RECV_BUFFER, 0);
 	if (readAmount == 0)
 	{
-		Logger::log(LC_CONN_LOG, "Disconnecting client Socket#%d", clientSocket.getSocketFD().getFd());
+		Logger::log(LC_CONN_LOG, "Disconnecting client Socket#%d", _clientSocketPtr->getSocketFD().getFd());
 		_keepConnection = false;
 		return ;
 	}
@@ -1918,11 +1958,11 @@ void Http::readFromClient(const Socket& clientSocket, std::map<int, Socket>& soc
 		_requestBuffer.append(&(_recvBuffer[0]), readAmount);
 		try
 		{
-			processingRequestBuffer(clientSocket, socketMap);
+			processingRequestBuffer(*_clientSocketPtr, *_socketMapPtr);
 		}
 		catch (HttpThrowStatus &status)
 		{
-			Logger::log(LC_INFO, "Http::socket#%d::reponse with status code %d::%s", clientSocket.getSocketFD().getFd(), status.statusCode(), status.message().c_str());
+			Logger::log(LC_INFO, "Http::socket#%d::reponse with status code %d::%s", _clientSocketPtr->getSocketFD().getFd(), status.statusCode(), status.message().c_str());
 		}
 		catch (std::exception &e)
 		{
@@ -1939,9 +1979,9 @@ void Http::readFromClient(const Socket& clientSocket, std::map<int, Socket>& soc
 		epoll_event	event;
 		std::memset(&event, 0, sizeof(event));
 		event.events = EPOLLIN | EPOLLOUT;
-		event.data.fd = clientSocket.getSocketFD().getFd();
+		event.data.fd = _clientSocketPtr->getSocketFD().getFd();
 
-		if (epoll_ctl(clientSocket.getEpollFD().getFd(), EPOLL_CTL_MOD, clientSocket.getSocketFD().getFd(), &event) == -1)
+		if (epoll_ctl(_clientSocketPtr->getEpollFD().getFd(), EPOLL_CTL_MOD, _clientSocketPtr->getSocketFD().getFd(), &event) == -1)
 		{
 			std::string msg = "epoll_ctl()::error::";
 			msg += std::strerror(errno);
@@ -1952,7 +1992,7 @@ void Http::readFromClient(const Socket& clientSocket, std::map<int, Socket>& soc
 	//_keepConnection = false;
 }
 
-void	Http::writeToClient(const Socket& clientSocket, std::map<int, Socket>& SocketMap)
+void	Http::writeToClient()
 {
 	HttpResponse *response_block = NULL;
 
@@ -1964,7 +2004,7 @@ void	Http::writeToClient(const Socket& clientSocket, std::map<int, Socket>& Sock
 	}
 	response_block = &_httpResponseList.front();
 
-	ssize_t	sendReturn = response_block->sendHttpResponse(clientSocket);
+	ssize_t	sendReturn = response_block->sendHttpResponse(*_clientSocketPtr);
 
 	if (sendReturn < 0)
 	{
@@ -1988,9 +2028,9 @@ void	Http::writeToClient(const Socket& clientSocket, std::map<int, Socket>& Sock
 		epoll_event	event;
 		std::memset(&event, 0, sizeof(event));
 		event.events = EPOLLIN;
-		event.data.fd = clientSocket.getSocketFD().getFd();
+		event.data.fd = _clientSocketPtr->getSocketFD().getFd();
 
-		if (epoll_ctl(clientSocket.getEpollFD().getFd(), EPOLL_CTL_MOD, clientSocket.getSocketFD().getFd(), &event) == -1)
+		if (epoll_ctl(_clientSocketPtr->getEpollFD().getFd(), EPOLL_CTL_MOD, _clientSocketPtr->getSocketFD().getFd(), &event) == -1)
 		{
 			std::string msg = "epoll_ctl()::error::";
 			msg += std::strerror(errno);

@@ -97,6 +97,8 @@ bool Socket::setupCGIOUTSocket(const std::vector<ServerConfig> *serversConfig,
 	httpCgi.push_back(cgiData);
 
 
+
+	_lastEventTime = std::time(NULL);
 	return (true);
 }
 
@@ -125,6 +127,8 @@ bool Socket::setupCGIINSocket(const std::vector<ServerConfig> *serversConfig,
 	_serversConfig = serversConfig;
 
 
+
+	_lastEventTime = std::time(NULL);
 	return (true);
 }
 
@@ -253,6 +257,8 @@ bool Socket::setupServerSocket(const std::vector<ServerConfig> *serversConfig,
 		++_serversConfigIndex;
 	}
 
+	_lastEventTime = std::time(NULL);
+
 	return (true);
 }
 
@@ -303,14 +309,16 @@ bool Socket::setupClientSocket(const std::vector<ServerConfig> *serversConfig,
 		errorMsg += std::strerror(errno);
 		throw(WebservException(errorMsg));
 	}
-	http.push_back(Http());
+	http.push_back(Http(this, socketMap));
 
+	_lastEventTime = std::time(NULL);
 	return (true);
 }
 
 // return false means this Socket should be DESTROYED after handleEVENT
 bool Socket::handleEvent(const epoll_event &event)
 {
+	_lastEventTime = std::time(NULL);
 	switch (_socketType)
 	{
 		case SERVER_SOCKET:
@@ -415,11 +423,11 @@ bool Socket::handleEvent(const epoll_event &event)
 			try {
 
 				if (event.events & EPOLLOUT){
-					http[0].writeToClient(*this, *_socketMap);
+					http[0].writeToClient();
 					// Handle http response
 				}
 				if (event.events & EPOLLIN){
-					http[0].readFromClient(*this, *_socketMap);
+					http[0].readFromClient();
 					// Handle http request
 				}
 
@@ -448,7 +456,7 @@ bool Socket::handleEvent(const epoll_event &event)
 			// EPOLLIN is coming here 
 			if (event.events & EPOLLIN)
 			{
-
+				httpCgi[0].readFromCGI();
 			}
 			else 
 			{
@@ -474,4 +482,14 @@ const std::vector<ServerConfig> *Socket::getServersConfigPtr() const
 int	Socket::getServerListenPort() const
 {
 	return (_server_listen_port);
+}
+
+time_t	Socket::getLastEventTime() const
+{
+	return (_lastEventTime);
+}
+
+e_socket_type Socket::getServerSockerType() const
+{
+	return (_socketType);
 }

@@ -40,7 +40,7 @@ void WebServ::run(){
 		int	eventsIndex;
 		Logger::log(LC_DEBUG, "Webserv is Waiting for connection!");
 		while (true){
-			returnEventsAmount = epoll_wait(_epollFD.getFd(), events, MAX_EPOLL_EVENT, 1000);
+			returnEventsAmount = epoll_wait(_epollFD.getFd(), events, MAX_EPOLL_EVENT, WEBSERV_EPOLL_WAIT_MILLISEC);
 			if (lastAmount != returnEventsAmount && returnEventsAmount >= 0)
 				Logger::log(LC_CONN_LOG, "Epoll event!:%d Total_Socket: %zu", returnEventsAmount, sockets.size());
 			lastAmount = returnEventsAmount;
@@ -63,6 +63,21 @@ void WebServ::run(){
 					sockets.erase(events[eventsIndex].data.fd);
 				}
 				++eventsIndex;
+			}
+
+			// check socket timeout
+			{
+				time_t	currentTime = std::time(NULL);
+				std::map<int, Socket>::iterator socketIt = sockets.begin();
+				while (socketIt != sockets.end())
+				{
+					if (socketIt->second.getServerSockerType() == CLIENT_SOCKET)
+					{
+						if (std::difftime(currentTime, socketIt->second.getLastEventTime()) >= WEBSERV_CLIENT_SOCKET_TIMEOUT_SECOND)
+							sockets.erase(socketIt);
+					}
+					++socketIt;
+				}
 			}
 		}
 	}

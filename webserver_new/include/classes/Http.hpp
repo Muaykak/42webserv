@@ -22,6 +22,8 @@ enum e_http_process_status {
 
 class Http {
 	private:
+		Socket* _clientSocketPtr;
+		std::map<int, Socket>* _socketMapPtr;
 		std::vector<char>	_recvBuffer;
 		std::string _requestBuffer;
 
@@ -57,6 +59,8 @@ class Http {
 		void	validateRequestBufferSelectServer(const Socket& clientSocket, const std::string& authStr);
 		void	readingRequestBody(size_t& currIndex, size_t& reqBuffSize);
 
+		void	cgiChildProcessNoRequestBody(int pipeForCgiStdOut[2]);
+
 		void	clearRequestData();
 		e_http_process_status	_processStatus;
 		std::string		_method;
@@ -74,6 +78,7 @@ class Http {
 		pid_t			_cgiProcessPid;
 		bool			_isCgiInSocketAlive;
 		bool			_isCgiOutSocketAlive;
+		std::vector<HttpCgi> _httpCgi;
 		int	_cgiInSocket;
 		int	_cgiOutSocket;
 
@@ -103,10 +108,11 @@ class Http {
 
 	public:
 		Http();
+		Http(Socket *clientSocketPtr, std::map<int, Socket>* socketMapPtr);
 		~Http();
 
-		void	readFromClient(const Socket& clientSocket, std::map<int, Socket>& SocketMap);
-		void	writeToClient(const Socket& clientSocket, std::map<int, Socket>& SocketMap);
+		void	readFromClient();
+		void	writeToClient();
 
 		bool	isKeepConnection() const;
 
