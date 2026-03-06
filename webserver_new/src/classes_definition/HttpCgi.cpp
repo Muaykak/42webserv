@@ -3,7 +3,9 @@
 
 HttpCgi::HttpCgi()
 :_clientResponseList(NULL),
-_cgiTargetResponse(NULL)
+_cgiTargetResponse(NULL),
+_isFinishedRead(false),
+_keepConnection(true)
 {
 	_readCgiBuffer.reserve(HTTP_READ_FROM_CGI_BUFFER_SIZE);
 }
@@ -15,7 +17,9 @@ Socket *thisCgiSocket)
 : _clientResponseList(clientResponseList),
 _cgiTargetResponse(cgiTargetResponse),
 _thisCgiSocket(thisCgiSocket),
-_mainHttpSocketFd(mainHttpSocket)
+_mainHttpSocketFd(mainHttpSocket),
+_isFinishedRead(false),
+_keepConnection(true)
 {
 	_readCgiBuffer.reserve(HTTP_READ_FROM_CGI_BUFFER_SIZE);
 }
@@ -24,7 +28,9 @@ HttpCgi::HttpCgi(const HttpCgi& obj)
 : _clientResponseList(obj._clientResponseList),
 _cgiTargetResponse(obj._cgiTargetResponse),
 _thisCgiSocket(obj._thisCgiSocket),
-_mainHttpSocketFd(obj._mainHttpSocketFd)
+_mainHttpSocketFd(obj._mainHttpSocketFd),
+_isFinishedRead(obj._isFinishedRead),
+_keepConnection(obj._keepConnection)
 {
 	_readCgiBuffer.reserve(HTTP_READ_FROM_CGI_BUFFER_SIZE);
 }
@@ -48,6 +54,7 @@ void HttpCgi::readFromCGI()
 	}
 	else if (readAmount < 0)
 	{
+		// might cannot perform read this time
 		return ;
 	}
 	else

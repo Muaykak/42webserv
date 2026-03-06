@@ -29,10 +29,45 @@ _isUseTempFile(false)
 }
 
 Http::Http(Socket *clientSocketPtr, std::map<int, Socket>* socketMapPtr)
-:_clientSocketPtr(clientSocketPtr),
-_socketMapPtr(socketMapPtr)
+: _keepConnection(true),
+_clientSocketPtr(clientSocketPtr),
+_socketMapPtr(socketMapPtr),
+_processStatus(NO_STATUS),
+_targetServer(NULL),
+_readBody(false),
+_isEpollout(false),
+_body_type(0),
+_checkExpectBody(false),
+_body_size(0),
+_curr_body_read(0),
+_targetLocationBlock(NULL),
+_tempRequestBodyFileNum(0),
+_discardBody(false),
+_isUseTempFile(false)
 {
+	_recvBuffer.reserve(HTTP_RECV_BUFFER);
+	_sendBuffer.reserve(HTTP_SEND_BUFFER);
+}
 
+Http::Http(const Http& obj)
+: _keepConnection(true),
+_clientSocketPtr(obj._clientSocketPtr),
+_socketMapPtr(obj._socketMapPtr),
+_processStatus(NO_STATUS),
+_targetServer(NULL),
+_readBody(false),
+_isEpollout(false),
+_body_type(0),
+_checkExpectBody(false),
+_body_size(0),
+_curr_body_read(0),
+_targetLocationBlock(NULL),
+_tempRequestBodyFileNum(0),
+_discardBody(false),
+_isUseTempFile(false)
+{
+	_recvBuffer.reserve(HTTP_RECV_BUFFER);
+	_sendBuffer.reserve(HTTP_SEND_BUFFER);
 }
 
 Http::~Http()
@@ -110,6 +145,21 @@ void Http::cgiChildProcessNoRequestBody(int pipeForCgiStdOut[2])
 			{
 				// just need to tell and may create error reponse
 				// to output
+				try 
+				{
+
+					// will throw
+					// then catch
+					generate4xx5xxErrorReponse(500, false, "Internal Error::CGI chdir() failed");
+				}
+				catch (HttpThrowStatus &e)
+				{
+					// should generate response on the list
+					HttpResponse& target = _httpResponseList.back();
+
+					// here print all of that to STDOUT
+					target.forcePrintAllResponse();
+				}
 
 				throw (1);
 			}
@@ -189,9 +239,16 @@ void Http::cgiChildProcessNoRequestBody(int pipeForCgiStdOut[2])
 			
 		}
 	}
+	catch (HttpThrowStatus &e)
+	{
+		HttpResponse& target = _httpResponseList.back();
+
+		target.forcePrintAllResponse();
+	}
 	catch (...)
 	{
 	}
+
 	throw int(1);
 }
 
@@ -716,6 +773,7 @@ void	Http::generate4xx5xxErrorReponse(unsigned int errorStatusCode, bool keepAft
 
 		bodyStr += throwMsg;
 		
+		bodyStr +=
 		"</center>\r\n"
 		"</body>\r\n"
 		"</html>\r\n";
@@ -1830,11 +1888,15 @@ void	Http::validateRequestBufffer(const Socket& clientSocket, std::map<int, Sock
 							_httpResponseList.push_back(HttpResponse());
 
 							HttpResponse& targetResponse = _httpResponseList.back();
-							
 
 							socketMap.insert(std::make_pair(pipe_out[0], Socket(pipe_out[0])));
 							socketMap[pipe_out[0]].setupCGIOUTSocket(clientSocket.getServersConfigPtr(),
 							clientSocket.getEpollFD(), &socketMap, HttpCgi(&_httpResponseList, &_httpResponseList.back(), clientSocket.getSocketFD(), &(socketMap[pipe_out[0]])));
+
+							targetResponse.setIsCgiOutSocketAlive(true);
+							targetResponse.setCgiPid(pid);
+							targetResponse.setCgiOutSocketFd(pipe_out[0]);
+							targetResponse.setIsCgiProcessOpen(true);
 						}
 
 						// _isCgiOutSocketAlive = true;
@@ -1944,6 +2006,10 @@ void Http::readFromClient()
 	}
 	else if (readAmount < 0)
 	{
+		_keepConnection = false;
+		std::cout << "reach here" << std::endl;
+		std::cout << "fd to recv: " << _clientSocketPtr->getSocketFD().getFd() << std::endl;
+		std::cout << "is keep connection: " << _keepConnection << std::endl;
 		return ;
 	}
 	else 

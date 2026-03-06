@@ -53,6 +53,7 @@ class HttpResponse {
 		bool _isCgiOutSocketAlive;
 		int  _cgiInSocketFd;
 		int  _cgiOutSocketFd;
+		std::map<int, Socket> *_socketMapPtr;
 
 
 		bool _isCgiFinished;
@@ -65,6 +66,12 @@ class HttpResponse {
 
 	public:
 		HttpResponse();
+		~HttpResponse();
+
+		void setSocketMapPtr(std::map<int, Socket>* socketMapPtr);
+		std::map<int, Socket>* getSocketMapPtr() const;
+
+		void pushNewResponseBuff(s_response_buff& newBuff);
 
 		void setIsCgiProcessOpen(bool state);
 		bool getIsCgiProcessOpen() const;
@@ -119,6 +126,9 @@ class HttpResponse {
 		void	setFileSize(size_t fileSize);
 
 		ssize_t	sendHttpResponse(const Socket& clientSocket);
+
+		// use for CGI child process error
+		void forcePrintAllResponse();
 
 		// ready to remove from the list
 		bool isComplete() const;

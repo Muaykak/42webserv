@@ -50,7 +50,7 @@ private:
 	int _server_listen_port;
 	std::set<in_addr_t>	_server_ip_host;
 	std::vector<Http>	http;
-	HttpCgi*			
+	std::vector<HttpCgi> httpCgi;			
 
 	// for CGI part
 	std::map<int, Socket>	*_socketMap;

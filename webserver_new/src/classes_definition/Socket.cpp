@@ -59,7 +59,6 @@ const FileDescriptor& Socket::getEpollFD() const
 	return (_epollFD);
 }
 
-
 void Socket::setServerIpHost(const std::set<in_addr_t>& obj)
 {
 	_server_ip_host = obj;

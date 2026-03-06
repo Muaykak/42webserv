@@ -9,11 +9,39 @@ _responseBodyType(HTTP_RESPONSE_NOBODY),
 _isComplete(false),
 _hasSomethingtoSend(false),
 _isReachEOF(false),
-_isCgiFinished(false),
 _sendBufferOffset(0),
-_fileSize(0)
+_fileSize(0),
+
+_isCgiFinished(true),
+_isCgiProcessOpen(false),
+_isCgiInSocketAlive(false),
+_isCgiOutSocketAlive(false),
+_socketMapPtr(NULL)
 {
-_sendBuffer.reserve(HTTP_SEND_BUFFER);
+	_sendBuffer.reserve(HTTP_SEND_BUFFER);
+}
+
+HttpResponse::~HttpResponse()
+{
+	if (_isCgiProcessOpen)
+	{
+		kill(_cgiPid, SIGTERM);
+		waitpid(_cgiPid, NULL, 0);
+	}
+
+	if (_socketMapPtr != NULL)
+	{
+		if (_isCgiInSocketAlive)
+			_socketMapPtr->erase(_isCgiInSocketAlive);
+		if (_isCgiInSocketAlive)
+			_socketMapPtr->erase(_isCgiInSocketAlive);
+	}
+}
+
+void HttpResponse::pushNewResponseBuff(s_response_buff& newBuff)
+{
+	_bufferList.push_back(newBuff);
+	_hasSomethingtoSend = true;
 }
 
 void	HttpResponse::addHeader(const std::string& headerName, const std::string &headerValue)
@@ -145,11 +173,11 @@ bool HttpResponse::getIsCgiProcessOpen() const
 	return (_isCgiProcessOpen);
 }
 
-void HttpResponse::setIsCgiProcessOpen(bool state)
+void HttpResponse::setIsCgiFinished(bool state)
 {
 	_isCgiFinished = state;
 }
-bool HttpResponse::getIsCgiProcessOpen() const
+bool HttpResponse::getIsCgiFinished() const
 {
 	return (_isCgiFinished);
 }
@@ -197,6 +225,16 @@ void HttpResponse::setCgiOutSocketFd(int fd)
 int HttpResponse::getCgiOutSocketFd() const
 {
 	return (_cgiOutSocketFd);
+}
+
+void HttpResponse::setSocketMapPtr(std::map<int, Socket>* socketMapPtr)
+{
+	_socketMapPtr = socketMapPtr;
+}
+
+std::map<int, Socket>* HttpResponse::getSocketMapPtr() const
+{
+	return (_socketMapPtr);
 }
 
 
@@ -438,9 +476,70 @@ ssize_t	HttpResponse::sendHttpResponse(const Socket& clientSocket)
 
 		if (_responseBodyType == HTTP_RESPONSE_BODY_FILE && _isReachEOF == false)
 			_isComplete = false;
+
+		if (_responseBodyType == HTTP_RESPONSE_BODY_CGI && _isCgiFinished == false)
+			_isComplete = false;
+
 	}
 	
 	return (sendAmount);
+}
+
+void HttpResponse::forcePrintAllResponse()
+{
+	// print what is on the list first
+	{
+		std::list<s_response_buff>::const_iterator respBuffIt = _bufferList.begin();
+
+		while (respBuffIt != _bufferList.end())
+		{
+			std::cout << &respBuffIt->buffer[0];
+			++respBuffIt;
+		}
+	}
+
+	// if the response is 
+	if (_responseBodyType == HTTP_RESPONSE_BODY_FILE)
+	{
+		std::vector<char>	writeBuff;
+		writeBuff.reserve(HTTP_SEND_BUFFER);
+		ssize_t	amountToRead;
+		ssize_t readAmount;
+		ssize_t	writeAmount = 0;
+		ssize_t	writeRet;
+
+		while (true)
+		{
+			amountToRead = HTTP_SEND_BUFFER - writeBuff.size();
+			ssize_t	readAmount = read(_fileFd.getFd(), &writeBuff[writeBuff.size() - 1], amountToRead);
+			if (readAmount < 0 && writeBuff.size() == 0)
+			{
+				if (errno == EINTR)
+					continue ;
+				else
+					break ;
+			}
+			else if (readAmount == 0 && writeBuff.size() == 0)
+			{
+				break ;
+			}
+
+			writeRet = write(STDOUT_FILENO, &writeBuff[0], writeBuff.size());
+			if (writeRet < 0)
+			{
+				if (errno == EINTR)
+					continue ;
+				else
+					break ;
+			}
+			writeAmount += writeRet;
+			if (writeAmount >= HTTP_SEND_BUFFER)
+			{
+				writeBuff.clear();
+				writeAmount = 0;
+			}
+		}
+	}
 }
 
 

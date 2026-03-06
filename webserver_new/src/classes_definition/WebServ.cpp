@@ -44,8 +44,6 @@ void WebServ::run(){
 			if (lastAmount != returnEventsAmount && returnEventsAmount >= 0)
 				Logger::log(LC_CONN_LOG, "Epoll event!:%d Total_Socket: %zu", returnEventsAmount, sockets.size());
 			lastAmount = returnEventsAmount;
-			if (returnEventsAmount == 0)
-				continue;
 
 			// ERROR but should retry if EINTR
 			if (returnEventsAmount < 0){
@@ -74,7 +72,11 @@ void WebServ::run(){
 					if (socketIt->second.getServerSockerType() == CLIENT_SOCKET)
 					{
 						if (std::difftime(currentTime, socketIt->second.getLastEventTime()) >= WEBSERV_CLIENT_SOCKET_TIMEOUT_SECOND)
-							sockets.erase(socketIt);
+						{
+							Logger::log(LC_INFO, "Closing Socket#%d due to timeout.", socketIt->first);
+							sockets.erase(socketIt++);
+							continue ;
+						}
 					}
 					++socketIt;
 				}

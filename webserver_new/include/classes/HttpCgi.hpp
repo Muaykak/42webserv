@@ -15,6 +15,9 @@ class HttpCgi {
 
 		std::vector<char> _readCgiBuffer;
 		std::string _responseBuffer;
+
+		bool _isFinishedRead;
+		bool _keepConnection;
 	public:
 		HttpCgi();
 		HttpCgi(const HttpCgi& obj);

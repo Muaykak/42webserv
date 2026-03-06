@@ -109,6 +109,7 @@ class Http {
 	public:
 		Http();
 		Http(Socket *clientSocketPtr, std::map<int, Socket>* socketMapPtr);
+		Http(const Http& obj);
 		~Http();
 
 		void	readFromClient();
