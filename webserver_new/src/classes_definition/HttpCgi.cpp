@@ -51,16 +51,21 @@ void HttpCgi::readFromCGI()
 	{
 		Logger::log(LC_CONN_LOG, "CGI socket out (has nothing to read).#%d:: Disconnecting..", _thisCgiSocket->getSocketFD().getFd());
 		_isFinishedRead = true;
+
+		// something here that would remove this socket cleanly
 	}
 	else if (readAmount < 0)
 	{
-		// might cannot perform read this time
+		if (errno == EAGAIN || errno == EWOULDBLOCK)
+			return ;
+
+
+		// something here that would remove this socket cleanly
 		return ;
 	}
 	else
 	{
 		_responseBuffer.append(&_readCgiBuffer[0], readAmount);
-		
 	}
 }
 

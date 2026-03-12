@@ -1916,9 +1916,35 @@ void	Http::validateRequestBufffer(const Socket& clientSocket, std::map<int, Sock
 			}
 		}
 
-		// for post method just leave it as error for now
+		// for POST method just leave it as error for now
 		else
 		{
+			if (_cgiPath.empty())
+			{
+				// need to check content type
+				// get the _bodyContentType
+				{
+					std::map<std::string, std::vector<std::string> >::const_iterator foundContentTypeElement = _headerField.find("content-type");
+
+					if (foundContentTypeElement == _headerField.end())
+					{
+						generate4xx5xxErrorReponse(400, false, "The request contains body, but no Content-Type found in the request header");
+					}
+
+					const std::vector<std::string>& foundContentTypeVec = foundContentTypeElement->second;
+
+
+				}
+				// here is to upload
+
+
+				int fd = open(_combinedPath.c_str(), O_RDWR);
+
+			}
+			else
+			{
+
+			}
 			generate4xx5xxErrorReponse(500, false, "Post did not finished yet");
 		}
 

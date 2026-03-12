@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple POST Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f9f9f9;
+            color: #333;
+            padding: 2rem;
+            display: flex;
+            justify-content: center;
+        }
+        .form-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+        }
+        h2 { margin-top: 0; color: #2563eb; }
+        label { display: block; margin-top: 1rem; font-weight: bold; font-size: 0.9rem; }
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 0.5rem;
+            margin-top: 0.5rem;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-family: inherit;
+        }
+        button {
+            margin-top: 1.5rem;
+            width: 100%;
+            padding: 0.75rem;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+        button:hover { background: #1d4ed8; }
+    </style>
+</head>
+<body>
+
+    <div class="form-container">
+        <h2>Simple POST Form</h2>
+        <p style="font-size: 0.9rem; color: #666;">This will send a standard URL-encoded POST request to your server.</p>
+        
+        <!-- The action attribute is the path your server will receive in the HTTP header -->
+        <form action="/submit_post" method="POST">
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username" value="student42">
+
+            <label for="message">Message:</label>
+            <textarea id="message" name="message" rows="4">Hello Webserv!</textarea>
+
+            <button type="submit">Send POST Request</button>
+        </form>
+    </div>
+
+</body>
+</html>

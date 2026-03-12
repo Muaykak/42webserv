@@ -95,7 +95,16 @@ bool Socket::setupCGIOUTSocket(const std::vector<ServerConfig> *serversConfig,
 
 	httpCgi.push_back(cgiData);
 
-
+	epoll_event event;
+	std::memset(&event, 0, sizeof(event));
+	event.events = EPOLLIN | EPOLLRDHUP;
+	event.data.fd = _socketFD.getFd();
+	if (epoll_ctl(_epollFD.getFd(), EPOLL_CTL_ADD, _socketFD.getFd(), &event) != 0)
+	{
+		std::string errorMsg = "Socket::setupSocket::SERVER_SCOKET::epoll_ctl() Error::";
+		errorMsg += std::strerror(errno);
+		throw(WebservException(errorMsg));
+	}
 
 	_lastEventTime = std::time(NULL);
 	return (true);
@@ -126,6 +135,16 @@ bool Socket::setupCGIINSocket(const std::vector<ServerConfig> *serversConfig,
 	_serversConfig = serversConfig;
 
 
+	epoll_event event;
+	std::memset(&event, 0, sizeof(event));
+	event.events = EPOLLOUT;
+	event.data.fd = _socketFD.getFd();
+	if (epoll_ctl(_epollFD.getFd(), EPOLL_CTL_ADD, _socketFD.getFd(), &event) != 0)
+	{
+		std::string errorMsg = "Socket::setupSocket::SERVER_SCOKET::epoll_ctl() Error::";
+		errorMsg += std::strerror(errno);
+		throw(WebservException(errorMsg));
+	}
 
 	_lastEventTime = std::time(NULL);
 	return (true);
@@ -453,15 +472,21 @@ bool Socket::handleEvent(const epoll_event &event)
 		}
 		case CGI_FD_STDOUT: {
 			// EPOLLIN is coming here 
-			if (event.events & EPOLLIN)
-			{
-				httpCgi[0].readFromCGI();
-			}
-			else 
-			{
-				//if (event.events)
-			}
-			return true;
+			/*
+				we dont need to check what the event is
+				because we don't know if we fully read all from the buffer yet
+				whether what event is
+
+				it is different from Client Socket that we need the
+				connection so we can send back to the same socket
+
+				in this case we don't need to check what event came here
+
+				just read() only once and check the errno() would be more practical
+			*/
+			httpCgi[0].readFromCGI();
+
+			return ;
 		}
 		default:
 		{

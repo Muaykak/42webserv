@@ -3,10 +3,13 @@
 
 # include <map>
 # include <string>
+# include <set>
 
 class ContentTypeTable {
 	private:
 		std::map<std::string, std::string>	_extensionToContentTypeMap;
+		std::map<std::string, std::set<std::string> >	_contentTypeMapToExtension;
+		std::set<std::string> _fallbackEmptySet;
 
 
 	public:
@@ -14,6 +17,7 @@ class ContentTypeTable {
 
 		std::string extensionToContentType(const std::string& filePath) const;
 
+		const std::set<std::string>& contentTypeToExtension(const std::string& contentType) const;
 };
 
 #endif

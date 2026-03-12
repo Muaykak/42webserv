@@ -86,6 +86,7 @@ class Http {
 		std::string		_authorityPart;
 		std::string		_redirectPath;
 
+		std::string		_bodyContentType;
 		bool			_isUseTempFile;
 		unsigned int	_tempRequestBodyFileNum;
 		bool			_checkExpectBody;
