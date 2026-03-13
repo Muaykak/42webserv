@@ -76,3 +76,15 @@ const std::set<std::string>& ContentTypeTable::contentTypeToExtension(const std:
 		return (foundContentType->second);
 	}
 }
+
+const std::map<std::string, std::string>& ContentTypeTable::getExtensionToContentTypeMap() const
+{
+	return (_extensionToContentTypeMap);
+}
+
+const std::map<std::string, std::set<std::string> >& ContentTypeTable::getContentTypetoExtensionMap() const
+{
+	return (_contentTypeMapToExtension);
+}
+
+

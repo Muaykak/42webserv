@@ -51,11 +51,11 @@ void	HttpResponse::addHeader(const std::string& headerName, const std::string &h
 
 	if (!headerName.empty())
 	{
-		_responseHeader[headerName].insert(headerValue);
+		_responseHeader[headerName].push_back(headerValue);
 	}
 }
 
-std::map<std::string, std::set<std::string> >& HttpResponse::getHeader()
+std::map<std::string, std::vector<std::string> >& HttpResponse::getHeader()
 {
 	if (_canModify == false)
 		throw WebservException("HttpResponse::cannot modify response when not in modifying state");
@@ -322,9 +322,9 @@ void	HttpResponse::generateResponse()
 
 	// other optional header
 	{
-		std::map<std::string, std::set<std::string> >::const_iterator responseHeaderIt = _responseHeader.begin();
+		std::map<std::string, std::vector<std::string> >::const_iterator responseHeaderIt = _responseHeader.begin();
 
-		std::set<std::string>::const_iterator responseHeaderFieldIt;
+		std::vector<std::string>::const_iterator responseHeaderFieldIt;
 
 		while (responseHeaderIt != _responseHeader.end())
 		{

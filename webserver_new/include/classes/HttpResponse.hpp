@@ -28,7 +28,7 @@ class HttpResponse {
 		std::vector<char> _sendBuffer;
 		size_t			_sendBufferOffset;
 
-		std::map<std::string, std::set<std::string> > _responseHeader;
+		std::map<std::string, std::vector<std::string> > _responseHeader;
 		unsigned int _statusCode;
 		std::string	_statusMessage;
 		std::string _contentType;
@@ -95,7 +95,7 @@ class HttpResponse {
 		int getCgiOutSocketFd() const;
 
 		void addHeader(const std::string& headerName, const std::string& headerValue);
-		std::map<std::string, std::set<std::string> >& getHeader();
+		std::map<std::string, std::vector<std::string> >& getHeader();
 
 		void generateResponse();
 
@@ -132,6 +132,7 @@ class HttpResponse {
 
 		// ready to remove from the list
 		bool isComplete() const;
+
 		bool hasSomethingtoSend() const;
 };
 

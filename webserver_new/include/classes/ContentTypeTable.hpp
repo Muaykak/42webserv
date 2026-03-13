@@ -18,6 +18,9 @@ class ContentTypeTable {
 		std::string extensionToContentType(const std::string& filePath) const;
 
 		const std::set<std::string>& contentTypeToExtension(const std::string& contentType) const;
+
+		const std::map<std::string, std::string>& getExtensionToContentTypeMap() const;
+		const std::map<std::string, std::set<std::string> >& getContentTypetoExtensionMap() const;
 };
 
 #endif

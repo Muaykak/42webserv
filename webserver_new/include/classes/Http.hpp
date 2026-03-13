@@ -57,7 +57,7 @@ class Http {
 		void	parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize);
 		void	validateRequestBufffer(const Socket& clientSocket, std::map<int, Socket>& socketMap);
 		void	validateRequestBufferSelectServer(const Socket& clientSocket, const std::string& authStr);
-		void	readingRequestBody(size_t& currIndex, size_t& reqBuffSize);
+		void	readingRequestBody();
 
 		void	cgiChildProcessNoRequestBody(int pipeForCgiStdOut[2]);
 
@@ -86,12 +86,13 @@ class Http {
 		std::string		_authorityPart;
 		std::string		_redirectPath;
 
-		std::string		_bodyContentType;
+		bool			_isMultiForm;
 		bool			_isUseTempFile;
 		unsigned int	_tempRequestBodyFileNum;
 		bool			_checkExpectBody;
 		bool			_readBody;
 		bool			_discardBody; // whether to drain down the body
+		std::vector<FileDescriptor> _bodyFd; // convention to fd
 		/*
 			_body_type
 			0 = no body
@@ -100,6 +101,7 @@ class Http {
 		*/
 		int				_body_type;
 		size_t			_body_size;
+		size_t			_client_max_body_size;
 		size_t			_curr_body_read;
 
 		void	printHeaderField() const;
