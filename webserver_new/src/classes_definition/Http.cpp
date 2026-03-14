@@ -2176,70 +2176,6 @@ void Http::readingRequestBody()
 		_processStatus = FINISHED_READ_BODY;
 		return ;
 	}
-	else if (_body_type == 1)
-	{
-		size_t	readBodyAmount;
-		{
-			// calculate the read body amount here
-
-			// the size of _requestBuffer is the most the the body can read right now
-
-			// content-length body type has _body_size which specified its fixed size
-			readBodyAmount = _body_size - _curr_body_read;
-
-			// then if the readBody amount is more than the _requestBuffer.size() then
-			if (readBodyAmount > _requestBuffer.size())
-			{
-				readBodyAmount = _requestBuffer.size();
-			}
-		}
-
-		if (_discardBody == true)
-		{
-			// we just discard from the buffer by that calculated amount
-			_requestBuffer.erase(0, readBodyAmount);
-			_curr_body_read += readBodyAmount;
-			
-			if (_curr_body_read == _body_size)
-				_processStatus = FINISHED_READ_BODY;
-
-			return ;
-		}
-		else
-		{
-			// here we need to perform the write() operation
-			while (true)
-			{
-				ssize_t	writeAmount = write(_bodyFd[0].getFd(), &_requestBuffer[0], readBodyAmount);
-				if (writeAmount < 0)
-				{
-					if (errno == EINTR)
-						continue;
-					else
-					{
-						// try to correctly remove file if write operation is failed 
-						_bodyFd.clear();
-						if (_isUseTempFile)
-							tempFileManager().removeTempFile(_tempRequestBodyFileNum);
-						else
-							std::remove(_combinedPath.c_str());
-
-						generate4xx5xxErrorReponse(500, false, "Internal Error::write() operation failed during reading the request body");
-					}
-				}
-				else
-				{
-					_requestBuffer.erase(0, writeAmount);
-					_curr_body_read += writeAmount;
-					break ;
-				}
-			}
-
-			if (_curr_body_read == _body_size)
-				_processStatus = FINISHED_READ_BODY;
-			return ;
-		}
-	}
 	else if (_body_type == 2)
 	{
 		/*
@@ -2254,49 +2190,132 @@ void Http::readingRequestBody()
 				// maybe next read
 				return ;
 			}
-			else
+			std::string hexString = _requestBuffer.substr(0, endLinePos);
+
+			size_t hexNum = 0;
+
+			// convert that to size_t
+			if (hex_to_size_t(hexString, hexNum) == false)
 			{
-				std::string hexString = _requestBuffer.substr(0, endLinePos);
+				// wrong chunked format, blame the client with 4xx error
 
-				size_t hexNum = 0;
+				_bodyFd.clear();
+				if (_isUseTempFile)
+					tempFileManager().removeTempFile(_tempRequestBodyFileNum);
+				else
+					std::remove(_combinedPath.c_str());
 
-				// convert that to size_t
-				if (hex_to_size_t(hexString, hexNum) == false)
-				{
-					// wrong chunked format, blame the client with 4xx error
-				}
+				generate4xx5xxErrorReponse(400, false, "Request Body Chunked::wrong hex format");
 			}
+
+			// now we have hexnum converted
+			/*
+				next is to check if it will exceed the _client_max_body_size	
+			*/
+			{
+				// both number must not exceed the _client_max_body_size
+				if (_body_size > _client_max_body_size || hexNum > _client_max_body_size)
+				{
+					_bodyFd.clear();
+					if (_isUseTempFile)
+						tempFileManager().removeTempFile(_tempRequestBodyFileNum);
+					else
+						std::remove(_combinedPath.c_str());
+
+					generate4xx5xxErrorReponse(400, false, "Request Body Chunked::wrong hex format");
+				}
+
+				/*
+					because using [hexNum + _body_size > _client_max_body_size
+					
+					size_t + size_t might result as overflow so i have to
+					work around
+				*/
+				if (hexNum > _client_max_body_size - _body_size)
+				{
+					_bodyFd.clear();
+					if (_isUseTempFile)
+						tempFileManager().removeTempFile(_tempRequestBodyFileNum);
+					else
+						std::remove(_combinedPath.c_str());
+
+					generate4xx5xxErrorReponse(413, false, "Request Body Chunked::Content Too Large");
+				}
+
+				// 
+				if (hexNum == 0)
+
+				// increase the body size to this chunk
+				_body_size += hexNum;
+			}
+
+			// now we skip the hex num part
+			_requestBuffer.erase(0, endLinePos + 2);
 		}
 
-
 	}
-	else
+
+	size_t	readBodyAmount;
 	{
-		generate4xx5xxErrorReponse(500, false, "Internal Error::_body_type wrong value!");
+		// calculate the read body amount here
+
+		// the size of _requestBuffer is the most the the body can read right now
+
+		// content-length body type has _body_size which specified its fixed size
+		readBodyAmount = _body_size - _curr_body_read;
+
+		// then if the readBody amount is more than the _requestBuffer.size() then
+		if (readBodyAmount > _requestBuffer.size())
+		{
+			readBodyAmount = _requestBuffer.size();
+		}
 	}
 
 	if (_discardBody == true)
 	{
-		// 2 is transter-encoding body
-		// 1 is content-length body
+		// we just discard from the buffer by that calculated amount
+		_requestBuffer.erase(0, readBodyAmount);
+		_curr_body_read += readBodyAmount;
+		
+		if (_curr_body_read == _body_size)
+			_processStatus = FINISHED_READ_BODY;
 
-		if (_body_type == 1)
-		{
-
-		}
-		else
-		{
-
-		}
+		return ;
 	}
-	else 
+	else
 	{
-		// we have _bodyFd
-		if (bod)
+		// here we need to perform the write() operation
+		while (true)
+		{
+			ssize_t	writeAmount = write(_bodyFd[0].getFd(), &_requestBuffer[0], readBodyAmount);
+			if (writeAmount < 0)
+			{
+				if (errno == EINTR)
+					continue;
+				else
+				{
+					// try to correctly remove file if write operation is failed 
+					_bodyFd.clear();
+					if (_isUseTempFile)
+						tempFileManager().removeTempFile(_tempRequestBodyFileNum);
+					else
+						std::remove(_combinedPath.c_str());
+
+					generate4xx5xxErrorReponse(500, false, "Internal Error::write() operation failed during reading the request body");
+				}
+			}
+			else
+			{
+				_requestBuffer.erase(0, writeAmount);
+				_curr_body_read += writeAmount;
+				break ;
+			}
+		}
+
+		if (_curr_body_read == _body_size)
+			_processStatus = FINISHED_READ_BODY;
+		return ;
 	}
-	/*
-	if finishing validate 	
-	*/
 
 }
 
