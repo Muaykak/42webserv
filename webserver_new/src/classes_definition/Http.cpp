@@ -2176,7 +2176,74 @@ void Http::readingRequestBody()
 		_processStatus = FINISHED_READ_BODY;
 		return ;
 	}
-	else if (_body_type == 2)
+	if (_body_type == 1)
+	{
+
+		size_t	readBodyAmount;
+		{
+			// calculate the read body amount here
+		
+			// the size of _requestBuffer is the most the the body can read right now
+		
+			// content-length body type has _body_size which specified its fixed size
+			readBodyAmount = _body_size - _curr_body_read;
+		
+			// then if the readBody amount is more than the _requestBuffer.size() then
+			if (readBodyAmount > _requestBuffer.size())
+			{
+				readBodyAmount = _requestBuffer.size();
+			}
+		}
+	
+		if (_discardBody == true)
+		{
+			// we just discard from the buffer by that calculated amount
+			_requestBuffer.erase(0, readBodyAmount);
+			_curr_body_read += readBodyAmount;
+			
+			if (_curr_body_read == _body_size)
+				_processStatus = FINISHED_READ_BODY;
+		
+			return ;
+		}
+		else
+		{
+			// here we need to perform the write() operation
+			while (true)
+			{
+				ssize_t	writeAmount = write(_bodyFd[0].getFd(), &_requestBuffer[0], readBodyAmount);
+				if (writeAmount < 0)
+				{
+					if (errno == EINTR)
+						continue;
+					else
+					{
+						// try to correctly remove file if write operation is failed 
+						_bodyFd.clear();
+						if (_isUseTempFile)
+							tempFileManager().removeTempFile(_tempRequestBodyFileNum);
+						else
+							std::remove(_combinedPath.c_str());
+					
+						generate4xx5xxErrorReponse(500, false, "Internal Error::write() operation failed during reading the request body");
+					}
+				}
+				else
+				{
+					_requestBuffer.erase(0, writeAmount);
+					_curr_body_read += writeAmount;
+					break ;
+				}
+			}
+		
+			if (_curr_body_read == _body_size)
+				_processStatus = FINISHED_READ_BODY;
+			return ;
+		}
+
+	}
+
+	if (_body_type == 2)
 	{
 		/*
 
@@ -2244,6 +2311,21 @@ void Http::readingRequestBody()
 
 				// 
 				if (hexNum == 0)
+				{
+					_requestBuffer.erase(0, endLinePos + 2);
+
+					// check if the body contained trailer header
+					{
+						// first we must find that header in header field
+						_trailerHeader = _headerField.find("trailer");
+
+						if (_trailerHeader == _headerField.end())
+							_chunkedBodyHasTrailerHeader = false;
+						else
+							_chunkedBodyHasTrailerHeader = true;
+						
+					}
+				}
 
 				// increase the body size to this chunk
 				_body_size += hexNum;
