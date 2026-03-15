@@ -102,6 +102,7 @@ class Http {
 		int				_body_type;
 		size_t			_body_size;
 		bool			_chunkedBodyHasTrailerHeader;
+		bool			_chunkedBodyIsFinished;
 		std::map<std::string, std::vector<std::string> >::const_iterator _trailerHeader;
 		size_t			_client_max_body_size;
 		size_t			_curr_body_read;

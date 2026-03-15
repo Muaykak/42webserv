@@ -2176,7 +2176,7 @@ void Http::readingRequestBody()
 		_processStatus = FINISHED_READ_BODY;
 		return ;
 	}
-	if (_body_type == 1)
+	else if (_body_type == 1)
 	{
 
 		size_t	readBodyAmount;
@@ -2242,161 +2242,405 @@ void Http::readingRequestBody()
 		}
 
 	}
-
-	if (_body_type == 2)
+	else if (_body_type == 2)
 	{
-		/*
+		size_t	endLinePos;
 
-		*/
-		if (_curr_body_read >= _body_size)
-		{
-			size_t endLinePos = _requestBuffer.find("\r\n");
-			
-			if (endLinePos == std::string::npos)
-			{
-				// maybe next read
-				return ;
-			}
-			std::string hexString = _requestBuffer.substr(0, endLinePos);
-
-			size_t hexNum = 0;
-
-			// convert that to size_t
-			if (hex_to_size_t(hexString, hexNum) == false)
-			{
-				// wrong chunked format, blame the client with 4xx error
-
-				_bodyFd.clear();
-				if (_isUseTempFile)
-					tempFileManager().removeTempFile(_tempRequestBodyFileNum);
-				else
-					std::remove(_combinedPath.c_str());
-
-				generate4xx5xxErrorReponse(400, false, "Request Body Chunked::wrong hex format");
-			}
-
-			// now we have hexnum converted
-			/*
-				next is to check if it will exceed the _client_max_body_size	
-			*/
-			{
-				// both number must not exceed the _client_max_body_size
-				if (_body_size > _client_max_body_size || hexNum > _client_max_body_size)
-				{
-					_bodyFd.clear();
-					if (_isUseTempFile)
-						tempFileManager().removeTempFile(_tempRequestBodyFileNum);
-					else
-						std::remove(_combinedPath.c_str());
-
-					generate4xx5xxErrorReponse(400, false, "Request Body Chunked::wrong hex format");
-				}
-
-				/*
-					because using [hexNum + _body_size > _client_max_body_size
-					
-					size_t + size_t might result as overflow so i have to
-					work around
-				*/
-				if (hexNum > _client_max_body_size - _body_size)
-				{
-					_bodyFd.clear();
-					if (_isUseTempFile)
-						tempFileManager().removeTempFile(_tempRequestBodyFileNum);
-					else
-						std::remove(_combinedPath.c_str());
-
-					generate4xx5xxErrorReponse(413, false, "Request Body Chunked::Content Too Large");
-				}
-
-				// 
-				if (hexNum == 0)
-				{
-					_requestBuffer.erase(0, endLinePos + 2);
-
-					// check if the body contained trailer header
-					{
-						// first we must find that header in header field
-						_trailerHeader = _headerField.find("trailer");
-
-						if (_trailerHeader == _headerField.end())
-							_chunkedBodyHasTrailerHeader = false;
-						else
-							_chunkedBodyHasTrailerHeader = true;
-						
-					}
-				}
-
-				// increase the body size to this chunk
-				_body_size += hexNum;
-			}
-
-			// now we skip the hex num part
-			_requestBuffer.erase(0, endLinePos + 2);
-		}
-
-	}
-
-	size_t	readBodyAmount;
-	{
-		// calculate the read body amount here
-
-		// the size of _requestBuffer is the most the the body can read right now
-
-		// content-length body type has _body_size which specified its fixed size
-		readBodyAmount = _body_size - _curr_body_read;
-
-		// then if the readBody amount is more than the _requestBuffer.size() then
-		if (readBodyAmount > _requestBuffer.size())
-		{
-			readBodyAmount = _requestBuffer.size();
-		}
-	}
-
-	if (_discardBody == true)
-	{
-		// we just discard from the buffer by that calculated amount
-		_requestBuffer.erase(0, readBodyAmount);
-		_curr_body_read += readBodyAmount;
-		
-		if (_curr_body_read == _body_size)
-			_processStatus = FINISHED_READ_BODY;
-
-		return ;
-	}
-	else
-	{
-		// here we need to perform the write() operation
 		while (true)
 		{
-			ssize_t	writeAmount = write(_bodyFd[0].getFd(), &_requestBuffer[0], readBodyAmount);
-			if (writeAmount < 0)
+			if (_chunkedBodyIsFinished == true)
 			{
-				if (errno == EINTR)
-					continue;
+				// we also skipped the first \r\n from 0\r\n
+				// but normal chunked with no trailer header
+				// is 0\r\n\r\n
+				endLinePos = _requestBuffer.find("\r\n");
+
+				if (endLinePos == std::string::npos)
+				{
+					if (_chunkedBodyHasTrailerHeader)
+					{
+						/*
+						though here we have to wait the buffer to find next \r\n
+						but should also have limit of how much length should a line be
+
+						we have MAX_HTTP_HEADER_LINE_LENGTH to protect now !
+
+						though the MAX_HTTP_HEADER_LINE_LENGTH has size
+						if not found the endLinePos can also mean that
+						the buffer string now contained only \r
+
+						*/
+						if (_requestBuffer.size() > MAX_HTTP_HEADER_LINE_LENGTH + 1)
+						{
+							_bodyFd.clear();
+							if (_isUseTempFile)
+								tempFileManager().removeTempFile(_tempRequestBodyFileNum);
+							else
+								std::remove(_combinedPath.c_str());
+
+							generate4xx5xxErrorReponse(403, false, "Reading request body::chunked::trailer header:: line too long");
+						}
+						else
+						{
+							// so we wait for next round
+							return ;
+						}
+					}
+					else
+					{
+						/*
+							For no trailer header, the \r\n would need to
+							close to 0\r\n so ican only be 0\r\n\r\n
+
+							So if the request buffer is longer or equal 2
+							but you haven't found i would throw 400 error
+						*/
+
+						if (_requestBuffer.size() >= 2)
+						{
+							_bodyFd.clear();
+							if (_isUseTempFile)
+								tempFileManager().removeTempFile(_tempRequestBodyFileNum);
+							else
+								std::remove(_combinedPath.c_str());
+							
+							generate4xx5xxErrorReponse(400, false, "Reading request body::chunked::no trailer header::i would say wrong ending for this chunked request. It should be \"0\\r\\n\\r\\n\"");
+
+						}
+						else
+						{
+							// here just wait for next buffer next round;
+							return ;
+						}
+
+					}
+				}
 				else
 				{
-					// try to correctly remove file if write operation is failed 
-					_bodyFd.clear();
-					if (_isUseTempFile)
-						tempFileManager().removeTempFile(_tempRequestBodyFileNum);
-					else
-						std::remove(_combinedPath.c_str());
+					/* here is where we found the endLinePos 
+					*/
 
-					generate4xx5xxErrorReponse(500, false, "Internal Error::write() operation failed during reading the request body");
+					if (_chunkedBodyHasTrailerHeader)
+					{
+						if (endLinePos == 0)
+						{
+							_processStatus = FINISHED_READ_BODY;
+							return ;
+						}
+						else
+						{
+							std::string headerLineStr = _requestBuffer.substr(0, endLinePos);
+
+							// check the limit
+							if (headerLineStr.empty() || headerLineStr.size() > MAX_HTTP_HEADER_LINE_LENGTH)
+							{
+								_bodyFd.clear();
+								if (_isUseTempFile)
+									tempFileManager().removeTempFile(_tempRequestBodyFileNum);
+								else
+									std::remove(_combinedPath.c_str());
+								
+								generate4xx5xxErrorReponse(400, false, "Reading request body::chunked::trailer header line size wrong");
+							}
+
+							size_t colonPos = headerLineStr.find_first_of(':');
+							if (colonPos == std::string::npos)
+							{
+								_bodyFd.clear();
+								if (_isUseTempFile)
+									tempFileManager().removeTempFile(_tempRequestBodyFileNum);
+								else
+									std::remove(_combinedPath.c_str());
+
+								generate4xx5xxErrorReponse(400, false, "chunked trailer header::name and value in the header field must seperated by \':\'");
+							}
+
+							std::string tempFieldName = headerLineStr.substr(0, colonPos);
+
+							if (tempFieldName.empty())
+							{
+								_bodyFd.clear();
+								if (_isUseTempFile)
+									tempFileManager().removeTempFile(_tempRequestBodyFileNum);
+								else
+									std::remove(_combinedPath.c_str());
+
+								generate4xx5xxErrorReponse(400, false, "chunked trailer header::name in header field must not empty string");
+							}
+
+							if (allowedFieldNameChar().isMatch(tempFieldName) == false)
+								generate4xx5xxErrorReponse(400, false, "name in header field must not contain any forbidden char");
+
+							/* we must check first if the header name matched the Trailer: header */
+							{
+								const std::vector<std::string>& trailerHeaderVec = _trailerHeader->second;
+								std::vector<std::string>::const_iterator vecIt = trailerHeaderVec.begin();
+
+								bool match = false;
+								while (vecIt != trailerHeaderVec.end())
+								{
+									// case in-sensitive
+									if (stringToLower(*vecIt) == stringToLower(tempFieldName))
+									{
+										match = true;
+										break ;
+									}
+									++vecIt;
+								}
+
+								if (match == false)
+								{
+									// if not match then would error
+									_bodyFd.clear();
+									if (_isUseTempFile)
+										tempFileManager().removeTempFile(_tempRequestBodyFileNum);
+									else
+										std::remove(_combinedPath.c_str());
+
+									generate4xx5xxErrorReponse(400, false, "chunked trailer header::the header is not matched");
+
+								}
+							}
+
+							std::string tempSep = headerLineStr.substr(colonPos + 1);
+
+							std::vector<std::string> tempVec;
+
+							if (!tempSep.empty())
+							{
+								size_t commaPos;
+								size_t i = 0;
+								size_t j = 0;
+								std::string newStr;
+								size_t temp;
+
+								while (i < tempSep.size())
+								{
+									temp = htabSp().findFirstNotCharset(tempSep, i);
+
+									if (temp == tempSep.npos)
+									 break ;
+
+									i = temp;
+									commaPos = tempSep.find_first_of(',', i);
+									if (commaPos == tempSep.npos)
+										commaPos = tempSep.size();
+
+									j = htabSp().findLastNotCharset(tempSep, commaPos - 1, commaPos - 1 - i);
+
+									if (j <= i || j == tempSep.npos)
+										newStr = tempSep.substr(i, 1);
+									else
+										newStr = tempSep.substr(i, j - i + 1);
+
+									if (forbiddenFieldValueChar().isNotMatch(newStr) == false)
+									{
+										_bodyFd.clear();
+										if (_isUseTempFile)
+											tempFileManager().removeTempFile(_tempRequestBodyFileNum);
+										else
+											std::remove(_combinedPath.c_str());
+										generate4xx5xxErrorReponse(400, false, "chunked trailer header::value in header field must not contain any forbidden char");
+									}
+
+									tempVec.push_back(newStr);
+									newStr.clear();
+
+									i = commaPos + 1;
+								}
+							}
+
+							tempFieldName = stringToLower(tempFieldName);
+
+							if (!tempVec.empty())
+								_headerField[tempFieldName].insert(_headerField[tempFieldName].end(), tempVec.begin(), tempVec.end());
+							tempSep.clear();
+						}
+					}
+					else
+					{
+						/*
+							if we found the \r\n, for no trailer chunked request.
+							it must be on position 0	
+						*/
+						if (endLinePos == 0)
+						{
+							_processStatus = FINISHED_READ_BODY;
+							return ;
+						}
+						else
+						{
+							_bodyFd.clear();
+							if (_isUseTempFile)
+								tempFileManager().removeTempFile(_tempRequestBodyFileNum);
+							else
+								std::remove(_combinedPath.c_str());
+							
+							generate4xx5xxErrorReponse(400, false, "Reading request body::chunked::no trailer header::i would say wrong ending for this chunked request. It should be \"0\\r\\n\\r\\n\"");
+						}
+					}
 				}
 			}
 			else
 			{
-				_requestBuffer.erase(0, writeAmount);
-				_curr_body_read += writeAmount;
-				break ;
+				if (_curr_body_read >= _body_size)
+				{
+					endLinePos = _requestBuffer.find("\r\n");
+
+					if (endLinePos == std::string::npos)
+					{
+						// maybe next read
+						return ;
+					}
+					std::string hexString = _requestBuffer.substr(0, endLinePos);
+				
+					size_t hexNum = 0;
+				
+					// convert that to size_t
+					if (hex_to_size_t(hexString, hexNum) == false)
+					{
+						// wrong chunked format, blame the client with 4xx error
+					
+						_bodyFd.clear();
+						if (_isUseTempFile)
+							tempFileManager().removeTempFile(_tempRequestBodyFileNum);
+						else
+							std::remove(_combinedPath.c_str());
+					
+						generate4xx5xxErrorReponse(400, false, "Request Body Chunked::wrong hex format");
+					}
+				
+					// now we have hexnum converted
+					/*
+						next is to check if it will exceed the _client_max_body_size	
+					*/
+					{
+						// both number must not exceed the _client_max_body_size
+						if (_body_size > _client_max_body_size || hexNum > _client_max_body_size)
+						{
+							_bodyFd.clear();
+							if (_isUseTempFile)
+								tempFileManager().removeTempFile(_tempRequestBodyFileNum);
+							else
+								std::remove(_combinedPath.c_str());
+						
+							generate4xx5xxErrorReponse(400, false, "Request Body Chunked::wrong hex format");
+						}
+					
+						/*
+							because using [hexNum + _body_size > _client_max_body_size
+
+							size_t + size_t might result as overflow so i have to
+							work around
+						*/
+						if (hexNum > _client_max_body_size - _body_size)
+						{
+							_bodyFd.clear();
+							if (_isUseTempFile)
+								tempFileManager().removeTempFile(_tempRequestBodyFileNum);
+							else
+								std::remove(_combinedPath.c_str());
+						
+							generate4xx5xxErrorReponse(413, false, "Request Body Chunked::Content Too Large");
+						}
+					
+						// 
+						if (hexNum == 0)
+						{
+							_requestBuffer.erase(0, endLinePos + 2);
+						
+							// check if the body contained trailer header
+							{
+								// first we must find that header in header field
+								_trailerHeader = _headerField.find("trailer");
+							
+								if (_trailerHeader == _headerField.end())
+									_chunkedBodyHasTrailerHeader = false;
+								else
+									_chunkedBodyHasTrailerHeader = true;
+							}
+							_chunkedBodyIsFinished = true;
+							continue;
+						}
+						_chunkedBodyIsFinished = false;
+					
+						// increase the body size to this chunk
+						_body_size += hexNum;
+					}
+				
+					// now we skip the hex num part
+					_requestBuffer.erase(0, endLinePos + 2);
+				}
+
+				size_t	readBodyAmount;
+				{
+					// calculate the read body amount here
+				
+					// the size of _requestBuffer is the most the the body can read right now
+				
+					// content-length body type has _body_size which specified its fixed size
+					readBodyAmount = _body_size - _curr_body_read;
+				
+					// then if the readBody amount is more than the _requestBuffer.size() then
+					if (readBodyAmount > _requestBuffer.size())
+					{
+						readBodyAmount = _requestBuffer.size();
+					}
+				}
+			
+				if (_discardBody == true)
+				{
+					// we just discard from the buffer by that calculated amount
+					_requestBuffer.erase(0, readBodyAmount);
+					_curr_body_read += readBodyAmount;
+
+					if (_curr_body_read == _body_size)
+						continue;
+				}
+				else
+				{
+					// here we need to perform the write() operation
+					while (true)
+					{
+						ssize_t	writeAmount = write(_bodyFd[0].getFd(), &_requestBuffer[0], readBodyAmount);
+						if (writeAmount < 0)
+						{
+							if (errno == EINTR)
+								continue;
+							else
+							{
+								// try to correctly remove file if write operation is failed 
+								_bodyFd.clear();
+								if (_isUseTempFile)
+									tempFileManager().removeTempFile(_tempRequestBodyFileNum);
+								else
+									std::remove(_combinedPath.c_str());
+							
+								generate4xx5xxErrorReponse(500, false, "Internal Error::write() operation failed during reading the request body");
+							}
+						}
+						else
+						{
+							_requestBuffer.erase(0, writeAmount);
+							_curr_body_read += writeAmount;
+							break ;
+						}
+					}
+				
+					if (_curr_body_read == _body_size)
+						continue ;
+				}
 			}
 		}
-
-		if (_curr_body_read == _body_size)
-			_processStatus = FINISHED_READ_BODY;
-		return ;
+	}
+	else
+	{
+		_bodyFd.clear();
+		if (_isUseTempFile)
+			tempFileManager().removeTempFile(_tempRequestBodyFileNum);
+		else
+			std::remove(_combinedPath.c_str());
+		generate4xx5xxErrorReponse(500, false, "Internal Error::_body_type should be only 0, 1, 2");
 	}
 
 }
