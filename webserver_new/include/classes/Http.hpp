@@ -58,6 +58,7 @@ class Http {
 		void	validateRequestBufffer(const Socket& clientSocket, std::map<int, Socket>& socketMap);
 		void	validateRequestBufferSelectServer(const Socket& clientSocket, const std::string& authStr);
 		void	readingRequestBody();
+		void	processingRequestBody();
 
 		void	cgiChildProcessNoRequestBody(int pipeForCgiStdOut[2]);
 
@@ -87,6 +88,7 @@ class Http {
 		std::string		_redirectPath;
 
 		bool			_isMultiForm;
+		std::string		_boundaryString;
 		bool			_isUseTempFile;
 		unsigned int	_tempRequestBodyFileNum;
 		bool			_checkExpectBody;

@@ -1719,7 +1719,16 @@ void	Http::validateRequestBufffer(const Socket& clientSocket, std::map<int, Sock
 				// 204
 				{
 					_httpResponseList.push_back(HttpResponse());
-					throw HttpThrowStatus(204, "Http::DELETE method::success no content");
+					HttpResponse& targetResponse = _httpResponseList.back();
+
+					targetResponse.setResponseBodyType(HTTP_RESPONSE_NOBODY);
+					targetResponse.setKeepAfterResponse(true);
+					targetResponse.setStatusCode(204);
+					targetResponse.setStatusMessage("No Content");
+
+					targetResponse.generateResponse();
+					_processStatus = FINISHED_READ_BODY;
+					return ;
 				}
 			}
 		}
@@ -1843,7 +1852,6 @@ void	Http::validateRequestBufffer(const Socket& clientSocket, std::map<int, Sock
 					_processStatus = FINISHED_READ_BODY;
 					targetResponse.generateResponse();
 
-					clearRequestData();
 					return ;
 				}
 				else
@@ -1940,212 +1948,259 @@ void	Http::validateRequestBufffer(const Socket& clientSocket, std::map<int, Sock
 						generate4xx5xxErrorReponse(400, false, "The Content-Type must has 1 value");
 					}
 
-					if (foundContentTypeVec[0] == "multipart/form-data")
+					// we need to extract the string
+
+					// the multipart needs to have the ';'
+					size_t semiColonPos = foundContentTypeVec[0].find_first_of(';');
+					if (semiColonPos != std::string::npos)
 					{
-					/*
-						the body content is multipart. Meaning that it may contains multiple informations
-						and this Content-Type require special way of reading the body
-					*/
+						std::string temp1 = foundContentTypeVec[0].substr(0, semiColonPos);
+
+						if (temp1.empty() || temp1.find("multipart/") == std::string::npos)
+						{
+							generate4xx5xxErrorReponse(403, false, "Content-type::wrong format");
+						}
+
+						if (temp1 != "multipart/form-data")
+						{
+							generate4xx5xxErrorReponse(403, false, "Content-type::only accept \'multipart/form-data\'");
+						}
+
+						std::string temp2 = foundContentTypeVec[0].substr(semiColonPos + 1);
+
+						if (temp2.empty())
+							generate4xx5xxErrorReponse(403, false, "Content-type:: multipart/form-data :: needed \'boundary\'");
 						
-					/*
-						this may means that the the target route of the request must be a directory
-						and also X_OK
-					*/
-						struct stat fileStat;
-						std::memset(&fileStat, 0, sizeof(fileStat));
-						if (stat(_combinedPath.c_str(), &fileStat) != 0)
+						size_t tempPos = temp2.find("boundary=");
 						{
-							std::string ErrMsg = "Http::stat()::target_path " + _targetPath + "::";
-							ErrMsg += strerror(errno);
-							if (errno == EACCES)
-								generate4xx5xxErrorReponse(403, true, ErrMsg);
-							generate4xx5xxErrorReponse(404, true, ErrMsg);
-						}
-
-						if (S_ISDIR(fileStat.st_mode) != true)
-						{
-							/*
-								Here, I would give the  403 error, the reason is that
-								because multipart/form-data might contain information that 
-								we may need to store in to the directory, therefore the 
-								target route that the request targeted to must be a directory
-
-								I assumed
-							*/
-							generate4xx5xxErrorReponse(403, false, "the request targeted route for POST request with Content-Type as multipart/form-data must be a directory");
-						}
-
-						_tempRequestBodyFileNum = tempFileManager().generateNewTempFile();
-						// open the file for writing now
-						{
-							std::string tempFilePath = TEMP_FILE_DIR + toString(_tempRequestBodyFileNum);
-
-							int fd = open(tempFilePath.c_str(), O_CREAT, O_TRUNC, O_RDWR);
-
-							if (fd < 0)
-							{
-								generate4xx5xxErrorReponse(500, false, "POST method to non-cgi with Content-Type: multipart/form-data::open() error");
-							}
-
-							_bodyFd.push_back(fd);
+							if (tempPos == std::string::npos)
+								generate4xx5xxErrorReponse(403, false, "Content-type:: multipart/form-data :: needed \'boundary\'");
 						}
 
 
-						// some how here you need to determine how to read the body part of this specific content type
-						_isMultiForm = true;
-						_isUseTempFile = true;
-						_readBody = true;
-						_discardBody = false;
-
-						if (_checkExpectBody == true)
+						// now we get the boundary string
 						{
-							_httpResponseList.push_back(HttpResponse());
+							size_t equalPos = temp2.find_first_of('=');
+							if (equalPos == std::string::npos)
+								generate4xx5xxErrorReponse(403, false, "Content-type:: multipart/form-data :: needed \'boundary\'");
+							
+							_boundaryString = temp2.substr(equalPos + 1);
 
-							HttpResponse& target = _httpResponseList.back();
-
-							s_response_buff	tempBuff;
-
-							std::string expectResponse = "HTTP/1.1 100 Continue\r\n\r\n";
-
-							tempBuff.currentIndex = 0;
-							tempBuff.buffer.insert(tempBuff.buffer.end(), expectResponse.begin(), expectResponse.end());
-
-							target.pushNewResponseBuff(tempBuff);
-						}
-					}
-					else if (foundContentTypeVec[0] == "application/octet-stream")
-					{
-						/*
-							Don't need to care about file extension of the request target route
-							for me, the best check is to just simply
-							open() with the target path
-						*/
-
-						int fd = open(_combinedPath.c_str(), O_TRUNC | O_CREAT | O_RDWR);
-
-						if (fd < 0)
-						{
-							// i would insider this as internal error ?
-							generate4xx5xxErrorReponse(500, false, "POST method to non-cgi with Content-Type: application/octet-stream::open() error");
-						}
-
-						_bodyFd.push_back(fd);
-
-						_isMultiForm = false;
-						_isUseTempFile = false;
-						_readBody = true;
-						_discardBody = false;
-
-						if (_checkExpectBody == true)
-						{
-							_httpResponseList.push_back(HttpResponse());
-
-							HttpResponse& target = _httpResponseList.back();
-
-							s_response_buff	tempBuff;
-
-							std::string expectResponse = "HTTP/1.1 100 Continue\r\n\r\n";
-
-							tempBuff.currentIndex = 0;
-							tempBuff.buffer.insert(tempBuff.buffer.end(), expectResponse.begin(), expectResponse.end());
-
-							target.pushNewResponseBuff(tempBuff);
+							if (_boundaryString.size() < 1 || _boundaryString.size() > 70)
 						}
 
 					}
 					else
 					{
-						const std::set<std::string>& foundExtensionTable = contentTypeTable().contentTypeToExtension(foundContentTypeVec[0]);
-						// here is the allowed Content-Type and we need to check corresponding file extension
-
-						if (foundExtensionTable.size() != 0)
+						if (foundContentTypeVec[0] == "multipart/form-data")
 						{
-							//
-							std::string routeExtension;
-							{
-								size_t pos = foundContentTypeVec[0].find_last_of('.');
+						/*
+							the body content is multipart. Meaning that it may contains multiple informations
+							and this Content-Type require special way of reading the body
+						*/
 
-								if (pos != std::string::npos && pos + 1 < foundContentTypeVec[0].size())
-								{
-									routeExtension = foundContentTypeVec[0].substr(pos + 1);
-								}
+						/*
+							this may means that the the target route of the request must be a directory
+							and also X_OK
+						*/
+							struct stat fileStat;
+							std::memset(&fileStat, 0, sizeof(fileStat));
+							if (stat(_combinedPath.c_str(), &fileStat) != 0)
+							{
+								std::string ErrMsg = "Http::stat()::target_path " + _targetPath + "::";
+								ErrMsg += strerror(errno);
+								if (errno == EACCES)
+									generate4xx5xxErrorReponse(403, true, ErrMsg);
+								generate4xx5xxErrorReponse(404, true, ErrMsg);
 							}
 
-							if (routeExtension.empty())
+							if (S_ISDIR(fileStat.st_mode) != true)
 							{
-								generate4xx5xxErrorReponse(403, false, "POST to non-cgi::the Content-Type and the target file extension are not matched");
+								/*
+									Here, I would give the  403 error, the reason is that
+									because multipart/form-data might contain information that 
+									we may need to store in to the directory, therefore the 
+									target route that the request targeted to must be a directory
+
+									I assumed
+								*/
+								generate4xx5xxErrorReponse(403, false, "the request targeted route for POST request with Content-Type as multipart/form-data must be a directory");
 							}
 
-							if (foundExtensionTable.find(routeExtension) != foundExtensionTable.end())
+							_tempRequestBodyFileNum = tempFileManager().generateNewTempFile();
+							// open the file for writing now
 							{
-								int fd = open(_combinedPath.c_str(), O_TRUNC | O_CREAT | O_RDWR);
+								std::string tempFilePath = TEMP_FILE_DIR + toString(_tempRequestBodyFileNum);
+
+								int fd = open(tempFilePath.c_str(), O_CREAT, O_TRUNC, O_RDWR);
 
 								if (fd < 0)
 								{
-									// i would insider this as internal error ?
-									generate4xx5xxErrorReponse(500, false, "POST method to non-cgi with Content-Type: " + foundContentTypeVec[0] + "::open() failed");
-								}
-							
-								_bodyFd.push_back(fd);
-							
-								_isMultiForm = false;
-								_isUseTempFile = false;
-								_readBody = true;
-								_discardBody = false;
-							
-								if (_checkExpectBody == true)
-								{
-									_httpResponseList.push_back(HttpResponse());
-								
-									HttpResponse& target = _httpResponseList.back();
-								
-									s_response_buff	tempBuff;
-								
-									std::string expectResponse = "HTTP/1.1 100 Continue\r\n\r\n";
-								
-									tempBuff.currentIndex = 0;
-									tempBuff.buffer.insert(tempBuff.buffer.end(), expectResponse.begin(), expectResponse.end());
-								
-									target.pushNewResponseBuff(tempBuff);
+									generate4xx5xxErrorReponse(500, false, "POST method to non-cgi with Content-Type: multipart/form-data::open() error");
 								}
 
+								_bodyFd.push_back(fd);
 							}
-							else
+
+
+							// some how here you need to determine how to read the body part of this specific content type
+							_isMultiForm = true;
+							_isUseTempFile = true;
+							_readBody = true;
+							_discardBody = false;
+
+							if (_checkExpectBody == true)
 							{
-								generate4xx5xxErrorReponse(403, false, "POST to non-cgi::the Content-Type and the target file extension are not matched");
+								_httpResponseList.push_back(HttpResponse());
+
+								HttpResponse& target = _httpResponseList.back();
+
+								s_response_buff	tempBuff;
+
+								std::string expectResponse = "HTTP/1.1 100 Continue\r\n\r\n";
+
+								tempBuff.currentIndex = 0;
+								tempBuff.buffer.insert(tempBuff.buffer.end(), expectResponse.begin(), expectResponse.end());
+
+								target.pushNewResponseBuff(tempBuff);
+							}
+						}
+						else if (foundContentTypeVec[0] == "application/octet-stream")
+						{
+							/*
+								Don't need to care about file extension of the request target route
+								for me, the best check is to just simply
+								open() with the target path
+							*/
+
+							int fd = open(_combinedPath.c_str(), O_TRUNC | O_CREAT | O_RDWR);
+
+							if (fd < 0)
+							{
+								// i would insider this as internal error ?
+								generate4xx5xxErrorReponse(500, false, "POST method to non-cgi with Content-Type: application/octet-stream::open() error");
+							}
+
+							_bodyFd.push_back(fd);
+
+							_isMultiForm = false;
+							_isUseTempFile = false;
+							_readBody = true;
+							_discardBody = false;
+
+							if (_checkExpectBody == true)
+							{
+								_httpResponseList.push_back(HttpResponse());
+
+								HttpResponse& target = _httpResponseList.back();
+
+								s_response_buff	tempBuff;
+
+								std::string expectResponse = "HTTP/1.1 100 Continue\r\n\r\n";
+
+								tempBuff.currentIndex = 0;
+								tempBuff.buffer.insert(tempBuff.buffer.end(), expectResponse.begin(), expectResponse.end());
+
+								target.pushNewResponseBuff(tempBuff);
 							}
 
 						}
 						else
 						{
-							// create response for un supported media type
-							_httpResponseList.push_back(HttpResponse());
+							const std::set<std::string>& foundExtensionTable = contentTypeTable().contentTypeToExtension(foundContentTypeVec[0]);
+							// here is the allowed Content-Type and we need to check corresponding file extension
 
-							HttpResponse& target = _httpResponseList.back();
-
-							target.setResponseBodyType(HTTP_RESPONSE_NOBODY);
-							target.setStatusCode(415);
-							target.setKeepAfterResponse(false);
-							target.setStatusMessage("Unsupported Media Type");
-
-
-							// get all the content type to the response header
+							if (foundExtensionTable.size() != 0)
 							{
-								const std::map<std::string, std::set<std::string> >& contentTypetoExtentionMap = contentTypeTable().getContentTypetoExtensionMap();
-								std::map<std::string, std::set<std::string> >::const_iterator it = contentTypetoExtentionMap.begin();
-
-								while (it != contentTypetoExtentionMap.end())
+								//
+								std::string routeExtension;
 								{
-									target.addHeader("Accept-Post", it->first);
-									++it;
+									size_t pos = foundContentTypeVec[0].find_last_of('.');
+
+									if (pos != std::string::npos && pos + 1 < foundContentTypeVec[0].size())
+									{
+										routeExtension = foundContentTypeVec[0].substr(pos + 1);
+									}
 								}
+
+								if (routeExtension.empty())
+								{
+									generate4xx5xxErrorReponse(403, false, "POST to non-cgi::the Content-Type and the target file extension are not matched");
+								}
+
+								if (foundExtensionTable.find(routeExtension) != foundExtensionTable.end())
+								{
+									int fd = open(_combinedPath.c_str(), O_TRUNC | O_CREAT | O_RDWR);
+
+									if (fd < 0)
+									{
+										// i would insider this as internal error ?
+										generate4xx5xxErrorReponse(500, false, "POST method to non-cgi with Content-Type: " + foundContentTypeVec[0] + "::open() failed");
+									}
+								
+									_bodyFd.push_back(fd);
+								
+									_isMultiForm = false;
+									_isUseTempFile = false;
+									_readBody = true;
+									_discardBody = false;
+								
+									if (_checkExpectBody == true)
+									{
+										_httpResponseList.push_back(HttpResponse());
+									
+										HttpResponse& target = _httpResponseList.back();
+									
+										s_response_buff	tempBuff;
+									
+										std::string expectResponse = "HTTP/1.1 100 Continue\r\n\r\n";
+									
+										tempBuff.currentIndex = 0;
+										tempBuff.buffer.insert(tempBuff.buffer.end(), expectResponse.begin(), expectResponse.end());
+									
+										target.pushNewResponseBuff(tempBuff);
+									}
+
+								}
+								else
+								{
+									generate4xx5xxErrorReponse(403, false, "POST to non-cgi::the Content-Type and the target file extension are not matched");
+								}
+
+							}
+							else
+							{
+								// create response for un supported media type
+								_httpResponseList.push_back(HttpResponse());
+
+								HttpResponse& target = _httpResponseList.back();
+
+								target.setResponseBodyType(HTTP_RESPONSE_NOBODY);
+								target.setStatusCode(415);
+								target.setKeepAfterResponse(false);
+								target.setStatusMessage("Unsupported Media Type");
+
+
+								// get all the content type to the response header
+								{
+									const std::map<std::string, std::set<std::string> >& contentTypetoExtentionMap = contentTypeTable().getContentTypetoExtensionMap();
+									std::map<std::string, std::set<std::string> >::const_iterator it = contentTypetoExtentionMap.begin();
+
+									while (it != contentTypetoExtentionMap.end())
+									{
+										target.addHeader("Accept-Post", it->first);
+										++it;
+									}
+								}
+
+								target.generateResponse();
+								throw HttpThrowStatus(415, "Unsupported Media Type");
 							}
 
-							target.generateResponse();
-							throw HttpThrowStatus(415, "Unsupported Media Type");
 						}
 
 					}
+
 
 				}
 
@@ -2642,7 +2697,47 @@ void Http::readingRequestBody()
 			std::remove(_combinedPath.c_str());
 		generate4xx5xxErrorReponse(500, false, "Internal Error::_body_type should be only 0, 1, 2");
 	}
+}
 
+void Http::processingRequestBody()
+{
+	if (_processStatus == FINISHED_READ_BODY)
+	{
+		if (!_redirectPath.empty())
+		{
+			_httpResponseList.back().generateResponse();
+			clearRequestData();
+			_processStatus = NO_STATUS;
+			return ;
+		}
+		else if (_method == "GET" || _method == "DELETE")
+		{
+			clearRequestData();
+			_processStatus = NO_STATUS;
+			return ;
+		}
+		else // must be post right??
+		{
+			// then if POST is to CGI or not
+			if (_cgiPath.empty())
+			{
+				// no cgi means to upload normally
+				// but we need to handle the multipart form data here
+				if (_isMultiForm)
+				{
+					// i don't know how to deal with multipart / form-data yet so,
+					_bodyFd.clear();
+					tempFileManager().removeTempFile(_tempRequestBodyFileNum);
+
+					generate4xx5xxErrorReponse(500, false, "Internal Error::I don't know what to do with multipart-formdata");
+				}
+				else
+				{
+
+				}
+			}
+		}
+	}
 }
 
 
@@ -2651,21 +2746,25 @@ void	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Soc
 {
 	try
 	{
-		size_t	currIndex = 0;
-		size_t	reqBuffSize = _requestBuffer.size();
-
-		// put into structure
-		parsingHttpRequestLine(currIndex, reqBuffSize);
-		parsingHttpHeader(currIndex, reqBuffSize);
-
-		validateRequestBufffer(clientSocket, socketMap);
-		readingRequestBody();
-
-		if (_processStatus == FINISHED_READ_BODY)
+		while (_processStatus == NO_STATUS && _keepConnection == true)
 		{
-			// generate the complete response
-			_httpResponseList.back().generateResponse();
-			clearRequestData();
+			size_t	currIndex = 0;
+			size_t	reqBuffSize = _requestBuffer.size();
+
+			// put into structure
+			parsingHttpRequestLine(currIndex, reqBuffSize);
+			parsingHttpHeader(currIndex, reqBuffSize);
+
+			validateRequestBufffer(clientSocket, socketMap);
+			readingRequestBody();
+
+			if (_processStatus == FINISHED_READ_BODY)
+			{
+				// generate the complete response
+				_httpResponseList.back().generateResponse();
+				clearRequestData();
+			}
+
 		}
 	}
 	catch (std::exception &e)
