@@ -87,20 +87,11 @@ void Http::printHeaderField() const
 			std::cout << _method << " " << _requestTarget << " " << _protocol << std::endl;
 		}
 
-		std::map<std::string, std::vector<std::string> >::const_iterator	it = _headerField.begin();
+		std::map<std::string, std::string>::const_iterator	it = _headerField.begin();
 		std::vector<std::string>::const_iterator vecIt;
 		while (it != _headerField.end())
 		{
-			std::cout << it->first << ": ";
-			vecIt = it->second.begin();
-			while (vecIt != it->second.end())
-			{
-				if (vecIt != it->second.begin())
-					std::cout << ", ";
-				std::cout << *vecIt;
-				++vecIt;
-			}
-			std::cout << std::endl;
+			std::cout << it->first << ": " << it->second << std::endl;
 			++it;
 		}
 		std::cout << "====================================" << std::endl;
@@ -182,9 +173,8 @@ void Http::cgiChildProcessNoRequestBody(int pipeForCgiStdOut[2])
 
 		// convert the http header to env
 		{
-			std::map<std::string, std::vector<std::string> >::const_iterator headerIt = _headerField.begin();
+			std::map<std::string, std::string>::const_iterator headerIt = _headerField.begin();
 			std::string headerConvertedStr;
-			std::string convertValueStr;
 
 			while (headerIt != _headerField.end())
 			{
@@ -209,18 +199,8 @@ void Http::cgiChildProcessNoRequestBody(int pipeForCgiStdOut[2])
 						}
 					}
 
-					const std::vector<std::string>& valueVec = headerIt->second;
-					// create convert value string
-					for (size_t i = 0; i < valueVec.size(); i++)
-					{
-						if (i != 0)
-							convertValueStr += ", ";
-						convertValueStr += valueVec[i];
-					}
-
 					// lastly assign it to env
-					envData().assignEnv(headerConvertedStr, convertValueStr);
-					convertValueStr.clear();
+					envData().assignEnv(headerConvertedStr, headerIt->second);
 				}
 
 				++headerIt;
@@ -362,7 +342,6 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 	std::string	tempFieldName;
 	std::string	tempFieldValue;
 	std::string	tempSep;
-	std::vector<std::string> tempVec;
 	size_t	colonPos;
 	size_t	temp;
 
@@ -416,51 +395,22 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 		// now we got field name, next we want field value
 		currIndex = colonPos + 1;
 		tempSep = _requestBuffer.substr(currIndex, endLinePos - currIndex);
-		// Field value allow to be empty
-		// so only process if not empty
+
 		if (!tempSep.empty())
 		{
-			size_t	commaPos;
-			size_t	i = 0;
-			size_t	j = 0;
-			std::string	newStr;
-
-			while (i < tempSep.size())
-			{
-				// skip whitespace at the front first
-				temp = htabSp().findFirstNotCharset(tempSep, i);
-				// found only \t' ' so no value
-				if (temp == tempSep.npos)
-					break ;
-
-				// move to first char
-				i = temp;
-				commaPos = tempSep.find_first_of(',', i);
-				if (commaPos == tempSep.npos)
-					commaPos = tempSep.size();
-				j = htabSp().findLastNotCharset(tempSep, commaPos - 1, commaPos - 1 - i);
-
-				if (j <= i || j == tempSep.npos)
-					newStr = tempSep.substr(i, 1);
-				else
-					newStr = tempSep.substr(i, j - i + 1);
-				//check if field value doesn't contain any forbidden char
-				if (forbiddenFieldValueChar().isNotMatch(newStr) == false)
-					generate4xx5xxErrorReponse(400, false, "value in header field must not contain any forbidden char");
-				tempVec.push_back(newStr);
-				newStr.clear();
-				
-				i = commaPos + 1;
-			}
+			if (forbiddenFieldValueChar().isNotMatch(tempSep) == false)
+				generate4xx5xxErrorReponse(400, false, "value in header field must not contain any forbidden char");
 		}
-
-		// normalize field name because it is case insensitive
 		tempFieldName = stringToLower(tempFieldName);
 
-		if (!tempVec.empty())
-			_headerField[tempFieldName].insert(_headerField[tempFieldName].end(), tempVec.begin(), tempVec.end());
-		tempVec.clear();
+		std::string &headerValueTarget = _headerField[tempFieldName];
+
+		// separated by the ", "
+		if (headerValueTarget.empty() == false)
+			headerValueTarget += ", ";
 		
+		headerValueTarget += tempSep;
+
 		// successfully read one field name and value, move to next one
 		currIndex = endLinePos + 2;
 
@@ -1150,6 +1100,7 @@ void	Http::validateRequestBufffer(const Socket& clientSocket, std::map<int, Sock
 					in this case we need to check the host:
 					in header
 				*/
+
 					std::vector<std::string>& fieldValueVec = _headerField.find("host")->second;
 
 					// must have only 1 value in host:
@@ -2881,4 +2832,29 @@ void	Http::writeToClient()
 		}
 		_isEpollout = false;
 	}
+}
+
+void Http::httpFieldValueCommaSeparator(const std::string toSplit, std::vector<std::string>& splitVec)
+{
+	if (toSplit.empty())
+		return ;
+
+	if (!splitVec.empty())
+		splitVec.clear();
+
+	size_t i = 0;
+	size_t commaPos = 0;
+
+	while (true)
+	{
+		// finding the next item, skipping the htab and SP
+		i = htabSp().findFirstNotCharset(toSplit, i);
+		if (i == std::string::npos)
+			break ;
+
+		commaPos = 
+		
+		
+	}
+	
 }

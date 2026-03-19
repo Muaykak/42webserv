@@ -51,6 +51,7 @@ class Http {
 		NOTE: return value = 0 usually means ready to
 			create response (whether it is fail or success)
 		*/
+		static void	httpFieldValueCommaSeparator(const std::string toSep, std::vector<std::string>& splitVec);
 
 		void	processingRequestBuffer(const Socket& clientSocket, std::map<int, Socket>& socketMap);
 		void	parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize);
@@ -110,7 +111,7 @@ class Http {
 		size_t			_curr_body_read;
 
 		void	printHeaderField() const;
-		std::map<std::string, std::vector<std::string> > _headerField;
+		std::map<std::string, std::string> _headerField;
 		const ServerConfig*	_targetServer;
 		const t_config_map* _targetLocationBlock;
 
