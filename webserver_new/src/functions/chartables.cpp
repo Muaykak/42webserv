@@ -39,9 +39,60 @@ const CharTable&	hexChar()
 	return (table);
 }
 
-const CharTable&	allowedFieldNameChar()
+const CharTable&	httpTokenChar()
 {
 	static const CharTable table("qazwsxedcrfvtgbyhnujmiklopQAZWSXEDCRFVTGBYHNUJMIKLOP1234567890!#$%&\'*+-.^_`|~", true);
+	return (table);
+}
+
+const CharTable&	httpContentTypeChar()
+{
+	static const CharTable table("/qazwsxedcrfvtgbyhnujmiklopQAZWSXEDCRFVTGBYHNUJMIKLOP1234567890!#$%&\'*+-.^_`|~", true);
+	return (table);
+}
+
+static std::string allowedQuotedChar()
+{
+	std::string tempStr;
+
+	unsigned char c = 0;
+	while (c < 255)
+	{
+		if (c == '\t' || c == ' ' || c == 0x21 || (c >= 0x23 && c <= 0x7e) || c >= 0x80)
+			tempStr += c;
+		c++;
+	}
+	if (c == '\t' || c == ' ' || c == 0x21 || (c >= 0x23 && c <= 0x7e) || c >= 0x80)
+		tempStr += c;
+
+	return (tempStr);
+}
+const CharTable& httpAllowedQuotedChar()
+{
+	static const CharTable table(allowedQuotedChar(), true);
+	return (table);
+}
+
+static std::string allowedCommentChar()
+{
+	std::string tempStr;
+
+	unsigned char c = 0;
+
+	while (c < 255)
+	{
+		if (c == '\t' || c == ' ' || (c >= 0x21 && c <= 0x27) || (c >= 0x2a && c <= 0x7e) || c >= 0x80)
+			tempStr += c;
+		c++;
+	}
+	if (c == '\t' || c == ' ' || (c >= 0x21 && c <= 0x27) || (c >= 0x2a && c <= 0x7e) || c >= 0x80)
+		tempStr += c;
+
+	return (tempStr);
+}
+const CharTable& httpAllowedCommentChar()
+{
+	static CharTable table(allowedCommentChar(), true);
 	return (table);
 }
 
@@ -57,8 +108,8 @@ static std::string forbiddenControlCharOnFieldValue()
 	returnStr.reserve(32);
 	for (unsigned char c = 0; c < 32; c++)
 	{
-		// vertical tab is allowed
-		if (c == '\v')
+		// vertical tab is allowed || ifk if horizontal tab is allowed so 
+		if (c == '\t')
 			continue;
 		returnStr.append(1, c);
 	}

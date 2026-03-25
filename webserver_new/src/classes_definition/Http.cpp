@@ -1100,8 +1100,8 @@ void	Http::validateRequestBufffer(const Socket& clientSocket, std::map<int, Sock
 					in this case we need to check the host:
 					in header
 				*/
-
-					std::vector<std::string>& fieldValueVec = _headerField.find("host")->second;
+					std::vector<std::string> fieldValueVec;
+					httpFieldValueCommaSeparator(_headerField.find("host")->second, fieldValueVec);
 
 					// must have only 1 value in host:
 					if (fieldValueVec.size() != 1)
@@ -1248,8 +1248,8 @@ void	Http::validateRequestBufffer(const Socket& clientSocket, std::map<int, Sock
 		}
 
 		// 
-		std::map<std::string, std::vector<std::string> >::const_iterator content_length = _headerField.find("content-length");
-		std::map<std::string, std::vector<std::string> >::const_iterator tranfer_encoding = _headerField.find("transfer-encoding");
+		std::map<std::string, std::string>::const_iterator content_length = _headerField.find("content-length");
+		std::map<std::string, std::string>::const_iterator tranfer_encoding = _headerField.find("transfer-encoding");
 
 		// I will not allow DELETE or GET method to have body
 		if (_method != "POST" && (tranfer_encoding != _headerField.end() || content_length != _headerField.end()))
@@ -1262,12 +1262,13 @@ void	Http::validateRequestBufffer(const Socket& clientSocket, std::map<int, Sock
 
 		// check Expect the body
 		{
-			std::map<std::string, std::vector<std::string> >::const_iterator foundExpect = _headerField.find("expect");
+			std::map<std::string, std::string>::const_iterator foundExpect = _headerField.find("expect");
 			
 			// if found
 			if (foundExpect != _headerField.end())
 			{
-				const std::vector<std::string>& targetValue = foundExpect->second;
+				std::vector<std::string> targetValue;
+				httpFieldValueCommaSeparator(foundExpect->second, targetValue);
 
 				if (targetValue.size() != 1)
 				{
@@ -1288,14 +1289,18 @@ void	Http::validateRequestBufffer(const Socket& clientSocket, std::map<int, Sock
 		// if Content-Length is found, check if it exceeds the client_max_body_size
 		if (content_length != _headerField.end())
 		{
+
+			std::vector<std::string> valueVec;
+			httpFieldValueCommaSeparator(content_length->second, valueVec);
+
 			// this field must have only 1 element
-			if (content_length->second.size() != 1)
+			if (valueVec.size() != 1)
 			{
 				// treat this as a bad request
 				generate4xx5xxErrorReponse(400, false, "Bad request:: Content-Length:: must have only one element in this field");
 			}
 
-			std::string numstr = *(content_length->second.begin());
+			const std::string& numstr = valueVec[0];
 
 			// must contain only digit
 			if (digitChar().isMatch(numstr) == false)
@@ -1335,7 +1340,8 @@ void	Http::validateRequestBufffer(const Socket& clientSocket, std::map<int, Sock
 		else if (tranfer_encoding != _headerField.end())
 		{
 			// here need to check the Transfer Encoding
-			const std::vector<std::string>& valueVec = tranfer_encoding->second;
+			std::vector<std::string> valueVec;
+			httpFieldValueCommaSeparator(tranfer_encoding->second, valueVec);
 
 			// mean that chunked is not found in the list
 			bool isFoundChunked = false;
@@ -1885,21 +1891,86 @@ void	Http::validateRequestBufffer(const Socket& clientSocket, std::map<int, Sock
 				// need to check content type
 				// get the _bodyContentType
 				{
-					std::map<std::string, std::vector<std::string> >::const_iterator foundContentTypeElement = _headerField.find("content-type");
+					std::map<std::string, std::string>::const_iterator foundContentTypeElement = _headerField.find("content-type");
 
 					if (foundContentTypeElement == _headerField.end())
 					{
 						generate4xx5xxErrorReponse(400, false, "The request contains body, but no Content-Type found in the request header");
 					}
 
-					const std::vector<std::string>& foundContentTypeVec = foundContentTypeElement->second;
+					const std::string& contentTypeString = foundContentTypeElement->second;
 
-					if (foundContentTypeVec.size() != 1)
+					std::vector<std::vector<std::string> > tempVecVec;
+					{
+						size_t i = 0;
+						size_t j;
+						size_t pos;
+						std::string tempStr;
+						std::vector<std::string> tempVec;
+					
+						while (i < contentTypeString.size())
+						{
+							// skip any SP or HTAB
+							i = htabSp().findFirstNotCharset(contentTypeString, i);
+						
+							if (i == std::string::npos)
+								break ;
+						
+							// find any ',' or ';'
+							pos = contentTypeString.find_first_of(";,", i);
+						
+							if (pos == std::string::npos)
+								pos = contentTypeString.size();
+							else if (pos == i)
+							{
+								if (contentTypeString[pos] == ',' && !tempVec.empty())
+								{
+									tempVecVec.push_back(tempVec);
+									tempVec.clear();
+								}
+							
+								i++;
+								continue;
+							}
+						
+							j = htabSp().findFirstNotCharset(contentTypeString, pos - 1);
+							tempStr = contentTypeString.substr(i, j - i + 1);
+
+							tempVec.push_back(tempStr);
+							if (pos == contentTypeString.size() || contentTypeString[pos] == ',')
+							{
+								if (!tempVec.empty())
+								{
+									tempVecVec.push_back(tempVec);
+									tempVec.clear();
+								}
+							}
+						
+							i = pos + 1;
+						}
+					}
+
+					// now we use tempVecVec to check from here
+
+					// content type is singleton from what i heard? so it contained only 1 element
+					if (tempVecVec.size() != 1)
 					{
 						generate4xx5xxErrorReponse(400, false, "The Content-Type must has 1 value");
 					}
 
 					// we need to extract the string
+
+					const std::string& tempContentTypeString = tempVecVec[0][0];
+
+					if (tempContentTypeString != "multipart/form-data")
+					{
+						// if not a multipart/form-data then
+						if (tempVecVec[0].size() != 1)
+						{
+							generate4xx5xxErrorReponse(400, false, "The Content type that is not mulipart/form-data must not have \';\'")
+						}
+					}
+
 
 					// the multipart needs to have the ';'
 					size_t semiColonPos = foundContentTypeVec[0].find_first_of(';');
@@ -2834,7 +2905,7 @@ void	Http::writeToClient()
 	}
 }
 
-void Http::httpFieldValueCommaSeparator(const std::string toSplit, std::vector<std::string>& splitVec)
+void Http::httpFieldValueCommaSeparator(const std::string& toSplit, std::vector<std::string>& splitVec)
 {
 	if (toSplit.empty())
 		return ;
@@ -2844,17 +2915,120 @@ void Http::httpFieldValueCommaSeparator(const std::string toSplit, std::vector<s
 
 	size_t i = 0;
 	size_t commaPos = 0;
+	size_t	j = 0;
+	std::string tempStr;
 
-	while (true)
+	while (i < toSplit.size())
 	{
 		// finding the next item, skipping the htab and SP
 		i = htabSp().findFirstNotCharset(toSplit, i);
 		if (i == std::string::npos)
 			break ;
 
-		commaPos = 
+		commaPos = toSplit.find_first_of(',', i);
+
+		if (commaPos == i)
+		{
+			i++;
+			continue;
+		}
+		else if (commaPos == std::string::npos)
+			commaPos = toSplit.size();
+
+		j = htabSp().findLastNotCharset(toSplit, commaPos - 1);
+
+		// based on logic, j could not lower than i, i assumed
+		tempStr = toSplit.substr(i, j - i + 1);
+
+		if (!tempStr.empty())
+			splitVec.push_back(tempStr);
 		
-		
+		i = commaPos + 1;
 	}
+
+	return ;
 	
+}
+
+bool extractHttpFieldValueString(const std::string& toExtract, std::list<s_http_field_value_token>& tokenList, const std::string& delimiterCharSet, const std::string& optionalSpaceCharSet)
+{
+	tokenList.clear();
+	if (toExtract.empty())
+		return (true);
+
+	CharTable delimTable(delimiterCharSet, true);
+	CharTable optionalTable(optionalCharSet, true);
+	CharTable compTable(delimiterCharSet + optionalCharSet + '\"', true);
+
+	size_t i = 0;
+	size_t j = 0;
+	std::string tempStr;
+	while (i < toExtract.size())
+	{
+		if (optionalTable[toExtract[i]] == true)
+		{
+			j = optionalTable.findFirstNotCharset(toExtract, i);
+
+			if (j == std::string::npos)
+				j = toExtract.size();
+
+			tokenList.push_back(s_http_field_value_token());
+			s_http_field_value_token& targetToken = tokenList.back();
+			
+			targetToken.tokenType = OPTIONAL_CHAR;
+			targetToken.str = toExtract.substr(i, j - i);
+
+			i = j;
+			continue;
+		}
+		else if (delimTable[toExtract[i]] == true)
+		{
+			tokenList.push_back(s_http_field_value_token());
+			s_http_field_value_token& targetToken = tokenList.back();
+
+			targetToken.tokenType = DELIMITER;
+			targetToken.str += toExtract[i];
+
+			i++;
+			continue;
+		}
+		else if (toExtract[i] == '\"')
+		{
+			// for quoted string
+			j = toExtract.find_first_of('\"', i + 1);
+
+			if (j == std::string::npos)
+			{
+				tokenList.clear();
+				return (false);
+			}
+
+			tokenList.push_back(s_http_field_value_token());
+			s_http_field_value_token& targetToken = tokenList.back();
+
+			targetToken.tokenType = QUOTED_STRING;
+			targetToken.str = toExtract.substr(i + 1, j - i - 1);
+
+			i = j + 1;
+			continue;;
+		}
+		else
+		{
+			// general token i think ?
+
+			j = compTable.findFirstCharset(toExtract, i);
+			if (j == std::string::npos)
+				j = toExtract.size();
+
+			tokenList.push_back(s_http_field_value_token());
+			s_http_field_value_token& targetToken = tokenList.back();
+
+			targetToken.tokenType = TOKEN;
+			targetToken.str = toExtract.substr(i, j - i);
+
+			i = j;
+			continue;
+		}
+	}
+	return (true);
 }

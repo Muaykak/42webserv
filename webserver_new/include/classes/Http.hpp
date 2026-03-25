@@ -20,6 +20,19 @@ enum e_http_process_status {
 	FINISHED_READ_BODY
 };
 
+enum e_http_field_value_token_type
+{
+	TOKEN_UNKNOWN_TYPE,
+	WORD,
+	DELIMITER,
+	OPTIONAL_CHAR
+};
+
+struct s_http_field_value_token {
+	e_http_field_value_token_type tokenType;
+	std::string str;
+};
+
 class Http {
 	private:
 		Socket* _clientSocketPtr;
@@ -51,7 +64,7 @@ class Http {
 		NOTE: return value = 0 usually means ready to
 			create response (whether it is fail or success)
 		*/
-		static void	httpFieldValueCommaSeparator(const std::string toSep, std::vector<std::string>& splitVec);
+		static void	httpFieldValueCommaSeparator(const std::string& toSep, std::vector<std::string>& splitVec);
 
 		void	processingRequestBuffer(const Socket& clientSocket, std::map<int, Socket>& socketMap);
 		void	parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize);
@@ -102,6 +115,7 @@ class Http {
 			1 = content-lenth body
 			2 = transfer-encoding body
 		*/
+		std::string		_bodyContentType;
 		int				_body_type;
 		size_t			_body_size;
 		bool			_chunkedBodyHasTrailerHeader;

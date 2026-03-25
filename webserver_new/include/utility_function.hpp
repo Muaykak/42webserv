@@ -31,7 +31,9 @@ const CharTable&	digitChar();
 const CharTable&	hexChar();
 const CharTable&	htabSp();
 const CharTable&	alphaAtoZ();
-const CharTable&	allowedFieldNameChar();
+const CharTable&	httpTokenChar();
+const CharTable& 	httpAllowedQuotedChar();
+const CharTable&	httpContentTypeChar();
 const CharTable&	forbiddenFieldValueChar();
 const CharTable&	allowRequestTargetChar();
 

@@ -40,7 +40,6 @@ bool	CharTable::operator[](char c) const {
 bool	CharTable::isMatch(const std::string& str) const {
 	size_t	strSize = str.size();
 	for (size_t i = 0; i < strSize; i++){
-		if (i != 0)
 		if ((*this)[static_cast<unsigned char>(str[i])] == false)
 			return (false);
 	}
