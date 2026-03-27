@@ -8,30 +8,193 @@
 
 bool extractHttpFieldValueString(const std::string& toExtract, std::deque<s_http_field_value_token>& tokenList, const std::string& delimiterCharSet, const std::string& optionalCharSet);
 
+bool httpFieldNormalSingletonTrim(const std::string& toExtract, std::string& outString);
 bool httpFieldContentTypeExtract(const std::string& toExtract, std::pair<std::string, std::vector<std::pair<std::string, std::string> > > & outPair);
+bool httpFieldNormalCommaElement(const std::string& toExtract, std::vector<std::string>& outVec);
 
 int main()
 {
-	std::string testContentTypeString = "multipart/form-data; boundary=\"h e l l o w o r l d\";";
-
-	std::pair<std::string, std::vector<std::pair<std::string, std::string> > > outVec;
-
-	if (httpFieldContentTypeExtract(testContentTypeString, outVec) == false)
 	{
-		std::cout << "Conversion failed " << std::endl;
-		return (0);
+		std::string testContentTypeString = "multipart/form-data; boundary=\"h e l l o w o r l d\";";
+
+		std::pair<std::string, std::vector<std::pair<std::string, std::string> > > outVec;
+
+		if (httpFieldContentTypeExtract(testContentTypeString, outVec) == false)
+		{
+			std::cout << "Conversion failed " << std::endl;
+			return (0);
+		}
+
+		/* check the data */
+		{
+				std::cout << "====== Element []======" << std::endl;
+				std::cout << "element name: " << outVec.first << std::endl;
+				for (size_t j = 0; j < outVec.second.size(); j++)
+				{
+					std::cout << "== attribute[" << j + 1 << "] ==" << std::endl;
+					std::cout << "KEY: " << outVec.second[j].first << " VALUE: \"" << outVec.second[j].second << "\"" << std::endl;
+				}
+		}
 	}
 
-	/* check the data */
 	{
-			std::cout << "====== Element []======" << std::endl;
-			std::cout << "element name: " << outVec.first << std::endl;
-			for (size_t j = 0; j < outVec.second.size(); j++)
+		std::string testSingleton = "               test         hello      ";
+
+		std::string outString;
+
+		std::cout << std::endl << "test httpFieldNormalSingletonTrim()" << std::endl;
+
+		if (httpFieldNormalSingletonTrim(testSingleton, outString) == false)
+			std::cout << "conversion failed" << std::endl;
+		else
+			std::cout << "str =>\"" << outString << "\"" << std::endl;
+	}
+
+	{
+		std::cout << std::endl << "test httpFieldNormalCommaElement()" << std::endl;
+
+		std::string toExtract = ","; /* suppose to failed */
+		std::vector<std::string> outVec;
+
+		if (httpFieldNormalCommaElement(toExtract, outVec) == false)
+			std::cout << "conversion failed" << std::endl;
+		else
+		{
+			for (size_t i = 0;i < outVec.size(); i++)
 			{
-				std::cout << "== attribute[" << j + 1 << "] ==" << std::endl;
-				std::cout << "KEY: " << outVec.second[j].first << " VALUE: " << outVec.second[j].second << std::endl;
+				std::cout << "Element[" << i + 1 << "]: \"" << outVec[i] << "\"" << std::endl;
 			}
+		}
 	}
+
+}
+
+bool httpFieldNormalCommaElement(const std::string& toExtract, std::vector<std::string>& outVec)
+{
+	if (!outVec.empty())
+		outVec.clear();
+
+	if (toExtract.empty())
+		return (true);
+
+
+	std::deque<s_http_field_value_token> tempTokenList;
+	if (toExtract.find_first_of(',') == std::string::npos)
+	{
+		/* if no comma, just simply single ton*/
+		std::string tempStringOut;
+		if (httpFieldNormalSingletonTrim(toExtract, tempStringOut) == false)
+			return (false);
+		if (!tempStringOut.empty())
+			outVec.push_back(tempStringOut);
+		return (true);
+	}
+	else
+	{
+		/* here, there is a comma */
+		if (extractHttpFieldValueString(toExtract, tempTokenList, ",", " \t") == false)
+			return (false);
+
+		std::deque<s_http_field_value_token>::const_iterator listIt = tempTokenList.begin();
+		std::deque<s_http_field_value_token>::const_iterator headIt = tempTokenList.end();
+		std::deque<s_http_field_value_token>::const_iterator tailIt;
+		while (listIt != tempTokenList.end())
+		{
+			/* simply skip any whitespaces first? */
+			if (listIt->tokenType == OPTIONAL_CHAR)
+			{
+				++listIt;
+				continue;
+			}
+			else if (listIt->tokenType == WORD)
+			{
+				if (headIt == tempTokenList.end())
+					headIt = listIt;
+				++listIt;
+				continue;
+			}
+			else if (listIt->tokenType == DELIMITER)
+			{
+				if (headIt != tempTokenList.end())
+				{
+					std::string tempStr;
+					tailIt = listIt - 1;
+
+					while (tailIt->tokenType != WORD)
+						--tailIt;
+					
+					while (headIt != tailIt)
+					{
+						tempStr += headIt->str;
+						++headIt;
+					}
+					tempStr += headIt->str;
+
+					if (!tempStr.empty())
+						outVec.push_back(tempStr);
+					
+					headIt = tempTokenList.end();
+				}
+				++listIt;
+				continue;
+			}
+			else
+				return (false);
+		}
+
+		if (headIt != tempTokenList.end())
+		{
+			std::string tempStr;
+			tailIt = listIt - 1;
+
+			while (tailIt->tokenType != WORD)
+				--tailIt;
+			
+			while (headIt != tailIt)
+			{
+				tempStr += headIt->str;
+				++headIt;
+			}
+			tempStr += headIt->str;
+
+			if (!tempStr.empty())
+				outVec.push_back(tempStr);
+			
+		}
+
+		/* If have comma it must have at least 1 element if not then should return false */
+		if (outVec.size() < 1)
+			return (false);
+
+		return (true);
+	}
+
+	return (true);
+}
+
+bool httpFieldNormalSingletonTrim(const std::string& toExtract, std::string& outString)
+{
+	/* for normal singleton, i just gonna trim the SP and HTAB
+		** this doens't handle the quoted string */
+	if (!outString.empty())
+		outString.clear();
+
+	if (toExtract.empty())
+		return (true);
+
+	size_t frontPos = htabSp().findFirstNotCharset(toExtract);
+
+	if (frontPos == std::string::npos)
+		return (true);
+	
+	size_t endPos = htabSp().findLastNotCharset(toExtract);
+
+	/* End pos should not get the npos though, looking from the logic */
+	if (endPos == std::string::npos)
+		return(false);
+
+	outString = toExtract.substr(frontPos, endPos - frontPos + 1);
+	return (true);
 }
 
 /*

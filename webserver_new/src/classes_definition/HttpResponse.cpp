@@ -16,7 +16,9 @@ _isCgiFinished(true),
 _isCgiProcessOpen(false),
 _isCgiInSocketAlive(false),
 _isCgiOutSocketAlive(false),
-_socketMapPtr(NULL)
+_socketMapPtr(NULL),
+_targetServer(NULL),
+_targetLocationBlock(NULL)
 {
 	_sendBuffer.reserve(HTTP_SEND_BUFFER);
 }
@@ -237,6 +239,23 @@ std::map<int, Socket>* HttpResponse::getSocketMapPtr() const
 	return (_socketMapPtr);
 }
 
+void HttpResponse::setTargetServer(const ServerConfig* targetServer)
+{
+	_targetServer = targetServer;
+}
+const ServerConfig* HttpResponse::getTargetServer() const
+{
+	return (_targetServer);
+}
+
+void HttpResponse::setTargetLocationBlock(const t_config_map* targetLocationBlock)
+{
+	_targetLocationBlock = targetLocationBlock;
+}
+const t_config_map* HttpResponse::getTargetLocationBlock() const
+{
+	return (_targetLocationBlock);
+}
 
 void	HttpResponse::generateResponse()
 {

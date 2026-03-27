@@ -39,6 +39,18 @@ const CharTable&	hexChar()
 	return (table);
 }
 
+const CharTable& allAlphaChar()
+{
+	static const CharTable table("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", true);
+	return (table);
+}
+
+const CharTable& httpFieldNameChar()
+{
+	static const CharTable table("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-", true);
+	return (table);
+}
+
 const CharTable&	httpTokenChar()
 {
 	static const CharTable table("qazwsxedcrfvtgbyhnujmiklopQAZWSXEDCRFVTGBYHNUJMIKLOP1234567890!#$%&\'*+-.^_`|~", true);
@@ -51,6 +63,27 @@ const CharTable&	httpContentTypeChar()
 	return (table);
 }
 
+static std::string quotePairStr()
+{
+	std::string tempStr;
+
+	unsigned char c = 0;
+	while (c < 255)
+	{
+		if ( (c >= 32 && c <= 126) || c == '\t' || c >= 0x80)
+			tempStr += c;
+		c++;
+	}
+	if ( (c >= 32 && c <= 126) || c == '\t' || c >= 0x80)
+		tempStr += c;
+	return (tempStr);
+}
+const CharTable& httpQuotedPairAllowedChar()
+{
+	static const CharTable table(quotePairStr(), true);
+	return (table);
+}
+
 static std::string allowedQuotedChar()
 {
 	std::string tempStr;
@@ -58,11 +91,11 @@ static std::string allowedQuotedChar()
 	unsigned char c = 0;
 	while (c < 255)
 	{
-		if (c == '\t' || c == ' ' || c == 0x21 || (c >= 0x23 && c <= 0x7e) || c >= 0x80)
+		if (c == '\t' || c == ' ' || c == 0x21 || (c >= 0x23 && c <= 0x5b) || (c >= 0x5d && c <= 0x7e) || c >= 0x80)
 			tempStr += c;
 		c++;
 	}
-	if (c == '\t' || c == ' ' || c == 0x21 || (c >= 0x23 && c <= 0x7e) || c >= 0x80)
+	if (c == '\t' || c == ' ' || c == 0x21 || (c >= 0x23 && c <= 0x5b) || (c >= 0x5d && c <= 0x7e) || c >= 0x80)
 		tempStr += c;
 
 	return (tempStr);

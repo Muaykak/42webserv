@@ -54,6 +54,8 @@ class HttpResponse {
 		int  _cgiInSocketFd;
 		int  _cgiOutSocketFd;
 		std::map<int, Socket> *_socketMapPtr;
+		const ServerConfig*	_targetServer;
+		const t_config_map* _targetLocationBlock;
 
 
 		bool _isCgiFinished;
@@ -67,6 +69,12 @@ class HttpResponse {
 	public:
 		HttpResponse();
 		~HttpResponse();
+
+		void setTargetLocationBlock(const t_config_map* targetLocationBlock);
+		const t_config_map* getTargetLocationBlock() const;
+
+		void setTargetServer(const ServerConfig* targetServer);
+		const ServerConfig*	getTargetServer() const;
 
 		void setSocketMapPtr(std::map<int, Socket>* socketMapPtr);
 		std::map<int, Socket>* getSocketMapPtr() const;
@@ -134,6 +142,7 @@ class HttpResponse {
 		bool isComplete() const;
 
 		bool hasSomethingtoSend() const;
+
 };
 
 #endif

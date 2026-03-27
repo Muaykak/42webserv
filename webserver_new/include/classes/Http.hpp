@@ -4,6 +4,7 @@
 # include <list>
 # include <map>
 # include <set>
+# include <deque>
 # include "../defined_value.hpp"
 # include "./ServerConfig.hpp"
 # include "./HttpThrowStatus.hpp"
@@ -24,6 +25,7 @@ enum e_http_field_value_token_type
 {
 	TOKEN_UNKNOWN_TYPE,
 	WORD,
+	ESCAPE_CHAR,
 	DELIMITER,
 	OPTIONAL_CHAR
 };
@@ -46,6 +48,9 @@ class Http {
 		std::string	_sendBuffer;
 		std::list<HttpResponse>	_httpResponseList;
 
+		/* small functions */
+
+
 		/*
 		return value:
 
@@ -64,13 +69,31 @@ class Http {
 		NOTE: return value = 0 usually means ready to
 			create response (whether it is fail or success)
 		*/
-		static void	httpFieldValueCommaSeparator(const std::string& toSep, std::vector<std::string>& splitVec);
 
 		void	processingRequestBuffer(const Socket& clientSocket, std::map<int, Socket>& socketMap);
-		void	parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize);
-		void	parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize);
-		void	validateRequestBufffer(const Socket& clientSocket, std::map<int, Socket>& socketMap);
-		void	validateRequestBufferSelectServer(const Socket& clientSocket, const std::string& authStr);
+		void		parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize);
+		void		parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize);
+
+
+
+		void		validateRequestBufffer(const Socket& clientSocket, std::map<int, Socket>& socketMap);
+		void			validateRequestBufferSelectServer(const Socket& clientSocket, const std::string& authStr);
+		void			requestLineCheck(const Socket& clientSocket);
+		void				requestLineCheckProtocolVersion();
+		void				requestLineCheckRequestTarget(const Socket& clientSocket);
+		void					requestLineCheckRequestTargetAbsolute(const Socket& clientSocket);
+		void					requestLineCheckRequestTargetPathCheck();
+		void			targetLocationBlockGet();
+		void			checkRequestBodyType();
+		bool			checkRedirection();
+		void			checkMethod();
+		void			checkCgiPath();
+		void			createSystemPath();
+		void			createSystemPath(std::string& systemPath);
+		void			handleDeleteRequest();
+		void			handleGetRequest(bool isEndWithSlash, const Socket& clientSocket, std::map<int, Socket>& socketMap);
+
+
 		void	readingRequestBody();
 		void	processingRequestBody();
 
@@ -103,6 +126,7 @@ class Http {
 
 		bool			_isMultiForm;
 		std::string		_boundaryString;
+		std::string		_bodyContentType;
 		bool			_isUseTempFile;
 		unsigned int	_tempRequestBodyFileNum;
 		bool			_checkExpectBody;
@@ -115,12 +139,11 @@ class Http {
 			1 = content-lenth body
 			2 = transfer-encoding body
 		*/
-		std::string		_bodyContentType;
 		int				_body_type;
 		size_t			_body_size;
 		bool			_chunkedBodyHasTrailerHeader;
 		bool			_chunkedBodyIsFinished;
-		std::map<std::string, std::vector<std::string> >::const_iterator _trailerHeader;
+		std::set<std::string> _trailerHeader;
 		size_t			_client_max_body_size;
 		size_t			_curr_body_read;
 
@@ -128,6 +151,9 @@ class Http {
 		std::map<std::string, std::string> _headerField;
 		const ServerConfig*	_targetServer;
 		const t_config_map* _targetLocationBlock;
+
+		void	generate4xx5xxErrorReponse(unsigned int errorStatusCode, bool keepAfterResponse, const std::string& throwMsg);
+		void	generate3xxRedirectResponse(unsigned int statusCode);
 
 	public:
 		Http();
@@ -140,10 +166,12 @@ class Http {
 
 		bool	isKeepConnection() const;
 
-		void	generate4xx5xxErrorReponse(unsigned int errorStatusCode, bool keepAfterResponse, const std::string& throwMsg);
-		void	generate3xxRedirectResponse(unsigned int statusCode);
 
 
+		static bool extractHttpFieldValueString(const std::string& toExtract, std::deque<s_http_field_value_token>& tokenList, const std::string& delimiterCharSet, const std::string& optionalSpaceCharSet);
+		static bool httpFieldNormalSingletonTrim(const std::string& toExtract, std::string& outString);
+		static bool httpFieldNormalCommaElement(const std::string& toExtract, std::vector<std::string>& outVec);
+		static bool httpFieldContentTypeExtract(const std::string& toExtract, std::pair<std::string, std::vector<std::pair<std::string, std::string> > > & outPair);
 };
 
 #endif

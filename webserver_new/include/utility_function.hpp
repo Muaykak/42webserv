@@ -30,7 +30,10 @@ const CharTable&	hostipChar();
 const CharTable&	digitChar();
 const CharTable&	hexChar();
 const CharTable&	htabSp();
-const CharTable&	alphaAtoZ();
+const CharTable&	alphaAtoZ(); /* capital Letters */
+const CharTable&	httpFieldNameChar();
+const CharTable&	allAlphaChar();
+const CharTable&	httpQuotedPairAllowedChar();
 const CharTable&	httpTokenChar();
 const CharTable& 	httpAllowedQuotedChar();
 const CharTable&	httpContentTypeChar();
