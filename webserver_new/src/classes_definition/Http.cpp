@@ -10,20 +10,24 @@
 
 Http::Http()
 : _keepConnection(true),
+_isEpollout(false),
 _clientSocketPtr(NULL),
 _socketMapPtr(NULL),
 _processStatus(NO_STATUS),
-_targetServer(NULL),
-_readBody(false),
-_isEpollout(false),
-_body_type(0),
-_checkExpectBody(false),
-_body_size(0),
-_curr_body_read(0),
-_targetLocationBlock(NULL),
+_isMultiForm(false),
+_isUseTempFile(false),
 _tempRequestBodyFileNum(0),
+_checkExpectBody(false),
+_readBody(false),
 _discardBody(false),
-_isUseTempFile(false)
+_body_type(0),
+_body_size(0),
+_chunkedBodyHasTrailerHeader(false),
+_chunkedBodyIsFinished(false),
+_client_max_body_size(0),
+_curr_body_read(0),
+_targetServer(NULL),
+_targetLocationBlock(NULL)
 {
 	_recvBuffer.reserve(HTTP_RECV_BUFFER);
 	_sendBuffer.reserve(HTTP_SEND_BUFFER);
@@ -31,20 +35,24 @@ _isUseTempFile(false)
 
 Http::Http(Socket *clientSocketPtr, std::map<int, Socket>* socketMapPtr)
 : _keepConnection(true),
+_isEpollout(false),
 _clientSocketPtr(clientSocketPtr),
 _socketMapPtr(socketMapPtr),
 _processStatus(NO_STATUS),
-_targetServer(NULL),
-_readBody(false),
-_isEpollout(false),
-_body_type(0),
-_checkExpectBody(false),
-_body_size(0),
-_curr_body_read(0),
-_targetLocationBlock(NULL),
+_isMultiForm(false),
+_isUseTempFile(false),
 _tempRequestBodyFileNum(0),
+_checkExpectBody(false),
+_readBody(false),
 _discardBody(false),
-_isUseTempFile(false)
+_body_type(0),
+_body_size(0),
+_chunkedBodyHasTrailerHeader(false),
+_chunkedBodyIsFinished(false),
+_client_max_body_size(0),
+_curr_body_read(0),
+_targetServer(NULL),
+_targetLocationBlock(NULL)
 {
 	_recvBuffer.reserve(HTTP_RECV_BUFFER);
 	_sendBuffer.reserve(HTTP_SEND_BUFFER);
@@ -52,20 +60,24 @@ _isUseTempFile(false)
 
 Http::Http(const Http& obj)
 : _keepConnection(true),
+_isEpollout(false),
 _clientSocketPtr(obj._clientSocketPtr),
 _socketMapPtr(obj._socketMapPtr),
 _processStatus(NO_STATUS),
-_targetServer(NULL),
-_readBody(false),
-_isEpollout(false),
-_body_type(0),
-_checkExpectBody(false),
-_body_size(0),
-_curr_body_read(0),
-_targetLocationBlock(NULL),
+_isMultiForm(false),
+_isUseTempFile(false),
 _tempRequestBodyFileNum(0),
+_checkExpectBody(false),
+_readBody(false),
 _discardBody(false),
-_isUseTempFile(false)
+_body_type(0),
+_body_size(0),
+_chunkedBodyHasTrailerHeader(false),
+_chunkedBodyIsFinished(false),
+_client_max_body_size(0),
+_curr_body_read(0),
+_targetServer(NULL),
+_targetLocationBlock(NULL)
 {
 	_recvBuffer.reserve(HTTP_RECV_BUFFER);
 	_sendBuffer.reserve(HTTP_SEND_BUFFER);
@@ -755,20 +767,34 @@ void Http::clearRequestData()
 	_combinedPath.clear();
 	_queryString.clear();
 	_protocol.clear();
+
 	_cgiPath.clear();
+	_cgiScriptPath.clear();
+	_cgiVirtualPath.clear();
+	_cgiPathTranslated.clear();
+
 	_uploadStorePath.clear();
 	_authorityPart.clear();
+	_redirectPath.clear();
+
+	_isMultiForm = false;
+	_boundaryString.clear();
+	_bodyContentType.clear();
+	_isUseTempFile = false;
+	_tempRequestBodyFileNum = 0;
 	_checkExpectBody = false;
 	_readBody = false;
+	_discardBody = false;
+	_bodyFd.clear();
 	_body_type = 0;
 	_body_size = 0;
+	_chunkedBodyHasTrailerHeader = false;
+	_chunkedBodyIsFinished = false;
+	_client_max_body_size = 0;
 	_curr_body_read = 0;
 	_headerField.clear();
 	_targetServer = NULL;
 	_targetLocationBlock = NULL;
-	_tempRequestBodyFileNum = 0;
-	_discardBody = false;
-	_isUseTempFile = false;
 
 }
 
