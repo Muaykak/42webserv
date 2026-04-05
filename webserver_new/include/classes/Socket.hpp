@@ -73,8 +73,8 @@ public:
 		const FileDescriptor &epollFD, std::map<int, Socket>* socketMap);
 	bool setupClientSocket(const std::vector<ServerConfig> *_serversConfigVec,
 		const FileDescriptor &epollFD, std::map<int, Socket>* socketMap);
-	bool setupCGIINSocket(const std::vector<ServerConfig> *_serversConfigVec,
-		const FileDescriptor &epollFD, std::map<int, Socket>* socketMap);
+	bool setupCGIINSocket(const std::vector<ServerConfig> *serversConfig,
+		const FileDescriptor &epollFD, std::map<int, Socket>* socketMap, const HttpCgi& cgiData);
 	bool setupCGIOUTSocket(const std::vector<ServerConfig> *serversConfig,
 		const FileDescriptor &epollFD, std::map<int, Socket>* socketMap, const HttpCgi& cgiData);
 

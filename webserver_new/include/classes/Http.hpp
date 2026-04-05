@@ -93,9 +93,8 @@ class Http {
 		void			handleDeleteRequest();
 		void			handleGetRequest(bool isEndWithSlash, const Socket& clientSocket, std::map<int, Socket>& socketMap);
 
-
 		void	readingRequestBody();
-		void	processingRequestBody();
+		void	processingRequestBody(const Socket& clientSocket, std::map<int, Socket>& socketMap);
 
 		void	cgiChildProcessNoRequestBody(int pipeForCgiStdOut[2]);
 

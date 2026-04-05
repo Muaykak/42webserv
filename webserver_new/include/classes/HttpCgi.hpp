@@ -16,6 +16,10 @@ class HttpCgi {
 		std::vector<char> _readCgiBuffer;
 		std::string _responseBuffer;
 
+		/* for send to CGI we need to have the temporaryfileFd that it will read from */
+		FileDescriptor _tempReadFileFd;
+
+
 		bool _isFinishedRead;
 		bool _keepConnection;
 	public:
@@ -26,9 +30,15 @@ class HttpCgi {
 		HttpResponse* cgiTargetResponse,
 		const FileDescriptor& mainHttpSocket,
 		Socket *thisCgiSocket);
+		HttpCgi(std::list<HttpResponse>* clientResponseList,
+		HttpResponse* cgiTargetResponse,
+		const FileDescriptor& mainHttpSocket,
+		Socket *thisCgiSocket, const FileDescriptor& tempReadFileFd);
 
 		HttpCgi& operator=(const HttpCgi& obj); // declare but no implement
 		~HttpCgi();
+
+		bool isKeepConnection() const;
 
 		void sendToCGI();
 		void readFromCGI();

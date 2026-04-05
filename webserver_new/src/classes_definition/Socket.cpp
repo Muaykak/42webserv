@@ -97,7 +97,7 @@ bool Socket::setupCGIOUTSocket(const std::vector<ServerConfig> *serversConfig,
 
 	epoll_event event;
 	std::memset(&event, 0, sizeof(event));
-	event.events = EPOLLIN | EPOLLRDHUP;
+	event.events = EPOLLIN;
 	event.data.fd = _socketFD.getFd();
 	if (epoll_ctl(_epollFD.getFd(), EPOLL_CTL_ADD, _socketFD.getFd(), &event) != 0)
 	{
@@ -111,7 +111,7 @@ bool Socket::setupCGIOUTSocket(const std::vector<ServerConfig> *serversConfig,
 }
 
 bool Socket::setupCGIINSocket(const std::vector<ServerConfig> *serversConfig,
-	const FileDescriptor &epollFD, std::map<int, Socket>* socketMap)
+	const FileDescriptor &epollFD, std::map<int, Socket>* socketMap, const HttpCgi& cgiData)
 {
 
 	if (_socketType != NO_TYPE)
@@ -486,7 +486,17 @@ bool Socket::handleEvent(const epoll_event &event)
 			*/
 			httpCgi[0].readFromCGI();
 
-			return ;
+			return httpCgi[0].isKeepConnection();
+		}
+		case CGI_FD_STDIN: {
+			/*
+				EPOLLOUT will be here
+				and we need to send the temporay file body to the CGI process
+			*/
+
+			httpCgi[0].sendToCGI();
+
+			return httpCgi[0].isKeepConnection();
 		}
 		default:
 		{

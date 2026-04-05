@@ -24,6 +24,22 @@ _keepConnection(true)
 	_readCgiBuffer.reserve(HTTP_READ_FROM_CGI_BUFFER_SIZE);
 }
 
+HttpCgi::HttpCgi(std::list<HttpResponse>* clientResponseList,
+HttpResponse* cgiTargetResponse,
+const FileDescriptor& mainHttpSocket,
+Socket *thisCgiSocket,
+const FileDescriptor& tempReadFileFd)
+: _clientResponseList(clientResponseList),
+_cgiTargetResponse(cgiTargetResponse),
+_thisCgiSocket(thisCgiSocket),
+_mainHttpSocketFd(mainHttpSocket),
+_tempReadFileFd(tempReadFileFd),
+_isFinishedRead(false),
+_keepConnection(true)
+{
+	_readCgiBuffer.reserve(HTTP_READ_FROM_CGI_BUFFER_SIZE);
+}
+
 HttpCgi::HttpCgi(const HttpCgi& obj)
 : _clientResponseList(obj._clientResponseList),
 _cgiTargetResponse(obj._cgiTargetResponse),
@@ -32,12 +48,18 @@ _mainHttpSocketFd(obj._mainHttpSocketFd),
 _isFinishedRead(obj._isFinishedRead),
 _keepConnection(obj._keepConnection)
 {
+	if (obj._tempReadFileFd.getFd() >= 0)
+		_tempReadFileFd = obj._tempReadFileFd;
 	_readCgiBuffer.reserve(HTTP_READ_FROM_CGI_BUFFER_SIZE);
 }
 
 HttpCgi::~HttpCgi()
 {
-	
+}
+
+bool HttpCgi::isKeepConnection() const
+{
+	return (_keepConnection);
 }
 
 void HttpCgi::readFromCGI()
@@ -59,7 +81,7 @@ void HttpCgi::readFromCGI()
 		if (errno == EAGAIN || errno == EWOULDBLOCK)
 			return ;
 
-
+		_keepConnection = false;
 		// something here that would remove this socket cleanly
 		return ;
 	}

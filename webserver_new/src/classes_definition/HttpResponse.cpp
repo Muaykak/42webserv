@@ -34,9 +34,9 @@ HttpResponse::~HttpResponse()
 	if (_socketMapPtr != NULL)
 	{
 		if (_isCgiInSocketAlive)
-			_socketMapPtr->erase(_isCgiInSocketAlive);
+			_socketMapPtr->erase(_cgiInSocketFd);
 		if (_isCgiInSocketAlive)
-			_socketMapPtr->erase(_isCgiInSocketAlive);
+			_socketMapPtr->erase(_cgiOutSocketFd);
 	}
 }
 
@@ -453,7 +453,7 @@ ssize_t	HttpResponse::sendHttpResponse(const Socket& clientSocket)
 				}
 
 			}
-			else
+			else if (_responseBodyType == HTTP_RESPONSE_BODY_CGI && _isReachEOF == false)
 				break ;
 		}
 

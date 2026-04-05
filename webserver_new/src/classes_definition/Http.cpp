@@ -149,23 +149,7 @@ void Http::cgiChildProcessNoRequestBody(int pipeForCgiStdOut[2])
 			{
 				// just need to tell and may create error reponse
 				// to output
-				try 
-				{
-
-					// will throw
-					// then catch
-					generate4xx5xxErrorReponse(500, false, "Internal Error::CGI chdir() failed");
-				}
-				catch (HttpThrowStatus &e)
-				{
-					// should generate response on the list
-					HttpResponse& target = _httpResponseList.back();
-
-					// here print all of that to STDOUT
-					target.forcePrintAllResponse();
-				}
-
-				throw (1);
+				generate4xx5xxErrorReponse(500, false, "Internal Error::CGI chdir() failed");
 			}
 		}
 
@@ -229,6 +213,7 @@ void Http::cgiChildProcessNoRequestBody(int pipeForCgiStdOut[2])
 			execve(_cgiPath.c_str(), argv, envData().getEnvp());
 
 			// should say something back to parent with reasons								
+			generate4xx5xxErrorReponse(500, false, "Internal Error:: GET to CGI:: failed execve()");
 			
 		}
 	}
@@ -238,8 +223,22 @@ void Http::cgiChildProcessNoRequestBody(int pipeForCgiStdOut[2])
 
 		target.forcePrintAllResponse();
 	}
+	catch (int &e)
+	{
+		throw;
+	}
 	catch (...)
 	{
+		try 
+		{
+			generate4xx5xxErrorReponse(500, false, "Internal Error::Unknown Error Occurred");
+		}
+		catch (HttpThrowStatus &e)
+		{
+			HttpResponse& target = _httpResponseList.back();
+
+			target.forcePrintAllResponse();
+		}
 	}
 
 	throw int(1);
@@ -1565,8 +1564,43 @@ void	Http::checkCgiPath()
 
 	}
 
+	/* access() is a good practice to check the cgi_path() first
+		because forking new process and turns out the cgi_path is not working
+		will cost a lot more, leave that error for only rare cases*/
+	{
+		
+	}
+
+
 	// now we know if the request target is CGI or not by
 	// checking _cgiPath.empty()
+	struct stat fileStat;
+	std::memset(&fileStat, 0, sizeof(fileStat));
+	if (stat(_cgiPath.c_str(), &fileStat) != 0)
+	{
+		std::string ErrMsg = "Http::stat()::cgi_path " + _targetPath + "::";
+		ErrMsg += strerror(errno);
+		if (errno == EACCES)
+			generate4xx5xxErrorReponse(403, true, ErrMsg);
+		generate4xx5xxErrorReponse(404, true, ErrMsg);
+	}
+
+	if (S_ISREG(fileStat.st_mode) == false)
+	{
+		generate4xx5xxErrorReponse(500, false, "Internal Error::cgi path is invalid");
+	}
+	
+	/* now we can check with access() function, like, F_OK and X_OK because were gonna execute with
+		this path right?*/
+
+	if (access(_cgiPath.c_str(), X_OK) != 0)
+	{
+		std::string ErrMsg = "Http::access()::cgi_path " + _targetPath + "::";
+		ErrMsg += strerror(errno);
+		if (errno == EACCES)
+			generate4xx5xxErrorReponse(403, true, ErrMsg);
+		generate4xx5xxErrorReponse(404, true, ErrMsg);
+	}
 }
 
 void Http::createSystemPath(std::string& systemPath)
@@ -1818,10 +1852,12 @@ void	Http::handleGetRequest(bool isEndWithSlash, const Socket& clientSocket, std
 					// stop the process immediately
 					kill(pid, SIGTERM);
 					waitpid(pid, NULL, 0);
+					close(pipe_out[0]);
 					generate4xx5xxErrorReponse(500, false, "Internal Error::CGI::fcntl() error to set O_NONBLOCK");
 				}
 
 				// clear
+				try
 				{
 					_httpResponseList.push_back(HttpResponse());
 
@@ -1835,6 +1871,15 @@ void	Http::handleGetRequest(bool isEndWithSlash, const Socket& clientSocket, std
 					targetResponse.setCgiPid(pid);
 					targetResponse.setCgiOutSocketFd(pipe_out[0]);
 					targetResponse.setIsCgiProcessOpen(true);
+					targetResponse.setSocketMapPtr(&socketMap);
+					targetResponse.setTargetServer(_targetServer);
+					targetResponse.setTargetLocationBlock(_targetLocationBlock);
+					targetResponse.setResponseBodyType(HTTP_RESPONSE_BODY_CGI);
+				}
+				catch (...)
+				{
+					close(pipe_out[0]);
+					throw;
 				}
 
 				// _isCgiOutSocketAlive = true;
@@ -1844,8 +1889,11 @@ void	Http::handleGetRequest(bool isEndWithSlash, const Socket& clientSocket, std
 
 			}
 
+			_processStatus = FINISHED_READ_BODY;
+			return ;
+
 			// GET to CGI didn't build yet so
-			generate4xx5xxErrorReponse(500, false, "Not CGI yet");
+			//generate4xx5xxErrorReponse(500, false, "Not CGI yet");
 		}
 	}
 	else 
@@ -1983,6 +2031,17 @@ void	Http::validateRequestBufffer(const Socket& clientSocket, std::map<int, Sock
 		else
 		{
 
+			struct stat fileStat;
+			std::memset(&fileStat, 0, sizeof(fileStat));
+			if (stat(_combinedPath.c_str(), &fileStat) != 0)
+			{
+				std::string ErrMsg = "Http::stat()::target_path " + _targetPath + "::";
+				ErrMsg += strerror(errno);
+				if (errno == EACCES)
+					generate4xx5xxErrorReponse(403, true, ErrMsg);
+				generate4xx5xxErrorReponse(404, true, ErrMsg);
+			}
+
 			if (_cgiPath.empty())
 			{
 				// need to check content type
@@ -2028,17 +2087,6 @@ void	Http::validateRequestBufffer(const Socket& clientSocket, std::map<int, Sock
 
 						_bodyContentType = outPair.first;
 						_boundaryString = foundBoundary->second;
-
-						struct stat fileStat;
-						std::memset(&fileStat, 0, sizeof(fileStat));
-						if (stat(_combinedPath.c_str(), &fileStat) != 0)
-						{
-							std::string ErrMsg = "Http::stat()::target_path " + _targetPath + "::";
-							ErrMsg += strerror(errno);
-							if (errno == EACCES)
-								generate4xx5xxErrorReponse(403, true, ErrMsg);
-							generate4xx5xxErrorReponse(404, true, ErrMsg);
-						}
 
 						if (S_ISDIR(fileStat.st_mode) != true)
 						{
@@ -2233,6 +2281,151 @@ void	Http::validateRequestBufffer(const Socket& clientSocket, std::map<int, Sock
 			}
 			else
 			{
+				/* need to read the body first before starting the CGI */
+
+				/* access() is a good practice before doing anything big because
+				forking new process() take a lot of memory*/
+
+				/* we need to check the _combinedPath 
+					- it must be a regular file, and readable */
+				if (S_ISREG(fileStat.st_mode) == false)
+				{
+					generate4xx5xxErrorReponse(400, false,"The cgi script path must be a regular file");
+				}
+
+				/*now access*/
+				if (access(_combinedPath.c_str(), R_OK) != 0)
+				{
+					std::string throwMsg = "Error:: cgi script path access()::" + std::string(std::strerror(errno));
+					if (errno == EACCES)
+						generate4xx5xxErrorReponse(403, false, throwMsg);
+					generate4xx5xxErrorReponse(404, false, throwMsg);
+				}
+
+				/* now we can do the thing*/
+
+				_tempRequestBodyFileNum = tempFileManager().generateNewTempFile();
+
+				// open the file for writing now
+				{
+					std::string tempFilePath = TEMP_FILE_DIR + toString(_tempRequestBodyFileNum);
+
+					int fd = open(tempFilePath.c_str(), O_CREAT, O_TRUNC, O_RDWR);
+
+					if (fd < 0)
+					{
+						generate4xx5xxErrorReponse(500, false, "POST method to non-cgi with Content-Type: multipart/form-data::open() error");
+					}
+
+					_bodyFd.push_back(fd);
+				}
+
+				_isMultiForm = false;
+				_isUseTempFile = true;
+				_readBody = true;
+				_discardBody = false;
+				if (_checkExpectBody == true)
+				{
+					_httpResponseList.push_back(HttpResponse());
+
+					HttpResponse& target = _httpResponseList.back();
+
+					s_response_buff	tempBuff;
+
+					std::string expectResponse = "HTTP/1.1 100 Continue\r\n\r\n";
+
+					tempBuff.currentIndex = 0;
+					tempBuff.buffer.insert(tempBuff.buffer.end(), expectResponse.begin(), expectResponse.end());
+
+					target.pushNewResponseBuff(tempBuff);
+				}
+
+				_processStatus = READ_BODY;
+				return ;
+
+				/* we need to read to temporary file first for checking?*/
+
+				//int pipe_in[2];
+				//int	pipe_out[2];
+
+				//if (pipe(pipe_in) != 0)
+				//	generate4xx5xxErrorReponse(500, false, "Internal Error::CGI:: pipe() failed::" + std::string(std::strerror(errno)));
+				//if (pipe(pipe_out) != 0)
+				//{
+				//	close(pipe_in[0]);
+				//	close(pipe_in[1]);
+				//	generate4xx5xxErrorReponse(500, false, "Internal Error::CGI:: pipe() failed::" + std::string(std::strerror(errno)));
+				//}
+
+				//pid_t pid = fork();
+
+				//if (pid < 0)
+				//{
+				//	close(pipe_in[0]);
+				//	close(pipe_in[1]);
+				//	close(pipe_out[0]);
+				//	close(pipe_out[1]);
+
+				//	generate4xx5xxErrorReponse(500, false, "Internal Error::CGI:: fork() failed::" + std::string(std::strerror(errno)));
+				//}
+
+				//else if (pid == 0)
+				//{
+				//	try
+				//	{
+				//		close(pipe_in[1]);
+				//		close(pipe_out[0]);
+
+				//		if (dup2(pipe_out[1], STDOUT_FILENO) != 0)
+				//		{
+				//			for (int i = 3; i < MAX_FD; i++)
+				//				close(i);
+
+				//			throw(42);
+				//		}
+
+				//		if (dup2(pipe_in[0], STDIN_FILENO) != 0)
+				//		{
+				//			for (int i = 3; i < MAX_FD; i++)
+				//				close(i);
+
+				//			generate4xx5xxErrorReponse(500, false, "Internal Error:: dup2 to stdin failed");
+				//		}
+
+				//		for (int i = 3; i < MAX_FD; i++)
+				//			close(i);
+						
+				//		{
+
+				//		}
+				//	}
+				//	catch (HttpThrowStatus &e)
+				//	{
+				//		// should generate response on the list
+				//		HttpResponse& target = _httpResponseList.back();
+
+				//		// here print all of that to STDOUT
+				//		target.forcePrintAllResponse();
+
+				//		throw int(1);
+				//	}
+				//	catch (int &e)
+				//	{
+				//		throw ;
+				//	}
+				//	catch (...)
+				//	{
+				//		throw int(1);
+				//	}
+
+				//}
+				//else
+				//{
+				//	close(pipe_out[1]);
+				//	close(pipe_in[0]);
+				//}
+
+
 				generate4xx5xxErrorReponse(500, false, "Post to CGI didn't finished yet");
 			}
 		}
@@ -2698,7 +2891,7 @@ void Http::readingRequestBody()
 	}
 }
 
-void Http::processingRequestBody()
+void Http::processingRequestBody(const Socket& clientSocket, std::map<int, Socket>& socketMap)
 {
 	if (_processStatus == FINISHED_READ_BODY)
 	{
@@ -2754,8 +2947,268 @@ void Http::processingRequestBody()
 			}
 			else
 			{
+				int fd;
 
+				/* we need to re open this temporary file so we can send it so cgi*/			
+				{
+					_bodyFd.clear();
+					std::string tempFilePath = TEMP_FILE_DIR + toString(_tempRequestBodyFileNum);
+
+					fd = open(tempFilePath.c_str(), O_RDONLY);
+
+					/* if failed to open the file with any reason, just delete the temporary file */
+					if (fd < 0)
+					{
+						tempFileManager().removeTempFile(_tempRequestBodyFileNum);
+						generate4xx5xxErrorReponse(500, false, "Internal Error: POST to CGIL::failed to open() the temporary file::" + std::string(std::strerror(errno)));
+						return ;
+					}
+
+				}
+
+				int pipe_in[2];
+				int pipe_out[2];
+
+				if (pipe(pipe_in) != 0)
+				{
+					close(fd);
+					generate4xx5xxErrorReponse(500, false, "Internal Error::CGI:: pipe() failed::" + std::string(std::strerror(errno)));
+				}
+				if (pipe(pipe_out) != 0)
+				{
+					close(fd);
+					close(pipe_in[0]);
+					close(pipe_in[1]);
+					generate4xx5xxErrorReponse(500, false, "Internal Error::CGI:: pipe() failed::" + std::string(std::strerror(errno)));
+				}
+
+				pid_t pid = fork();
+
+				if (pid < 0)
+				{
+					close(pipe_in[0]);
+					close(pipe_in[1]);
+					close(pipe_out[0]);
+					close(pipe_out[1]);
+					close(fd);
+
+					generate4xx5xxErrorReponse(500, false, "Internal Error::CGI:: fork() failed::" + std::string(std::strerror(errno)));
+				}
+
+				else if (pid == 0)
+				{
+					try
+					{
+					
+						if (dup2(pipe_out[1], STDOUT_FILENO) != 0)
+						{
+							for (int i = 3; i < MAX_FD; i++)
+								close(i);
+						
+							throw(42);
+						}
+					
+						if (dup2(pipe_in[0], STDIN_FILENO) != 0)
+						{
+							for (int i = 3; i < MAX_FD; i++)
+								close(i);
+						
+							generate4xx5xxErrorReponse(500, false, "Internal Error:: dup2 to stdin failed");
+						}
+					
+						for (int i = 3; i < MAX_FD; i++)
+							close(i);
+					
+						{
+							/* prepare before execve() */
+
+							// chdir() to change directory
+							{
+								size_t pos = _cgiPath.find_last_of('/');
+								std::string cgiPathDir = _cgiPath.substr(0, pos == std::string::npos ? _cgiPath.size() : pos + 1);
+
+								if (chdir(cgiPathDir.c_str()) != 0)
+									generate4xx5xxErrorReponse(500, false, "Internal Error::CGI chdir() failed");
+							}
+
+							envData().assignEnv("REQUEST_METHOD", _method);
+							envData().assignEnv("QUERY_STRING", _queryString);
+
+							/* here for post to CGI will be different from GET because it has body */
+
+							envData().assignEnv("CONTENT_LENGTH", toString(_body_size));
+
+							/* for the Content-Type, we can just trim the whitespaces*/
+							{
+								std::string temp;
+								if (httpFieldNormalSingletonTrim(_headerField.find("content-type")->second, temp) == false)
+								{
+									generate4xx5xxErrorReponse(500, false, "Internal Error:: Post to CGI:: error occured when building env");
+								}
+
+								envData().assignEnv("CONTENT_TYPE", temp);
+							}
+
+							envData().assignEnv("SCRIPT_NAME", _cgiScriptPath);
+
+							if (!_cgiVirtualPath.empty())
+							{
+								envData().assignEnv("PATH_INFO", _cgiVirtualPath);
+								envData().assignEnv("PATH_TRANSLATED", _cgiPathTranslated);
+							}
+
+							/* now we can convert http header to env */
+							{
+								std::map<std::string, std::string>::const_iterator headerIt = _headerField.begin();
+								std::string headerConvertedStr;
+
+								while (headerIt != _headerField.end())
+								{
+									// skip these header
+									if (headerIt->first != "content-length"
+									&& headerIt->first != "content-type"
+									&& headerIt->first != "authorization"
+									&& headerIt->first != "proxy-authorization"
+									&& headerIt->first != "transfer-encoding"
+									&& headerIt->first != "connection"
+									&& headerIt->first != "trailer")
+									{
+										headerConvertedStr = "HTTP_" + headerIt->first;
+
+										// convert to all capital letters and '-' to '_'
+										for (size_t i = 0; i < headerConvertedStr.size(); i++)
+										{
+											if (headerConvertedStr[i] == '-')
+												headerConvertedStr[i] = '_';
+											else
+											{
+												headerConvertedStr[i] = static_cast<unsigned char>(std::toupper(headerConvertedStr[i]));
+											}
+										}
+
+										// lastly assign it to env
+										envData().assignEnv(headerConvertedStr, headerIt->second);
+									}
+
+									++headerIt;
+								}
+
+							}
+
+							/* now we can execve */
+
+							char* argv[3];
+							argv[2] = NULL;
+							argv[0] = const_cast<char *>(_cgiPath.c_str());
+							argv[1] = const_cast<char *>(_combinedPath.c_str());
+
+							execve(_cgiPath.c_str(), argv, envData().getEnvp());
+
+							generate4xx5xxErrorReponse(500, false, "Internal Error:: Post to CGI:: failed execve()");
+						}
+					}
+					catch (HttpThrowStatus &e)
+					{
+						// should generate response on the list
+						HttpResponse& target = _httpResponseList.back();
+
+						// here print all of that to STDOUT
+						target.forcePrintAllResponse();
+					}
+					catch (int &e)
+					{
+						throw ;
+					}
+					catch (...)
+					{
+						try 
+						{
+							generate4xx5xxErrorReponse(500, false, "Internal Error::Unknown Error Occurred");
+						}
+						catch (HttpThrowStatus &e)
+						{
+							HttpResponse& target = _httpResponseList.back();
+						
+							target.forcePrintAllResponse();
+						}
+					}
+
+					throw int(1);
+				}
+
+				else
+				{
+					/* close unused end pipe */
+					close(pipe_out[1]);
+					close(pipe_in[0]);
+
+					/* fcntl to both pipe to set to nonblock stream */
+
+					if (fcntl(pipe_out[0], F_SETFL, O_NONBLOCK) != 0)
+					{
+						kill(pid, SIGTERM);
+						waitpid(pid, NULL, 0);
+						close(pipe_out[0]);
+						close(pipe_in[1]);
+						generate4xx5xxErrorReponse(500, false, "Internal Error::CGI::fcntl() error to set O_NONBLOCK");
+					}
+
+					if (fcntl(pipe_in[1], F_SETFL, O_NONBLOCK) != 0)
+					{
+						kill(pid, SIGTERM);
+						waitpid(pid, NULL, 0);
+						close(pipe_out[0]);
+						close(pipe_in[1]);
+						generate4xx5xxErrorReponse(500, false, "Internal Error::CGI::fcntl() error to set O_NONBLOCK");
+					}
+
+					try
+					{
+						_httpResponseList.push_back(HttpResponse());
+
+						HttpResponse& targetResponse = _httpResponseList.back();
+
+						socketMap.insert(std::make_pair(pipe_out[0], Socket(pipe_out[0])));
+						socketMap[pipe_out[0]].setupCGIOUTSocket(clientSocket.getServersConfigPtr(),
+						clientSocket.getEpollFD(), &socketMap,
+						HttpCgi(&_httpResponseList, &_httpResponseList.back(),
+						clientSocket.getSocketFD(), &(socketMap[pipe_out[0]])));
+
+						socketMap.insert(std::make_pair(pipe_in[1], Socket(pipe_in[1])));
+						socketMap[pipe_out[0]].setupCGIINSocket(clientSocket.getServersConfigPtr(),
+						clientSocket.getEpollFD(), &socketMap,
+						HttpCgi(&_httpResponseList, &_httpResponseList.back(),
+						clientSocket.getSocketFD(), &(socketMap[pipe_out[0]]), fd));
+
+
+						targetResponse.setIsCgiOutSocketAlive(true);
+						targetResponse.setCgiPid(pid);
+						targetResponse.setCgiOutSocketFd(pipe_out[0]);
+						targetResponse.setIsCgiProcessOpen(true);
+
+						targetResponse.setCgiInSocketFd(pipe_in[1]);
+						targetResponse.setIsCgiInSocketAlive(true);
+
+						targetResponse.setSocketMapPtr(&socketMap);
+						targetResponse.setTargetServer(_targetServer);
+						targetResponse.setTargetLocationBlock(_targetLocationBlock);
+						targetResponse.setResponseBodyType(HTTP_RESPONSE_BODY_CGI);
+					}
+					catch (...)
+					{
+						close(pipe_in[1]);
+						close(pipe_out[0]);
+						close(fd);
+						
+						throw;
+					}
+
+				}
 			}
+
+			clearRequestData();
+			_processStatus = NO_STATUS;
+			return ;
 		}
 	}
 }
@@ -2778,12 +3231,7 @@ void	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Soc
 			validateRequestBufffer(clientSocket, socketMap);
 			readingRequestBody();
 
-			if (_processStatus == FINISHED_READ_BODY)
-			{
-				// generate the complete response
-				_httpResponseList.back().generateResponse();
-				clearRequestData();
-			}
+			processingRequestBody(clientSocket, socketMap);
 
 		}
 	}
