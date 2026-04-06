@@ -62,6 +62,8 @@ bool HttpCgi::isKeepConnection() const
 	return (_keepConnection);
 }
 
+
+
 void HttpCgi::readFromCGI()
 {
 	// use read() right?
@@ -88,7 +90,11 @@ void HttpCgi::readFromCGI()
 	else
 	{
 		_responseBuffer.append(&_readCgiBuffer[0], readAmount);
+		/* we can try the same method from http here. but the implementation
+		is a bit different from Http class so it would be kinda the same but it's not
+		*/
 	}
+	return ;
 }
 
 void HttpCgi::sendToCGI()
