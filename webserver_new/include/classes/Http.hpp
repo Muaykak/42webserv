@@ -102,6 +102,8 @@ class Http {
 		e_http_process_status	_processStatus;
 		std::string		_method;
 		std::string		_requestTarget;	
+		std::string		_serverName;
+		std::string		_portString;
 		std::string		_targetPath;
 		std::string		_combinedPath;
 		std::string		_queryString;

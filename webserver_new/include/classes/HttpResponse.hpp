@@ -17,7 +17,6 @@ enum e_http_response_body_type
 	HTTP_RESPONSE_NOBODY,
 	HTTP_RESPONSE_BODY_FIXED_STR,
 	HTTP_RESPONSE_BODY_FILE,
-	HTTP_RESPONSE_BODY_CGI
 };
 
 class HttpResponse {
@@ -47,6 +46,7 @@ class HttpResponse {
 		// need to fix this later
 		
 		// all about cgi
+		bool _isUseCgi;
 		bool _isCgiProcessOpen;
 		pid_t _cgiPid;
 		bool _isCgiInSocketAlive;
@@ -80,6 +80,9 @@ class HttpResponse {
 		std::map<int, Socket>* getSocketMapPtr() const;
 
 		void pushNewResponseBuff(s_response_buff& newBuff);
+
+		void setIsCgiUse(bool state);
+		bool getIsCgiUse() const;
 
 		void setIsCgiProcessOpen(bool state);
 		bool getIsCgiProcessOpen() const;

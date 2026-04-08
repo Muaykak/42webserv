@@ -65,6 +65,18 @@ std::map<std::string, std::vector<std::string> >& HttpResponse::getHeader()
 	return (_responseHeader);
 }
 
+void HttpResponse::setIsCgiUse(bool state)
+{
+	if (_canModify == false)
+		throw WebservException("HttpResponse::cannot modify response when not in modifying state");
+
+	_isUseCgi = state;
+}
+bool HttpResponse::getIsCgiUse() const
+{
+	return (_isUseCgi);
+}
+
 bool HttpResponse::getKeepAfterResponse() const
 {
 	return (_keepAfterResponse);
@@ -453,8 +465,10 @@ ssize_t	HttpResponse::sendHttpResponse(const Socket& clientSocket)
 				}
 
 			}
-			else if (_responseBodyType == HTTP_RESPONSE_BODY_CGI && _isReachEOF == false)
+			else
 				break ;
+			//else if (_responseBodyType == HTTP_RESPONSE_BODY_CGI && _isReachEOF == false)
+			//	break ;
 		}
 
 		bufferListIt = _bufferList.begin();
@@ -496,7 +510,7 @@ ssize_t	HttpResponse::sendHttpResponse(const Socket& clientSocket)
 		if (_responseBodyType == HTTP_RESPONSE_BODY_FILE && _isReachEOF == false)
 			_isComplete = false;
 
-		if (_responseBodyType == HTTP_RESPONSE_BODY_CGI && _isCgiFinished == false)
+		if (_isUseCgi == true && _isCgiFinished == false)
 			_isComplete = false;
 
 	}

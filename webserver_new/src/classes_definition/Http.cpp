@@ -153,6 +153,41 @@ void Http::cgiChildProcessNoRequestBody(int pipeForCgiStdOut[2])
 			}
 		}
 
+		/* I don't wanna do the authrization so i just leave that*/
+		///* if the header field contained "Authorization" then 
+		//we should pass that information to */
+		//{
+		//	std::map<std::string, std::string>::const_iterator foundAuth = _headerField.find("authorization");
+		//	if (foundAuth != _headerField.end())
+		//	{
+		//		std::string tempstring;
+		//		if (httpFieldNormalSingletonTrim(foundAuth->second, tempstring) == false);
+		//			generate4xx5xxErrorReponse(400, false, "Internal Error::CGI::auth field building env failed");
+				
+		//		envData().assignEnv("AUTH_TYPE", tempstring);
+		//	}
+		//}
+
+		/* The GATEWAY_INTERFACE variable MUST be set to the dialect of CGI being used by the server
+		to communicate with the script. */
+		envData().assignEnv("GATEWAY_INTERFACE", "CGI/1.1");
+
+		{
+			std::string tempString = in_addr_t_to_string(_clientSocketPtr->_client_addr_in);
+
+			/* the REMOTE_ADDR variable MUST be set to the network address of the client sending the
+			request to the server.*/
+			envData().assignEnv("REMOTE_ADDR", tempString);
+
+			/* For the REMOTE_HOST we need to reverse DNS lookup by using the addr of the client
+			and get its actual domain name which ofc we cann't use those functions in this project
+			however, the document state that we can just do the same value as REMOTE_ADDR */
+			envData().assignEnv("REMOTE_HOST", tempString);
+		}
+
+
+
+
 		// then we would set up the environment here
 		envData().assignEnv("REQUEST_METHOD", _method);
 		envData().assignEnv("QUERY_STRING", _queryString);
@@ -167,6 +202,23 @@ void Http::cgiChildProcessNoRequestBody(int pipeForCgiStdOut[2])
 			envData().assignEnv("PATH_TRANSLATED", _cgiPathTranslated);
 		}
 
+		/* SERVER_NAME just take the host part in Host: from header field, i don't know
+		if it is correct but the CGI documentation also state that we can use this so..*/
+		envData().assignEnv("SERVER_NAME", _serverName);
+
+		/* SERVER_PORT is just put the port from URI Authority part here, which
+		i already stored it*/
+		envData().assignEnv("SERVER_PORT", _portString);
+
+		/* SERVER_PROTOCOL because we based from RFC9112 which is HTTP1.1 */
+		envData().assignEnv("SERVER_PROTOCOL", "HTTP/1.1");
+
+		/* SERVER_SOFTWARE is just our program which mean like webserv/1.0 looks good */
+		envData().assignEnv("SERVER_SOFTWARE", "webserv/1.0");
+
+
+		
+
 		// convert the http header to env
 		{
 			std::map<std::string, std::string>::const_iterator headerIt = _headerField.begin();
@@ -177,8 +229,6 @@ void Http::cgiChildProcessNoRequestBody(int pipeForCgiStdOut[2])
 				// skip these header
 				if (headerIt->first != "content-length"
 				&& headerIt->first != "content-type"
-				&& headerIt->first != "authorization"
-				&& headerIt->first != "proxy-authorization"
 				&& headerIt->first != "transfer-encoding"
 				&& headerIt->first != "connection")
 				{
@@ -634,17 +684,19 @@ void	Http::generate4xx5xxErrorReponse(unsigned int errorStatusCode, bool keepAft
 		// check stat to get the file 
 		struct stat fileStat;
 		std::memset(&fileStat, 0, sizeof(fileStat));
-		if (stat(_combinedPath.c_str(), &fileStat) == 0)
+		if (stat(errorPageFilePath.c_str(), &fileStat) == 0)
 		{
-			int fd = open(errorPageFilePath.c_str(), O_RDONLY);
-			if (fd > -1)
+			if (S_ISREG(fileStat.st_mode))
 			{
-				fileSize = fileStat.st_size;
-				errorFileFD = fd;
-				hasDefaultErrorPageFile = true;
+				int fd = open(errorPageFilePath.c_str(), O_RDONLY);
+				if (fd > -1)
+				{
+					fileSize = fileStat.st_size;
+					errorFileFD = fd;
+					hasDefaultErrorPageFile = true;
+				}
 			}
 		}
-
 	}
 
 	// try to 
@@ -774,6 +826,8 @@ void Http::clearRequestData()
 
 	_uploadStorePath.clear();
 	_authorityPart.clear();
+	_serverName.clear();
+	_portString.clear();
 	_redirectPath.clear();
 
 	_isMultiForm = false;
@@ -845,6 +899,8 @@ void	Http::validateRequestBufferSelectServer(const Socket& clientSocket,const st
 			std::string msg = "Invalid::URI Authority::Port mismatch request_target:" + toString(portNum) + " server_port:" + toString(clientSocket.getServerListenPort());
 			generate4xx5xxErrorReponse(403, false, msg);
 		}
+
+		_portString = toString(portNum);
 	}
 
 	// now we check the host, if it is ip or server_name (or whatever it's called)
@@ -950,6 +1006,7 @@ void	Http::validateRequestBufferSelectServer(const Socket& clientSocket,const st
 
 			}
 
+			_serverName = host;
 
 			//if (tempAddr != clientSocket._client_addr_in)
 			//{
@@ -1008,6 +1065,8 @@ void	Http::validateRequestBufferSelectServer(const Socket& clientSocket,const st
 				else
 					_targetServer = &((*clientSocket.getServersConfigPtr())[0]);
 			}
+
+			_serverName = host;
 		}
 	}
 
@@ -1874,7 +1933,7 @@ void	Http::handleGetRequest(bool isEndWithSlash, const Socket& clientSocket, std
 					targetResponse.setSocketMapPtr(&socketMap);
 					targetResponse.setTargetServer(_targetServer);
 					targetResponse.setTargetLocationBlock(_targetLocationBlock);
-					targetResponse.setResponseBodyType(HTTP_RESPONSE_BODY_CGI);
+					targetResponse.setIsCgiUse(true);
 				}
 				catch (...)
 				{
@@ -3031,6 +3090,23 @@ void Http::processingRequestBody(const Socket& clientSocket, std::map<int, Socke
 									generate4xx5xxErrorReponse(500, false, "Internal Error::CGI chdir() failed");
 							}
 
+							/* The GATEWAY_INTERFACE variable MUST be set to the dialect of CGI being used by the server
+							to communicate with the script. */
+							envData().assignEnv("GATEWAY_INTERFACE", "CGI/1.1");
+
+							{
+								std::string tempString = in_addr_t_to_string(_clientSocketPtr->_client_addr_in);
+							
+								/* the REMOTE_ADDR variable MUST be set to the network address of the client sending the
+								request to the server.*/
+								envData().assignEnv("REMOTE_ADDR", tempString);
+							
+								/* For the REMOTE_HOST we need to reverse DNS lookup by using the addr of the client
+								and get its actual domain name which ofc we cann't use those functions in this project
+								however, the document state that we can just do the same value as REMOTE_ADDR */
+								envData().assignEnv("REMOTE_HOST", tempString);
+							}
+
 							envData().assignEnv("REQUEST_METHOD", _method);
 							envData().assignEnv("QUERY_STRING", _queryString);
 
@@ -3057,6 +3133,20 @@ void Http::processingRequestBody(const Socket& clientSocket, std::map<int, Socke
 								envData().assignEnv("PATH_TRANSLATED", _cgiPathTranslated);
 							}
 
+							/* SERVER_NAME just take the host part in Host: from header field, i don't know
+							if it is correct but the CGI documentation also state that we can use this so..*/
+							envData().assignEnv("SERVER_NAME", _serverName);
+
+							/* SERVER_PORT is just put the port from URI Authority part here, which
+							i already stored it*/
+							envData().assignEnv("SERVER_PORT", _portString);
+
+							/* SERVER_PROTOCOL because we based from RFC9112 which is HTTP1.1 */
+							envData().assignEnv("SERVER_PROTOCOL", "HTTP/1.1");
+
+							/* SERVER_SOFTWARE is just our program which mean like webserv/1.0 looks good */
+							envData().assignEnv("SERVER_SOFTWARE", "webserv/1.0");
+
 							/* now we can convert http header to env */
 							{
 								std::map<std::string, std::string>::const_iterator headerIt = _headerField.begin();
@@ -3067,8 +3157,6 @@ void Http::processingRequestBody(const Socket& clientSocket, std::map<int, Socke
 									// skip these header
 									if (headerIt->first != "content-length"
 									&& headerIt->first != "content-type"
-									&& headerIt->first != "authorization"
-									&& headerIt->first != "proxy-authorization"
 									&& headerIt->first != "transfer-encoding"
 									&& headerIt->first != "connection"
 									&& headerIt->first != "trailer")
@@ -3192,7 +3280,7 @@ void Http::processingRequestBody(const Socket& clientSocket, std::map<int, Socke
 						targetResponse.setSocketMapPtr(&socketMap);
 						targetResponse.setTargetServer(_targetServer);
 						targetResponse.setTargetLocationBlock(_targetLocationBlock);
-						targetResponse.setResponseBodyType(HTTP_RESPONSE_BODY_CGI);
+						targetResponse.setIsCgiUse(true);
 					}
 					catch (...)
 					{

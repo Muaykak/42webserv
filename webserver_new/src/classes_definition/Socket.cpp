@@ -387,9 +387,9 @@ bool Socket::handleEvent(const epoll_event &event)
 
 						// set up client Socket
 						_socketMap->insert(std::make_pair(client_socket, Socket(client_socket)));
-						(*_socketMap)[client_socket].setupClientSocket(_serversConfig, _epollFD, _socketMap);
 						(*_socketMap)[client_socket]._client_addr_in = client_address.sin_addr.s_addr;
 						(*_socketMap)[client_socket].setServerIpHost(_server_ip_host);
+						(*_socketMap)[client_socket].setupClientSocket(_serversConfig, _epollFD, _socketMap);
 
 						continue;
 					}

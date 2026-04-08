@@ -2,6 +2,14 @@
 # define HTTPCGI_HPP
 
 # include "Http.hpp"
+# include <sys/stat.h>
+
+enum e_httpcgiout_process_status
+{
+	HTTPCGIOUT_NO_STATUS,
+	HTTPCGIOUT_READING_RESPONSE_HEADER,
+	HTTPCGIOUT_VALIDATING_RESPONSE
+};
 
 class HttpCgi {
 	private:
@@ -19,6 +27,20 @@ class HttpCgi {
 		/* for send to CGI we need to have the temporaryfileFd that it will read from */
 		FileDescriptor _tempReadFileFd;
 
+		// FOR CGIOUT
+		e_httpcgiout_process_status _cgioutProcessStatus;
+		std::map<std::string, std::string> _ResponseHeaderCGIOUT;
+
+		void generate5xxCGIOUTresponseError(unsigned int errorCode, const std::string& throwMsg);
+
+		void processCGIOUTresponseBuffer();
+		void	parsingCGIOUTresponseHeader();
+
+		// ------------------------------
+
+		// FORCGIIN
+
+		//---------------------------------
 
 		bool _isFinishedRead;
 		bool _keepConnection;
@@ -39,6 +61,7 @@ class HttpCgi {
 		~HttpCgi();
 
 		bool isKeepConnection() const;
+
 
 		void sendToCGI();
 		void readFromCGI();
