@@ -217,6 +217,10 @@ void HttpCgi::parsingCGIOUTresponseHeader()
 	size_t	currIndex = 0;
 	bool	isCRLF;
 	size_t	colonPos;
+	std::string tempFieldName;
+	std::string tempFieldValue;
+	std::string tempSep;
+	size_t temp;
 
 	size_t endlinePos;
 	while (_cgioutProcessStatus == HTTPCGIOUT_READING_RESPONSE_HEADER)
@@ -275,10 +279,47 @@ void HttpCgi::parsingCGIOUTresponseHeader()
 			/* maybe we can still use generate response, just need to
 			add the appropriate response header */
 
-
+			generate5xxCGIOUTresponseError(500, "Internal Error::CGIOUT::parsing Response Header::"
+			"name and value the header field must separated by \':\'");
 		}
 
+		tempFieldName = _responseBuffer.substr(currIndex, colonPos - currIndex);
+		if (tempFieldName.empty())
+			generate5xxCGIOUTresponseError(500, "Internal Error::CGIOUT::parsing Response Header::"
+			"name in header field must not empty string");
+
+		if (httpFieldNameChar().isMatch(tempFieldName) == false)
+		{
+			generate5xxCGIOUTresponseError(500, "Internal Error::CGIOUT::parsing Response Header::"
+			"name in header field must not contain any forbiddin char");
+		}
+		if (allAlphaChar()[tempFieldName[0]] == false)
+			generate5xxCGIOUTresponseError(500, "Internal Error::CGIOUT::parsing Response Header::"
+			"name in header field must with a letter");
+
+		currIndex = colonPos + 1;
+		tempSep = _responseBuffer.substr(currIndex, (isCRLF == false ? endlinePos - currIndex : endlinePos - currIndex - 1));
+
+		if (!tempSep.empty())
+		{
+			if (forbiddenFieldValueChar().isNotMatch(tempSep) == false)
+				generate5xxCGIOUTresponseError(500, "Internal Error::CGIOUT::parsing Response Header::"
+				"name in header field must with a letter");
+		}
+
+		tempFieldName = stringToLower(tempFieldName);
+
+		std::string &headerValueTarget = _responseHeaderCGIOUT[tempFieldName];
+
+		if (headerValueTarget.empty() == false)
+			headerValueTarget += ", ";
+
+		headerValueTarget += tempSep;
+
+		currIndex = isCRLF == false ? endlinePos + 1 : endlinePos + 2;
 	}
+
+	return;
 }
 
 void HttpCgi::processCGIOUTresponseBuffer()

@@ -29,7 +29,7 @@ class HttpCgi {
 
 		// FOR CGIOUT
 		e_httpcgiout_process_status _cgioutProcessStatus;
-		std::map<std::string, std::string> _ResponseHeaderCGIOUT;
+		std::map<std::string, std::string> _responseHeaderCGIOUT;
 
 		void generate5xxCGIOUTresponseError(unsigned int errorCode, const std::string& throwMsg);
 
