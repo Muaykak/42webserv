@@ -306,8 +306,26 @@ void HttpCgi::parsingCGIOUTresponseHeader()
 				generate5xxCGIOUTresponseError(500, "Internal Error::CGIOUT::parsing Response Header::"
 				"name in header field must with a letter");
 		}
+		else
+		/* A NULL field value is equivalent to a field not being sent.*/
+		{
+			currIndex = isCRLF == false ? endlinePos + 1 : endlinePos + 2;
+			continue;
+		}
 
 		tempFieldName = stringToLower(tempFieldName);
+
+
+		/* from the CGI documentation
+				Each CGI field MUST NOT appear more than once in the response
+			CGI-field = Content-Type | Location | Status */
+		if ((tempFieldName == "content-type"
+			|| tempFieldName == "location"
+			|| tempFieldName == "status")
+		&& _responseHeaderCGIOUT.find(tempFieldName) == _responseHeaderCGIOUT.end())
+		{
+			generate5xxCGIOUTresponseError(400, "CGIOUT::Bad request:: Each CGI field MUST NOT appear more than once in the response");
+		}
 
 		std::string &headerValueTarget = _responseHeaderCGIOUT[tempFieldName];
 
@@ -335,7 +353,34 @@ void HttpCgi::validateCGIOUTresponse()
 	/* From the CGI documentation, there are 4 main response types so we can
 	separate that here */
 
-	/* if the reponse has the Content-Type header*/
+	/* if it has only 1 header and it is Location: then can be two
+	of the response types */
+	if (_responseHeaderCGIOUT.size() == 1 && _responseHeaderCGIOUT.find("location") != _responseHeaderCGIOUT.end())
+	{
+
+	}
+	/* If it has Location header field that contain
+	Absolute URI path ans Content-Type and Status,
+	consider as, Client Redirect Response with Document*/
+	else if (_responseHeaderCGIOUT.find("location") != _responseHeaderCGIOUT.end()
+	&& _responseHeaderCGIOUT.find("status") != _responseHeaderCGIOUT.end()
+	&& _responseHeaderCGIOUT.find("content-type") != _responseHeaderCGIOUT.end())
+	{
+
+	}
+
+	/* if the reponse has the Content-Type header; considered
+	as Document Response*/
+	else if (_responseHeaderCGIOUT.find("content-type") != _responseHeaderCGIOUT.end())
+	{
+
+	}
+	/* Don't know what type*/
+	else 
+	{
+		generate5xxCGIOUTresponseError(500, "Internal Error::CGIOUT::the response type doens't match with any");
+	}
+
 	
 }
 
