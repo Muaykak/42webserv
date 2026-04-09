@@ -154,19 +154,19 @@ void Http::cgiChildProcessNoRequestBody(int pipeForCgiStdOut[2])
 		}
 
 		/* I don't wanna do the authrization so i just leave that*/
-		///* if the header field contained "Authorization" then 
-		//we should pass that information to */
-		//{
-		//	std::map<std::string, std::string>::const_iterator foundAuth = _headerField.find("authorization");
-		//	if (foundAuth != _headerField.end())
-		//	{
-		//		std::string tempstring;
-		//		if (httpFieldNormalSingletonTrim(foundAuth->second, tempstring) == false);
-		//			generate4xx5xxErrorReponse(400, false, "Internal Error::CGI::auth field building env failed");
+		/* if the header field contained "Authorization" then 
+		we should pass that information to */
+		// {
+		// 	std::map<std::string, std::string>::const_iterator foundAuth = _headerField.find("authorization");
+		// 	if (foundAuth != _headerField.end())
+		// 	{
+		// 		std::string tempstring;
+		// 		if (httpFieldNormalSingletonTrim(foundAuth->second, tempstring) == false);
+		// 			generate4xx5xxErrorReponse(400, false, "Internal Error::CGI::auth field building env failed");
 				
-		//		envData().assignEnv("AUTH_TYPE", tempstring);
-		//	}
-		//}
+		// 		envData().assignEnv("AUTH_TYPE", tempstring);
+		// 	}
+		// }
 
 		/* The GATEWAY_INTERFACE variable MUST be set to the dialect of CGI being used by the server
 		to communicate with the script. */
@@ -256,9 +256,9 @@ void Http::cgiChildProcessNoRequestBody(int pipeForCgiStdOut[2])
 			// what left if execve
 
 			char* argv[3];
-			argv[2] = NULL;
 			argv[0] = const_cast<char *>(_cgiPath.c_str());
 			argv[1] = const_cast<char *>(_combinedPath.c_str());
+			argv[2] = NULL;
 
 			execve(_cgiPath.c_str(), argv, envData().getEnvp());
 

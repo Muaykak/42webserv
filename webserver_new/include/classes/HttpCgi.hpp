@@ -36,6 +36,8 @@ class HttpCgi {
 		void processCGIOUTresponseBuffer();
 		void	parsingCGIOUTresponseHeader();
 
+		void	validateCGIOUTresponse();
+
 		// ------------------------------
 
 		// FORCGIIN

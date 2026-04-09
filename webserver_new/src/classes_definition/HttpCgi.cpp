@@ -322,6 +322,23 @@ void HttpCgi::parsingCGIOUTresponseHeader()
 	return;
 }
 
+void HttpCgi::validateCGIOUTresponse()
+{
+	/* check the response header overall */
+
+	if (_cgioutProcessStatus != HTTPCGIOUT_VALIDATING_RESPONSE)
+		return ;
+	/* would not tolerate if the response has no header */
+	if (_responseHeaderCGIOUT.empty())
+		generate5xxCGIOUTresponseError(500, "Internal Error::CGIOUT::the response must have header field");
+
+	/* From the CGI documentation, there are 4 main response types so we can
+	separate that here */
+
+	/* if the reponse has the Content-Type header*/
+	
+}
+
 void HttpCgi::processCGIOUTresponseBuffer()
 {
 	/* should kinda the same as normal http reading the buffer */

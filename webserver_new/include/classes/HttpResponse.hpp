@@ -16,7 +16,7 @@ enum e_http_response_body_type
 {
 	HTTP_RESPONSE_NOBODY,
 	HTTP_RESPONSE_BODY_FIXED_STR,
-	HTTP_RESPONSE_BODY_FILE,
+	HTTP_RESPONSE_BODY_FILE
 };
 
 class HttpResponse {
