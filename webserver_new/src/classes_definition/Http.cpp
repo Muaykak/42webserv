@@ -462,6 +462,7 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 		// now we got field name, next we want field value
 		currIndex = colonPos + 1;
 		tempSep = _requestBuffer.substr(currIndex, endLinePos - currIndex);
+		tempSep = my_ft_trim(tempSep, " \t");
 
 		if (!tempSep.empty())
 		{

@@ -66,6 +66,7 @@ SRC_FUNC_FILE = chartables.cpp \
 				tolower.cpp \
 				ip_conversion.cpp \
 				string_to_size_t.cpp \
+				ft_trim.cpp \
 				size_t_to_hex.cpp \
 				hex_to_size_t.cpp \
 				contentTypeTable.cpp \

@@ -300,6 +300,9 @@ void HttpCgi::parsingCGIOUTresponseHeader()
 		currIndex = colonPos + 1;
 		tempSep = _responseBuffer.substr(currIndex, (isCRLF == false ? endlinePos - currIndex : endlinePos - currIndex - 1));
 
+		/*trim the SP and HTAB */
+		tempSep = my_ft_trim(tempSep, " \t");
+
 		if (!tempSep.empty())
 		{
 			if (forbiddenFieldValueChar().isNotMatch(tempSep) == false)
@@ -335,6 +338,7 @@ void HttpCgi::parsingCGIOUTresponseHeader()
 		headerValueTarget += tempSep;
 
 		currIndex = isCRLF == false ? endlinePos + 1 : endlinePos + 2;
+		
 	}
 
 	return;
@@ -355,7 +359,11 @@ void HttpCgi::validateCGIOUTresponse()
 
 	/* If found the location header we need to check if it is local redirect or
 	client redirect*/
-	if (_responseHeaderCGIOUT.find("location") != _responseHeaderCGIOUT.end())
+
+	std::map<std::string, std::string>::const_iterator foundLocation = _responseHeaderCGIOUT.find("location");
+	std::map<std::string, std::string>::const_iterator foundContentType = _responseHeaderCGIOUT.find("content-type");
+
+	if (foundLocation != _responseHeaderCGIOUT.end())
 	{
 		/* The Location header field is used to specify to the server that the script is returning
 		a reference to a document rather than an actual document. It is either an absolute URI,
@@ -363,13 +371,25 @@ void HttpCgi::validateCGIOUTresponse()
 		(optionally with a query string), indicating that the server is to fetch the referenced
 		document and return it to the client as the response
 
-
 		*/
+		const std::string& string = foundLocation->second;		
+		
+		/* if it starts with the '/' assuming it might be local-Location
+		and else i would assume that it is client-Location */
+		if (string[0] == '/')
+		{
+			/* local-Location here */
+
+		}
+		else
+		{
+
+		}
+
 	}
-	/* if the reponse has the Content-Type header, but no Location header ; considered
-	as Document Response*/
-	else if (_responseHeaderCGIOUT.find("content-type") != _responseHeaderCGIOUT.end())
+	else if (foundContentType != _responseHeaderCGIOUT.end())
 	{
+
 
 	}
 	/* Don't know what type*/
@@ -384,8 +404,7 @@ void HttpCgi::validateCGIOUTresponse()
 void HttpCgi::processCGIOUTresponseBuffer()
 {
 	/* should kinda the same as normal http reading the buffer */
-	/* the important thing to note here is that, NL or the newline element 
-	
+	/* the important thing to note here is that, NL or the newline element
 		If we look into the document, it stated like this
 	*/
 	/*

@@ -43,6 +43,7 @@ const CharTable&	allowRequestTargetChar();
 std::string in_addr_t_to_string(in_addr_t toConvert);
 bool	string_to_in_addr_t(const std::string& toConvert, in_addr_t& returnValue);
 
+std::string	my_ft_trim(const std::string& toTrim, const std::string& trimCharSet);
 
 void	splitString(const std::string& toSplit,
 		const std::string& delimitter,
