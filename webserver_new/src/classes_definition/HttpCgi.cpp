@@ -353,23 +353,20 @@ void HttpCgi::validateCGIOUTresponse()
 	/* From the CGI documentation, there are 4 main response types so we can
 	separate that here */
 
-	/* if it has only 1 header and it is Location: then can be two
-	of the response types */
-	if (_responseHeaderCGIOUT.size() == 1 && _responseHeaderCGIOUT.find("location") != _responseHeaderCGIOUT.end())
+	/* If found the location header we need to check if it is local redirect or
+	client redirect*/
+	if (_responseHeaderCGIOUT.find("location") != _responseHeaderCGIOUT.end())
 	{
+		/* The Location header field is used to specify to the server that the script is returning
+		a reference to a document rather than an actual document. It is either an absolute URI,
+		indicaing that the client is to fetch the referenced document, or a local URI path
+		(optionally with a query string), indicating that the server is to fetch the referenced
+		document and return it to the client as the response
 
+
+		*/
 	}
-	/* If it has Location header field that contain
-	Absolute URI path ans Content-Type and Status,
-	consider as, Client Redirect Response with Document*/
-	else if (_responseHeaderCGIOUT.find("location") != _responseHeaderCGIOUT.end()
-	&& _responseHeaderCGIOUT.find("status") != _responseHeaderCGIOUT.end()
-	&& _responseHeaderCGIOUT.find("content-type") != _responseHeaderCGIOUT.end())
-	{
-
-	}
-
-	/* if the reponse has the Content-Type header; considered
+	/* if the reponse has the Content-Type header, but no Location header ; considered
 	as Document Response*/
 	else if (_responseHeaderCGIOUT.find("content-type") != _responseHeaderCGIOUT.end())
 	{
