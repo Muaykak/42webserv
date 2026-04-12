@@ -379,7 +379,25 @@ void HttpCgi::validateCGIOUTresponse()
 		if (string[0] == '/')
 		{
 			/* local-Location here */
+			/* if the request contained more than the Location header
+			the CGI documention states that
+				
+			Local Redirect Response
+				The CGI script can return a URI path and query-string
+				('local-pathquery') for a local resource in a Location
+				header field using the path specified.
 
+				local-redir-response = local-Location NL
+
+				The script MUST NOT return any other header fields or a
+				message-body, and the serber MUST generate the response
+				that it would have produced in response to a request
+				containing the URL
+			*/
+			if (_responseHeaderCGIOUT.size() != 1)
+			{
+				generate5xxCGIOUTresponseError(500, "Internal Error::CGIOUT::local-Location header detected, but the ");
+			}
 		}
 		else
 		{
