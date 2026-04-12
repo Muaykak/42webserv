@@ -96,12 +96,12 @@ void Http::printHeaderField() const
 		std::cout << "====================================" << std::endl;
 		//print request line
 		{
-			std::cout << _method << " " << _requestTarget << " " << _protocol << std::endl;
+			std::cout << _requestData.method << " " << _requestData.requestTarget << " " << _requestData.protocol << std::endl;
 		}
 
-		std::map<std::string, std::string>::const_iterator	it = _headerField.begin();
+		std::map<std::string, std::string>::const_iterator	it = _requestData.headerField.begin();
 		std::vector<std::string>::const_iterator vecIt;
-		while (it != _headerField.end())
+		while (it != _requestData.headerField.end())
 		{
 			std::cout << it->first << ": " << it->second << std::endl;
 			++it;
@@ -189,7 +189,7 @@ void Http::cgiChildProcessNoRequestBody(int pipeForCgiStdOut[2])
 
 
 		// then we would set up the environment here
-		envData().assignEnv("REQUEST_METHOD", _method);
+		envData().assignEnv("REQUEST_METHOD", _requestData.method);
 		envData().assignEnv("QUERY_STRING", _queryString);
 
 		// GET method don't have body 
@@ -221,10 +221,10 @@ void Http::cgiChildProcessNoRequestBody(int pipeForCgiStdOut[2])
 
 		// convert the http header to env
 		{
-			std::map<std::string, std::string>::const_iterator headerIt = _headerField.begin();
+			std::map<std::string, std::string>::const_iterator headerIt = _requestData.headerField.begin();
 			std::string headerConvertedStr;
 
-			while (headerIt != _headerField.end())
+			while (headerIt != _requestData.headerField.end())
 			{
 				// skip these header
 				if (headerIt->first != "content-length"
@@ -303,7 +303,7 @@ void	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 		if (reqBuffSize > MAX_REQUEST_BUFFER_SIZE)
 			generate4xx5xxErrorReponse(400, false,"request buffer should not higher than MAX_REQUEST_BUFFER_SIZE");
 
-		if (_method.empty())
+		if (_requestData.method.empty())
 		{
 
 			// skip any empty line '\r\n"""
@@ -340,9 +340,9 @@ void	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 
 			// find pos any whitespaces but not '\n'
 			size_t	pos = htabSp().findFirstCharset(_requestBuffer, currIndex, endLinePos - currIndex);
-			_method = pos == _requestBuffer.npos ? _requestBuffer.substr(currIndex) : _requestBuffer.substr(currIndex, pos - currIndex);
+			_requestData.method = pos == _requestBuffer.npos ? _requestBuffer.substr(currIndex) : _requestBuffer.substr(currIndex, pos - currIndex);
 
-			if (_method.empty() || alphaAtoZ().isNotMatch(_method) == true)
+			if (_requestData.method.empty() || alphaAtoZ().isNotMatch(_requestData.method) == true)
 				generate4xx5xxErrorReponse(400, false, "the method must not empty. Or method must contain only A-Z in uppercase");
 
 			// skip 1 pos which is the first whitespace
@@ -355,14 +355,14 @@ void	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 			// must can find next whitespace.. it IS the format
 			if (pos == _requestBuffer.npos)
 				generate4xx5xxErrorReponse(400, false, "bad formating in request line");
-			_requestTarget = _requestBuffer.substr(currIndex, pos - currIndex);
+			_requestData.requestTarget = _requestBuffer.substr(currIndex, pos - currIndex);
 
 			// must not empty
-			if (_requestTarget.empty())
+			if (_requestData.requestTarget.empty())
 				generate4xx5xxErrorReponse(400, false, "request target in request line must not empty");
 
 			// also check if contain any forbidden chars
-			if (allowRequestTargetChar().isMatch(_requestTarget) == false)
+			if (allowRequestTargetChar().isMatch(_requestData.requestTarget) == false)
 				generate4xx5xxErrorReponse(400, false, "request target must not contain any forbidden char");
 
 			// then move our currIndex
@@ -373,10 +373,10 @@ void	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 				generate4xx5xxErrorReponse(400, false, "bad request line. the protocol version is missing");
 
 			// now the last part is protocol version
-			_protocol = _requestBuffer.substr(currIndex, endLinePos - currIndex);
+			_requestData.protocol = _requestBuffer.substr(currIndex, endLinePos - currIndex);
 
 			// check must not empty
-			if (_protocol.empty())
+			if (_requestData.protocol.empty())
 				generate4xx5xxErrorReponse(400, false, "request line protocol must not empty");
 			// we get all the request line then we move to reading the header field
 			currIndex = endLinePos + 2;
@@ -471,7 +471,7 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 		}
 		tempFieldName = stringToLower(tempFieldName);
 
-		std::string &headerValueTarget = _headerField[tempFieldName];
+		std::string &headerValueTarget = _requestData.headerField[tempFieldName];
 
 		// separated by the ", "
 		if (headerValueTarget.empty() == false)
@@ -813,12 +813,13 @@ void Http::clearRequestData()
 {
 	// clear the storing request data
 	_processStatus = NO_STATUS;
-	_method.clear();
-	_requestTarget.clear();
+	_requestData.method.clear();
+	_requestData.requestTarget.clear();
+	_requestData.protocol.clear();
+	_requestData.headerField.clear();
 	_targetPath.clear();
 	_combinedPath.clear();
 	_queryString.clear();
-	_protocol.clear();
 
 	_cgiPath.clear();
 	_cgiScriptPath.clear();
@@ -846,7 +847,6 @@ void Http::clearRequestData()
 	_chunkedBodyIsFinished = false;
 	_client_max_body_size = 0;
 	_curr_body_read = 0;
-	_headerField.clear();
 	_targetServer = NULL;
 	_targetLocationBlock = NULL;
 
@@ -1083,10 +1083,10 @@ void Http::requestLineCheckProtocolVersion()
 	// HTTP/X.X
 	// whether what version you are
 	// must start with "HTTP/"
-	if (_protocol.size() != 8 || _protocol.compare(0, 5, "HTTP/") != 0 || _protocol[6] != '.')
+	if (_requestData.protocol.size() != 8 || _requestData.protocol.compare(0, 5, "HTTP/") != 0 || _requestData.protocol[6] != '.')
 		generate4xx5xxErrorReponse(400, false, "ERROR::protocol version wrong format");
 
-	maj = _protocol[5];
+	maj = _requestData.protocol[5];
 	if (maj != '1')
 	{
 		if (maj >= '0' && maj <= '3')
@@ -1101,16 +1101,16 @@ void Http::requestLineCheckProtocolVersion()
 		}
 	}
 
-	min = _protocol[7];
+	min = _requestData.protocol[7];
 	if (min < '0' || min > '9')
 	{
 		// must be digit
 		generate4xx5xxErrorReponse(400, false, "ERROR::protocal version wrong format");
 	}
 
-	_protocol.clear();
-	_protocol += maj;
-	_protocol += min;
+	_requestData.protocol.clear();
+	_requestData.protocol += maj;
+	_requestData.protocol += min;
 	// finished processing protocol
 
 }
@@ -1119,24 +1119,24 @@ void	Http::requestLineCheckRequestTargetAbsolute(const Socket& clientSocket)
 {
 	//this request targen legth if in absolute form must
 	// longer than  characters
-	if (_requestTarget.size() <= 7)
+	if (_requestData.requestTarget.size() <= 7)
 		generate4xx5xxErrorReponse(400, false, "Invalid::URI Scheme::");
 
 
 	// allow only this scheme
-	if (_requestTarget.compare(0, 7, "http://") != 0)
+	if (_requestData.requestTarget.compare(0, 7, "http://") != 0)
 		generate4xx5xxErrorReponse(400, false, "Invalid::URI Scheme::allowed only \"http://\"");
 
 	// check the authority part
 	{
 		std::string authStr;
 
-		size_t	pathPos = _requestTarget.find_first_of('/', 7);
+		size_t	pathPos = _requestData.requestTarget.find_first_of('/', 7);
 		// if cannot find then it is only /
-		if (pathPos == _requestTarget.npos)
-			authStr = _requestTarget.substr(7);
+		if (pathPos == _requestData.requestTarget.npos)
+			authStr = _requestData.requestTarget.substr(7);
 		else
-			authStr = _requestTarget.substr(7, pathPos - 7);
+			authStr = _requestData.requestTarget.substr(7, pathPos - 7);
 
 		// authority cannot empty
 		if (authStr.empty())
@@ -1146,10 +1146,10 @@ void	Http::requestLineCheckRequestTargetAbsolute(const Socket& clientSocket)
 
 		// now for authority part we check both host and ip
 		// so now we can recreate _requestTarget string
-		if (pathPos == _requestTarget.npos)
-			_requestTarget = "/";
+		if (pathPos == _requestData.requestTarget.npos)
+			_requestData.requestTarget = "/";
 		else
-			_requestTarget = _requestTarget.substr(pathPos);
+			_requestData.requestTarget = _requestData.requestTarget.substr(pathPos);
 	}
 
 }

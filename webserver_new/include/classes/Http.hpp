@@ -30,10 +30,18 @@ enum e_http_field_value_token_type
 	OPTIONAL_CHAR
 };
 
+struct s_http_request_data {
+	std::string	method;
+	std::string	requestTarget;
+	std::string	protocol;
+	std::map<std::string, std::string> headerField;
+};
+
 struct s_http_field_value_token {
 	e_http_field_value_token_type tokenType;
 	std::string str;
 };
+
 
 class Http {
 	private:
@@ -100,14 +108,18 @@ class Http {
 
 		void	clearRequestData();
 		e_http_process_status	_processStatus;
-		std::string		_method;
-		std::string		_requestTarget;	
+
+
+		s_http_request_data _requestData;
+		//std::map<std::string, std::string> _headerField;
+		//std::string		_method;
+		//std::string		_requestTarget;	
+		//std::string		_protocol; // after validating the string will be "HTTP/1.1" => "11"
 		std::string		_serverName;
 		std::string		_portString;
 		std::string		_targetPath;
 		std::string		_combinedPath;
 		std::string		_queryString;
-		std::string		_protocol; // after validating the string will be "HTTP/1.1" => "11"
 
 		std::string		_cgiScriptPath;
 		std::string		_cgiVirtualPath;
@@ -149,7 +161,6 @@ class Http {
 		size_t			_curr_body_read;
 
 		void	printHeaderField() const;
-		std::map<std::string, std::string> _headerField;
 		const ServerConfig*	_targetServer;
 		const t_config_map* _targetLocationBlock;
 
