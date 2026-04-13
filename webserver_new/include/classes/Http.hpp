@@ -89,12 +89,12 @@ class Http {
 		void			requestLineCheck(s_http_request_data& requestData, const Socket& clientSocket);
 		void				requestLineCheckProtocolVersion(s_http_request_data& requestData);
 		void				requestLineCheckRequestTarget(s_http_request_data& requestData, const Socket& clientSocket);
-		void					requestLineCheckRequestTargetAbsolute(const Socket& clientSocket);
+		void					requestLineCheckRequestTargetAbsolute(s_http_request_data& requestData, const Socket& clientSocket);
 		void					requestLineCheckRequestTargetPathCheck();
 		void			targetLocationBlockGet();
-		void			checkRequestBodyType();
+		void			checkRequestBodyType(s_http_request_data& requestData);
 		bool			checkRedirection();
-		void			checkMethod();
+		void			checkMethod(s_http_request_data& requestData);
 		void			checkCgiPath();
 		void			createSystemPath();
 		void			createSystemPath(std::string& systemPath);
@@ -104,13 +104,13 @@ class Http {
 		void	readingRequestBody();
 		void	processingRequestBody(const Socket& clientSocket, std::map<int, Socket>& socketMap);
 
-		void	cgiChildProcessNoRequestBody(int pipeForCgiStdOut[2]);
+		void	cgiChildProcessNoRequestBody(s_http_request_data& requestData, int pipeForCgiStdOut[2]);
 
 		void	clearRequestData();
 		e_http_process_status	_processStatus;
 
 
-		s_http_request_data _requestData;
+		s_http_request_data TrequestData;
 		//std::map<std::string, std::string> _headerField;
 		//std::string		_method;
 		//std::string		_requestTarget;	
@@ -160,7 +160,7 @@ class Http {
 		size_t			_client_max_body_size;
 		size_t			_curr_body_read;
 
-		void	printHeaderField() const;
+		void	printHeaderField(s_http_request_data& requestData) const;
 		const ServerConfig*	_targetServer;
 		const t_config_map* _targetLocationBlock;
 

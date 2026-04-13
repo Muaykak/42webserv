@@ -87,7 +87,7 @@ Http::~Http()
 {
 }
 
-void Http::printHeaderField() const
+void Http::printHeaderField(s_http_request_data& requestData) const
 {
 	if (_processStatus != NO_STATUS
 	&& _processStatus != READING_HEADER
@@ -96,12 +96,12 @@ void Http::printHeaderField() const
 		std::cout << "====================================" << std::endl;
 		//print request line
 		{
-			std::cout << _requestData.method << " " << _requestData.requestTarget << " " << _requestData.protocol << std::endl;
+			std::cout << requestData.method << " " << requestData.requestTarget << " " << requestData.protocol << std::endl;
 		}
 
-		std::map<std::string, std::string>::const_iterator	it = _requestData.headerField.begin();
+		std::map<std::string, std::string>::const_iterator	it = requestData.headerField.begin();
 		std::vector<std::string>::const_iterator vecIt;
-		while (it != _requestData.headerField.end())
+		while (it != requestData.headerField.end())
 		{
 			std::cout << it->first << ": " << it->second << std::endl;
 			++it;
@@ -115,7 +115,7 @@ bool Http::isKeepConnection() const
 	return _keepConnection;
 }
 
-void Http::cgiChildProcessNoRequestBody(int pipeForCgiStdOut[2])
+void Http::cgiChildProcessNoRequestBody(s_http_request_data &requestData, int pipeForCgiStdOut[2])
 {
 	try 
 	{
@@ -189,7 +189,7 @@ void Http::cgiChildProcessNoRequestBody(int pipeForCgiStdOut[2])
 
 
 		// then we would set up the environment here
-		envData().assignEnv("REQUEST_METHOD", _requestData.method);
+		envData().assignEnv("REQUEST_METHOD", requestData.method);
 		envData().assignEnv("QUERY_STRING", _queryString);
 
 		// GET method don't have body 
@@ -221,10 +221,10 @@ void Http::cgiChildProcessNoRequestBody(int pipeForCgiStdOut[2])
 
 		// convert the http header to env
 		{
-			std::map<std::string, std::string>::const_iterator headerIt = _requestData.headerField.begin();
+			std::map<std::string, std::string>::const_iterator headerIt = requestData.headerField.begin();
 			std::string headerConvertedStr;
 
-			while (headerIt != _requestData.headerField.end())
+			while (headerIt != requestData.headerField.end())
 			{
 				// skip these header
 				if (headerIt->first != "content-length"
@@ -1115,28 +1115,28 @@ void Http::requestLineCheckProtocolVersion(s_http_request_data& requestData)
 
 }
 
-void	Http::requestLineCheckRequestTargetAbsolute(const Socket& clientSocket)
+void	Http::requestLineCheckRequestTargetAbsolute(s_http_request_data& requestData, const Socket& clientSocket)
 {
 	//this request targen legth if in absolute form must
 	// longer than  characters
-	if (_requestData.requestTarget.size() <= 7)
+	if (requestData.requestTarget.size() <= 7)
 		generate4xx5xxErrorReponse(400, false, "Invalid::URI Scheme::");
 
 
 	// allow only this scheme
-	if (_requestData.requestTarget.compare(0, 7, "http://") != 0)
+	if (requestData.requestTarget.compare(0, 7, "http://") != 0)
 		generate4xx5xxErrorReponse(400, false, "Invalid::URI Scheme::allowed only \"http://\"");
 
 	// check the authority part
 	{
 		std::string authStr;
 
-		size_t	pathPos = _requestData.requestTarget.find_first_of('/', 7);
+		size_t	pathPos = requestData.requestTarget.find_first_of('/', 7);
 		// if cannot find then it is only /
-		if (pathPos == _requestData.requestTarget.npos)
-			authStr = _requestData.requestTarget.substr(7);
+		if (pathPos == requestData.requestTarget.npos)
+			authStr = requestData.requestTarget.substr(7);
 		else
-			authStr = _requestData.requestTarget.substr(7, pathPos - 7);
+			authStr = requestData.requestTarget.substr(7, pathPos - 7);
 
 		// authority cannot empty
 		if (authStr.empty())
@@ -1146,10 +1146,10 @@ void	Http::requestLineCheckRequestTargetAbsolute(const Socket& clientSocket)
 
 		// now for authority part we check both host and ip
 		// so now we can recreate _requestTarget string
-		if (pathPos == _requestData.requestTarget.npos)
-			_requestData.requestTarget = "/";
+		if (pathPos == requestData.requestTarget.npos)
+			requestData.requestTarget = "/";
 		else
-			_requestData.requestTarget = _requestData.requestTarget.substr(pathPos);
+			requestData.requestTarget = requestData.requestTarget.substr(pathPos);
 	}
 
 }
@@ -1246,7 +1246,7 @@ void	Http::requestLineCheckRequestTarget(s_http_request_data& requestData, const
 		// then it might be absolute form
 		// we need to check that scheme
 		if (requestData.requestTarget[0] != '/')
-			requestLineCheckRequestTargetAbsolute(clientSocket);
+			requestLineCheckRequestTargetAbsolute(requestData, clientSocket);
 		else
 		{
 		/*
@@ -1293,7 +1293,7 @@ void	Http::requestLineCheck(s_http_request_data& requestData, const Socket& clie
 	}
 
 	// before anything, we check the protocol version first
-	requestLineCheckProtocolVersion();
+	requestLineCheckProtocolVersion(requestData);
 
 	// whether what we check, if host is missing from
 	// header field, the server should not accept it.
@@ -1305,7 +1305,7 @@ void	Http::requestLineCheck(s_http_request_data& requestData, const Socket& clie
 
 	// we need to check the 'request target' first
 	// this is the tedious process
-	requestLineCheckRequestTarget(clientSocket);
+	requestLineCheckRequestTarget(requestData, clientSocket);
 
 }
 
@@ -1322,7 +1322,7 @@ void	Http::targetLocationBlockGet()
 
 }
 
-void	Http::checkRequestBodyType()
+void	Http::checkRequestBodyType(s_http_request_data& requestData)
 {
 
 	// check the client_max_body_size of the server block if exist first
@@ -1334,24 +1334,24 @@ void	Http::checkRequestBodyType()
 	}
 
 	// 
-	std::map<std::string, std::string>::const_iterator content_length = _requestData.headerField.find("content-length");
-	std::map<std::string, std::string>::const_iterator tranfer_encoding = _requestData.headerField.find("transfer-encoding");
+	std::map<std::string, std::string>::const_iterator content_length = requestData.headerField.find("content-length");
+	std::map<std::string, std::string>::const_iterator tranfer_encoding = requestData.headerField.find("transfer-encoding");
 
 	// I will not allow DELETE or GET method to have body
-	if (_requestData.method != "POST" && (tranfer_encoding != _requestData.headerField.end() || content_length != _requestData.headerField.end()))
+	if (requestData.method != "POST" && (tranfer_encoding != requestData.headerField.end() || content_length != requestData.headerField.end()))
 	{
 		generate4xx5xxErrorReponse(400, false, "Bad request:: DELETE or GET method must not contain body");
 	}
 
-	if (tranfer_encoding != _requestData.headerField.end() && content_length != _requestData.headerField.end())
+	if (tranfer_encoding != requestData.headerField.end() && content_length != requestData.headerField.end())
 		generate4xx5xxErrorReponse(400, false, "Bad request:: Transfer-Encoding and Content-Length cannot both exist in header");
 
 	// check Expect the body
 	{
-		std::map<std::string, std::string>::const_iterator foundExpect = _requestData.headerField.find("expect");
+		std::map<std::string, std::string>::const_iterator foundExpect = requestData.headerField.find("expect");
 		
 		// if found
-		if (foundExpect != _requestData.headerField.end())
+		if (foundExpect != requestData.headerField.end())
 		{
 			std::string targetValue;
 			if (httpFieldNormalSingletonTrim(foundExpect->second, targetValue) == false)
@@ -1366,7 +1366,7 @@ void	Http::checkRequestBodyType()
 	}
 
 	// if Content-Length is found, check if it exceeds the client_max_body_size
-	if (content_length != _requestData.headerField.end())
+	if (content_length != requestData.headerField.end())
 	{
 
 		std::string valueString;
@@ -1410,7 +1410,7 @@ void	Http::checkRequestBodyType()
 			_readBody = true;
 		}
 	}
-	else if (tranfer_encoding != _requestData.headerField.end())
+	else if (tranfer_encoding != requestData.headerField.end())
 	{
 		// here need to check the Transfer Encoding
 
@@ -1445,8 +1445,8 @@ void	Http::checkRequestBodyType()
 
 		/* for chunked encoding, need to check trailer */
 		{
-			std::map<std::string, std::string>::const_iterator foundTrailer = _requestData.headerField.find("trailer");
-			if (foundTrailer != _requestData.headerField.end())
+			std::map<std::string, std::string>::const_iterator foundTrailer = requestData.headerField.find("trailer");
+			if (foundTrailer != requestData.headerField.end())
 			{
 				/* check the element */
 				
@@ -1517,7 +1517,7 @@ bool	Http::checkRedirection()
 	return (false);
 }
 
-void	Http::checkMethod()
+void	Http::checkMethod(s_http_request_data& requestData)
 {
 	// _method = _method of this current request
 
@@ -1530,7 +1530,7 @@ void	Http::checkMethod()
 	bool found = false;
 	for (size_t i = 0; i < allowMethodPtr->size(); i++)
 	{
-		if (_requestData.method == (*allowMethodPtr)[i])
+		if (requestData.method == (*allowMethodPtr)[i])
 		{
 			found = true;
 			break ;
@@ -1541,7 +1541,7 @@ void	Http::checkMethod()
 	// return 405 Not Implemented
 	if (found == false)
 	{
-		generate4xx5xxErrorReponse(405, false, "Http::method::not implemented::" + _method);
+		generate4xx5xxErrorReponse(405, false, "Http::method::not implemented::" + requestData.method);
 	}
 }
 
