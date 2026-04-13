@@ -84,11 +84,11 @@ class Http {
 
 
 
-		void		validateRequestBufffer(const Socket& clientSocket, std::map<int, Socket>& socketMap);
+		void		validateRequestData(s_http_request_data& requestData, const Socket& clientSocket, std::map<int, Socket>& socketMap);
 		void			validateRequestBufferSelectServer(const Socket& clientSocket, const std::string& authStr);
-		void			requestLineCheck(const Socket& clientSocket);
-		void				requestLineCheckProtocolVersion();
-		void				requestLineCheckRequestTarget(const Socket& clientSocket);
+		void			requestLineCheck(s_http_request_data& requestData, const Socket& clientSocket);
+		void				requestLineCheckProtocolVersion(s_http_request_data& requestData);
+		void				requestLineCheckRequestTarget(s_http_request_data& requestData, const Socket& clientSocket);
 		void					requestLineCheckRequestTargetAbsolute(const Socket& clientSocket);
 		void					requestLineCheckRequestTargetPathCheck();
 		void			targetLocationBlockGet();

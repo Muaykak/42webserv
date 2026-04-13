@@ -397,6 +397,7 @@ void HttpCgi::validateCGIOUTresponse()
 			if (_responseHeaderCGIOUT.size() != 1)
 				generate5xxCGIOUTresponseError(500, "Internal Error::CGIOUT::local-Location header detected, but the ");
 
+			/* we need to reprocess the whole request again but change the requestTarget */
 			
 		}
 		else

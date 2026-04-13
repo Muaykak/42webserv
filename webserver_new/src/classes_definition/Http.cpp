@@ -1074,7 +1074,7 @@ void	Http::validateRequestBufferSelectServer(const Socket& clientSocket,const st
 	_authorityPart = authStr;
 }
 
-void Http::requestLineCheckProtocolVersion()
+void Http::requestLineCheckProtocolVersion(s_http_request_data& requestData)
 {
 	
 	char maj;
@@ -1083,10 +1083,10 @@ void Http::requestLineCheckProtocolVersion()
 	// HTTP/X.X
 	// whether what version you are
 	// must start with "HTTP/"
-	if (_requestData.protocol.size() != 8 || _requestData.protocol.compare(0, 5, "HTTP/") != 0 || _requestData.protocol[6] != '.')
+	if (requestData.protocol.size() != 8 || requestData.protocol.compare(0, 5, "HTTP/") != 0 || requestData.protocol[6] != '.')
 		generate4xx5xxErrorReponse(400, false, "ERROR::protocol version wrong format");
 
-	maj = _requestData.protocol[5];
+	maj = requestData.protocol[5];
 	if (maj != '1')
 	{
 		if (maj >= '0' && maj <= '3')
@@ -1101,16 +1101,16 @@ void Http::requestLineCheckProtocolVersion()
 		}
 	}
 
-	min = _requestData.protocol[7];
+	min = requestData.protocol[7];
 	if (min < '0' || min > '9')
 	{
 		// must be digit
 		generate4xx5xxErrorReponse(400, false, "ERROR::protocal version wrong format");
 	}
 
-	_requestData.protocol.clear();
-	_requestData.protocol += maj;
-	_requestData.protocol += min;
+	requestData.protocol.clear();
+	requestData.protocol += maj;
+	requestData.protocol += min;
 	// finished processing protocol
 
 }
@@ -1237,7 +1237,7 @@ void	Http::requestLineCheckRequestTargetPathCheck()
 		_targetPath.append("/");
 }
 
-void	Http::requestLineCheckRequestTarget(const Socket& clientSocket)
+void	Http::requestLineCheckRequestTarget(s_http_request_data& requestData, const Socket& clientSocket)
 {
 	// check the first character to see if it is
 	// origin form or absolute form
@@ -1245,7 +1245,7 @@ void	Http::requestLineCheckRequestTarget(const Socket& clientSocket)
 		// if first character is not '/'
 		// then it might be absolute form
 		// we need to check that scheme
-		if (_requestTarget[0] != '/')
+		if (requestData.requestTarget[0] != '/')
 			requestLineCheckRequestTargetAbsolute(clientSocket);
 		else
 		{
@@ -1257,7 +1257,7 @@ void	Http::requestLineCheckRequestTarget(const Socket& clientSocket)
 		*/
 			std::string fieldValue;
 
-			if (httpFieldNormalSingletonTrim(_headerField.find("host")->second, fieldValue) == false)
+			if (httpFieldNormalSingletonTrim(requestData.headerField.find("host")->second, fieldValue) == false)
 				generate4xx5xxErrorReponse(400, false, "Http:Invalid field value: host is invalid");
 
 			validateRequestBufferSelectServer(clientSocket, fieldValue);
@@ -1267,14 +1267,14 @@ void	Http::requestLineCheckRequestTarget(const Socket& clientSocket)
 
 	// separate query and path
 	{
-		size_t	pos = _requestTarget.find_first_of('?');
-		if (pos == _requestTarget.npos)
-			_targetPath = _requestTarget;
+		size_t	pos = requestData.requestTarget.find_first_of('?');
+		if (pos == requestData.requestTarget.npos)
+			_targetPath = requestData.requestTarget;
 		else
 		{
-			_targetPath = _requestTarget.substr(0, pos);
-			if (pos < _requestTarget.size() - 1)
-				_queryString = _requestTarget.substr(pos + 1);
+			_targetPath = requestData.requestTarget.substr(0, pos);
+			if (pos < requestData.requestTarget.size() - 1)
+				_queryString = requestData.requestTarget.substr(pos + 1);
 		}
 	}
 
@@ -1284,12 +1284,12 @@ void	Http::requestLineCheckRequestTarget(const Socket& clientSocket)
 	// path process done, now 
 }
 
-void	Http::requestLineCheck(const Socket& clientSocket)
+void	Http::requestLineCheck(s_http_request_data& requestData, const Socket& clientSocket)
 {
 	// rough check for method first
 	{
-		if (_method != "GET" && _method != "POST" && _method != "DELETE")
-			generate4xx5xxErrorReponse(501, false, "Http::Method not implemented: " + _method);
+		if (requestData.method != "GET" && requestData.method != "POST" && requestData.method != "DELETE")
+			generate4xx5xxErrorReponse(501, false, "Http::Method not implemented: " + requestData.method);
 	}
 
 	// before anything, we check the protocol version first
@@ -1297,7 +1297,7 @@ void	Http::requestLineCheck(const Socket& clientSocket)
 
 	// whether what we check, if host is missing from
 	// header field, the server should not accept it.
-	if (_headerField.find("host") == _headerField.end())
+	if (requestData.headerField.find("host") == requestData.headerField.end())
 	{
 		// treated as bad request
 		generate4xx5xxErrorReponse(400, false, "Bad request::cannot find \'host\' in header field");
@@ -1334,24 +1334,24 @@ void	Http::checkRequestBodyType()
 	}
 
 	// 
-	std::map<std::string, std::string>::const_iterator content_length = _headerField.find("content-length");
-	std::map<std::string, std::string>::const_iterator tranfer_encoding = _headerField.find("transfer-encoding");
+	std::map<std::string, std::string>::const_iterator content_length = _requestData.headerField.find("content-length");
+	std::map<std::string, std::string>::const_iterator tranfer_encoding = _requestData.headerField.find("transfer-encoding");
 
 	// I will not allow DELETE or GET method to have body
-	if (_method != "POST" && (tranfer_encoding != _headerField.end() || content_length != _headerField.end()))
+	if (_requestData.method != "POST" && (tranfer_encoding != _requestData.headerField.end() || content_length != _requestData.headerField.end()))
 	{
 		generate4xx5xxErrorReponse(400, false, "Bad request:: DELETE or GET method must not contain body");
 	}
 
-	if (tranfer_encoding != _headerField.end() && content_length != _headerField.end())
+	if (tranfer_encoding != _requestData.headerField.end() && content_length != _requestData.headerField.end())
 		generate4xx5xxErrorReponse(400, false, "Bad request:: Transfer-Encoding and Content-Length cannot both exist in header");
 
 	// check Expect the body
 	{
-		std::map<std::string, std::string>::const_iterator foundExpect = _headerField.find("expect");
+		std::map<std::string, std::string>::const_iterator foundExpect = _requestData.headerField.find("expect");
 		
 		// if found
-		if (foundExpect != _headerField.end())
+		if (foundExpect != _requestData.headerField.end())
 		{
 			std::string targetValue;
 			if (httpFieldNormalSingletonTrim(foundExpect->second, targetValue) == false)
@@ -1366,7 +1366,7 @@ void	Http::checkRequestBodyType()
 	}
 
 	// if Content-Length is found, check if it exceeds the client_max_body_size
-	if (content_length != _headerField.end())
+	if (content_length != _requestData.headerField.end())
 	{
 
 		std::string valueString;
@@ -1410,7 +1410,7 @@ void	Http::checkRequestBodyType()
 			_readBody = true;
 		}
 	}
-	else if (tranfer_encoding != _headerField.end())
+	else if (tranfer_encoding != _requestData.headerField.end())
 	{
 		// here need to check the Transfer Encoding
 
@@ -1445,8 +1445,8 @@ void	Http::checkRequestBodyType()
 
 		/* for chunked encoding, need to check trailer */
 		{
-			std::map<std::string, std::string>::const_iterator foundTrailer = _headerField.find("trailer");
-			if (foundTrailer != _headerField.end())
+			std::map<std::string, std::string>::const_iterator foundTrailer = _requestData.headerField.find("trailer");
+			if (foundTrailer != _requestData.headerField.end())
 			{
 				/* check the element */
 				
@@ -1530,7 +1530,7 @@ void	Http::checkMethod()
 	bool found = false;
 	for (size_t i = 0; i < allowMethodPtr->size(); i++)
 	{
-		if (_method == (*allowMethodPtr)[i])
+		if (_requestData.method == (*allowMethodPtr)[i])
 		{
 			found = true;
 			break ;
@@ -1962,7 +1962,7 @@ void	Http::handleGetRequest(bool isEndWithSlash, const Socket& clientSocket, std
 	}
 }
 
-void	Http::validateRequestBufffer(const Socket& clientSocket, std::map<int, Socket>& socketMap)
+void	Http::validateRequestData(s_http_request_data& requestData, const Socket& clientSocket, std::map<int, Socket>& socketMap)
 {
 
 	if (_processStatus != VALIDATING_REQUEST)
