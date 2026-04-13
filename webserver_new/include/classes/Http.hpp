@@ -35,6 +35,18 @@ struct s_http_request_data {
 	std::string	requestTarget;
 	std::string	protocol;
 	std::map<std::string, std::string> headerField;
+
+	/* because of local redirection, maybe i should 
+	treat http request as list but idk, let's try to preocess
+	
+	In the normal stream, you'll have to read request by request
+	and there is ResponseList we will send back to client by list
+	from oldest to newest orderly. But local redirect makes us
+	needing to reprocess the request data again to new request target
+
+	so, may by the step of validatoin or execute the actual
+	request can be done with deque
+	*/
 };
 
 struct s_http_field_value_token {
