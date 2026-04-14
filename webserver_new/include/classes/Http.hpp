@@ -119,6 +119,13 @@ class Http {
 		void	cgiChildProcessNoRequestBody(s_http_request_data& requestData, int pipeForCgiStdOut[2]);
 
 		void	clearRequestData();
+
+		/* after thinking for a while, i think we need to create new class the
+		HttpRequest that hold the request Data an d runs that on a queue, because
+		the local redirect problem encountered in the CGI part
+		it said that if Location header output from CGI is local redirect, we need
+		to reprocess that again like normal cgi request but change the request Target
+		according to the Location block the CGI sent */
 		e_http_process_status	_processStatus;
 
 
