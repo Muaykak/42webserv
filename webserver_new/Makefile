@@ -18,8 +18,10 @@ CLASS_HEADER_FILE =	ConfigData.hpp \
 					Logger.hpp \
 					ServerConfig.hpp \
 					HttpCgi.hpp \
+					HttpRequest.hpp \
 					HttpResponse.hpp \
 					HttpThrowStatus.hpp \
+					OptionalData.hpp \
 					Socket.hpp \
 					TempFileManager.hpp \
 					WebServ.hpp \
@@ -51,13 +53,14 @@ SRC_CLASSES_FILE =	ConfigData.cpp \
 					Http.cpp \
 					HttpCgi.cpp \
 					HttpResponse.cpp \
+					HttpRequest.cpp \
 					HttpThrowStatus.cpp \
 					Logger.cpp \
 					ServerConfig.cpp \
 					Socket.cpp \
 					TempFileManager.cpp \
 					WebServ.cpp \
-					WebservException.cpp
+					WebservException.cpp \
 
 SRC_FUNC_DIR = functions/
 SRC_FUNC_FILE = chartables.cpp \

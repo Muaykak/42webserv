@@ -1,5 +1,6 @@
 #include "../../include/classes/HttpCgi.hpp"
 #include "../../include/classes/Socket.hpp"
+#include "../../include/classes/WebServ.hpp"
 
 HttpCgi::HttpCgi()
 :_clientResponseList(NULL),
@@ -73,8 +74,8 @@ void HttpCgi::generate5xxCGIOUTresponseError(unsigned int errorCode, const std::
 
 	const std::vector<std::string>* foundErrorPageVec = NULL;
 
-	const ServerConfig* targetServerPtr = _cgiTargetResponse->getTargetServer();
-	const t_config_map* targetLocationPtr = _cgiTargetResponse->getTargetLocationBlock();
+	const ServerConfig* targetServerPtr = _cgiTargetResponse->targetServer;
+	const t_config_map* targetLocationPtr = _cgiTargetResponse->targetLocationBlock;
 
 	if (targetServerPtr != NULL)
 	{
@@ -145,35 +146,35 @@ void HttpCgi::generate5xxCGIOUTresponseError(unsigned int errorCode, const std::
 		}
 	}
 
-	_cgiTargetResponse->setKeepAfterResponse(false);
-	_cgiTargetResponse->setStatusCode(errorCode);
-	_cgiTargetResponse->setContentType("text/html");
+	_cgiTargetResponse->keepAfterResponse = false;
+	_cgiTargetResponse->statusCode = errorCode;
+	_cgiTargetResponse->contentType = "text/html";
 
 	switch (errorCode)
 	{
 		case (500):
 		{
-			_cgiTargetResponse->setStatusMessage("Internal Error");
+			_cgiTargetResponse->statusMessage = "Internal Error";
 			break;
 		}
 		default:
 		{
-			_cgiTargetResponse->setStatusMessage("");
+			_cgiTargetResponse->statusMessage = "";
 			break;
 		}
 	}
 
 	if (hasDefaultErrorPageFile == true)
 	{
-		_cgiTargetResponse->setResponseBodyType(HTTP_RESPONSE_BODY_FILE);
-		_cgiTargetResponse->setFileFd(errorFileFD);
-		_cgiTargetResponse->setFileSize(fileSize);
+		_cgiTargetResponse->responseBodyType = HTTP_RESPONSE_BODY_FILE;
+		_cgiTargetResponse->fileFd = errorFileFD;
+		_cgiTargetResponse->fileSize = fileSize;
 	}
 	else
 	{
-		_cgiTargetResponse->setResponseBodyType(HTTP_RESPONSE_BODY_FIXED_STR);
+		_cgiTargetResponse->responseBodyType = HTTP_RESPONSE_BODY_FIXED_STR;
 
-		std::string htmlMsg = toString(errorCode) + " " + _cgiTargetResponse->getStatusMessage();
+		std::string htmlMsg = toString(errorCode) + " " + _cgiTargetResponse->statusMessage;
 
 		std::string bodyStr =
 		"<html>\r\n"
@@ -197,7 +198,7 @@ void HttpCgi::generate5xxCGIOUTresponseError(unsigned int errorCode, const std::
 		"</body>\r\n"
 		"</html>\r\n";
 
-		_cgiTargetResponse->setFixedBodyStr(bodyStr);
+		_cgiTargetResponse->fixedBodyStr = bodyStr;
 	}
 
 	_cgiTargetResponse->generateResponse();
@@ -399,6 +400,27 @@ void HttpCgi::validateCGIOUTresponse()
 
 			/* we need to reprocess the whole request again but change the requestTarget */
 			
+			/* get the old request data and remodify it*/
+			HttpRequest& newRequestData = _cgiTargetResponse->httpRequestData[0];
+
+			/* what i need to change here */
+			newRequestData.processStatus = VALIDATING_REQUEST;
+
+			/* change the request target to new ?*/
+			newRequestData.requestData.requestTarget = string;
+
+			std::map<int, s_webserv_custom_event>& customEventMap = *_thisCgiSocket->getEventContoller().customEventMap;
+
+			s_webserv_custom_event& targetCustomEvent = customEventMap[_thisCgiSocket->getSocketFD().getFd()];
+
+			targetCustomEvent.httpRequestData.hasData = true;
+			targetCustomEvent.httpRequestData.data = newRequestData;
+
+			/* now i think we should finish this CGI socket so we can reprocess all over again */
+			_keepConnection = false;
+			_isFinishedRead = true;
+			_cgioutProcessStatus = HTTPCGIOUT_FINISHED;
+			return ;
 		}
 		else
 		{
@@ -443,8 +465,6 @@ void HttpCgi::processCGIOUTresponseBuffer()
 		HTTP1.1 that i built. That one accepts only CRLF)
 	*/
 	parsingCGIOUTresponseHeader();
-
-
 
 }
 

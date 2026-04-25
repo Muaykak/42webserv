@@ -2,41 +2,45 @@
 #include "../../include/classes/Socket.hpp"
 
 HttpResponse::HttpResponse()
-:_statusCode(1000),
-_canModify(true),
-_keepAfterResponse(false),
-_responseBodyType(HTTP_RESPONSE_NOBODY),
+:statusCode(1000),
+canModify(true),
+keepAfterResponse(false),
+responseBodyType(HTTP_RESPONSE_NOBODY),
 _isComplete(false),
 _hasSomethingtoSend(false),
-_isReachEOF(false),
+isReachEOF(false),
 _sendBufferOffset(0),
-_fileSize(0),
-
-_isCgiFinished(true),
-_isCgiProcessOpen(false),
-_isCgiInSocketAlive(false),
-_isCgiOutSocketAlive(false),
-_socketMapPtr(NULL),
-_targetServer(NULL),
-_targetLocationBlock(NULL)
+fileSize(0),
+socketMapPtr(NULL),
+targetServer(NULL),
+targetLocationBlock(NULL)
 {
+	cgiData.isUseCgi = false;
+	cgiData.isCgiProcessOpen = false;
+	cgiData.cgiPid = -1;
+	cgiData.isCgiInSocketAlive = false;
+	cgiData.isCgiOutSocketAlive = false;
+	cgiData.cgiInSocketFd = -1;
+	cgiData.cgiOutSocketFd = -1;
+	cgiData.isCgiFinished = false;
+
 	_sendBuffer.reserve(HTTP_SEND_BUFFER);
 }
 
 HttpResponse::~HttpResponse()
 {
-	if (_isCgiProcessOpen)
+	if (cgiData.isCgiProcessOpen)
 	{
-		kill(_cgiPid, SIGTERM);
-		waitpid(_cgiPid, NULL, 0);
+		kill(cgiData.cgiPid, SIGTERM);
+		waitpid(cgiData.cgiPid, NULL, 0);
 	}
 
-	if (_socketMapPtr != NULL)
+	if (socketMapPtr != NULL)
 	{
-		if (_isCgiInSocketAlive)
-			_socketMapPtr->erase(_cgiInSocketFd);
-		if (_isCgiInSocketAlive)
-			_socketMapPtr->erase(_cgiOutSocketFd);
+		if (cgiData.isCgiInSocketAlive)
+			socketMapPtr->erase(cgiData.cgiInSocketFd);
+		if (cgiData.isCgiOutSocketAlive)
+			socketMapPtr->erase(cgiData.cgiOutSocketFd);
 	}
 }
 
@@ -46,232 +50,10 @@ void HttpResponse::pushNewResponseBuff(s_response_buff& newBuff)
 	_hasSomethingtoSend = true;
 }
 
-void	HttpResponse::addHeader(const std::string& headerName, const std::string &headerValue)
-{
-	if (_canModify == false)
-		throw WebservException("HttpResponse::cannot modify response when not in modifying state");
-
-	if (!headerName.empty())
-	{
-		_responseHeader[headerName].push_back(headerValue);
-	}
-}
-
-std::map<std::string, std::vector<std::string> >& HttpResponse::getHeader()
-{
-	if (_canModify == false)
-		throw WebservException("HttpResponse::cannot modify response when not in modifying state");
-
-	return (_responseHeader);
-}
-
-void HttpResponse::setIsCgiUse(bool state)
-{
-	if (_canModify == false)
-		throw WebservException("HttpResponse::cannot modify response when not in modifying state");
-
-	_isUseCgi = state;
-}
-bool HttpResponse::getIsCgiUse() const
-{
-	return (_isUseCgi);
-}
-
-bool HttpResponse::getKeepAfterResponse() const
-{
-	return (_keepAfterResponse);
-}
-
-void HttpResponse::setKeepAfterResponse(bool op)
-{
-	if (_canModify == false)
-		throw WebservException("HttpResponse::cannot modify response when not in modifying state");
-
-	_keepAfterResponse = op;
-}
-
-int HttpResponse::getStatusCode() const
-{
-	return (_statusCode);
-}
-
-void HttpResponse::setStatusCode(unsigned int statusCode)
-{
-	if (_canModify == false)
-		throw WebservException("HttpResponse::cannot modify response when not in modifying state");
-
-	_statusCode = statusCode;
-}
-
-const std::string& HttpResponse::getStatusMessage() const
-{
-	return (_statusMessage);
-}
-
-void HttpResponse::setStatusMessage(const std::string& statusMessage)
-{
-	if (_canModify == false)
-		throw WebservException("HttpResponse::cannot modify response when not in modifying state");
-
-	_statusMessage = statusMessage;
-}
-
-const std::string& HttpResponse::getContentType() const
-{
-	return (_contentType);
-}
-void HttpResponse::setContentType(const std::string& contentType)
-{
-	if (_canModify == false)
-		throw WebservException("HttpResponse::cannot modify response when not in modifying state");
-
-	_contentType = contentType;
-}
-
-e_http_response_body_type HttpResponse::getResponseBodyType() const
-{
-	return (_responseBodyType);
-}
-void HttpResponse::setResponseBodyType(e_http_response_body_type bodyType)
-{
-	if (_canModify == false)
-		throw WebservException("HttpResponse::cannot modify response when not in modifying state");
-
-	_responseBodyType = bodyType;
-}
-
-const std::string& HttpResponse::getFixedBodyStr() const
-{
-	return (_fixedBodyStr);
-}
-void HttpResponse::setFixedBodyStr(const std::string& bodyStr)
-{
-	if (_canModify == false)
-		throw WebservException("HttpResponse::cannot modify response when not in modifying state");
-
-	_fixedBodyStr = bodyStr;
-}
-
-const FileDescriptor& HttpResponse::getFileFd() const
-{
-	return (_fileFd);
-}
-
-void HttpResponse::setFileFd(const FileDescriptor& fd)
-{
-	if (_canModify == false)
-		throw WebservException("HttpResponse::cannot modify response when not in modifying state");
-
-	_fileFd = fd;
-}
-
-size_t	HttpResponse::getFileSize() const
-{
-	return (_fileSize);
-}
-
-void HttpResponse::setFileSize(size_t fileSize)
-{
-	if (_canModify == false)
-		throw WebservException("HttpResponse::cannot modify response when not in modifying state");
-	
-	_fileSize = fileSize;
-}
-
-void HttpResponse::setIsCgiProcessOpen(bool state)
-{
-	_isCgiProcessOpen = state;
-}
-bool HttpResponse::getIsCgiProcessOpen() const
-{
-	return (_isCgiProcessOpen);
-}
-
-void HttpResponse::setIsCgiFinished(bool state)
-{
-	_isCgiFinished = state;
-}
-bool HttpResponse::getIsCgiFinished() const
-{
-	return (_isCgiFinished);
-}
-
-void HttpResponse::setCgiPid(pid_t cgiPid)
-{
-	_cgiPid = cgiPid;
-}
-pid_t HttpResponse::getCgiPid() const
-{
-	return (_cgiPid);
-}
-
-void HttpResponse::setIsCgiInSocketAlive(bool state)
-{
-	_isCgiInSocketAlive = state;
-}
-bool HttpResponse::getIsCgiInSocketAlive() const
-{
-	return (_isCgiInSocketAlive);
-}
-
-void HttpResponse::setIsCgiOutSocketAlive(bool state)
-{
-	_isCgiOutSocketAlive = state;
-}
-bool HttpResponse::getIsCgiOutSocketAlive() const
-{
-	return (_isCgiOutSocketAlive);
-}
-
-void HttpResponse::setCgiInSocketFd(int fd)
-{
-	_cgiInSocketFd = fd;
-}
-int HttpResponse::getCgiInSocketFd() const
-{
-	return (_cgiInSocketFd);
-}
-
-void HttpResponse::setCgiOutSocketFd(int fd)
-{
-	_cgiOutSocketFd = fd;
-}
-int HttpResponse::getCgiOutSocketFd() const
-{
-	return (_cgiOutSocketFd);
-}
-
-void HttpResponse::setSocketMapPtr(std::map<int, Socket>* socketMapPtr)
-{
-	_socketMapPtr = socketMapPtr;
-}
-
-std::map<int, Socket>* HttpResponse::getSocketMapPtr() const
-{
-	return (_socketMapPtr);
-}
-
-void HttpResponse::setTargetServer(const ServerConfig* targetServer)
-{
-	_targetServer = targetServer;
-}
-const ServerConfig* HttpResponse::getTargetServer() const
-{
-	return (_targetServer);
-}
-
-void HttpResponse::setTargetLocationBlock(const t_config_map* targetLocationBlock)
-{
-	_targetLocationBlock = targetLocationBlock;
-}
-const t_config_map* HttpResponse::getTargetLocationBlock() const
-{
-	return (_targetLocationBlock);
-}
 
 void	HttpResponse::generateResponse()
 {
-	if (_canModify == false)
+	if (canModify == false)
 		throw WebservException("HttpResponse:: can only generate response 1 time only");
 
 	// tell the browser to not caching
@@ -281,10 +63,10 @@ void	HttpResponse::generateResponse()
 		this->addHeader("Cache-Control", "must-revalidate");
 	}
 	
-	_canModify = false;
+	canModify = false;
 
 	// some safety checking
-	if (_statusCode >= 1000)
+	if (statusCode >= 1000)
 		throw WebservException("HttpResponse:: _statusCode must not >= 1000 ");
 	
 	if (_bufferList.size() != 0)
@@ -292,7 +74,7 @@ void	HttpResponse::generateResponse()
 
 	std::string tempStr;
 
-	tempStr += "HTTP/1.1 " + toString(_statusCode) + " " +_statusMessage + "\r\n";
+	tempStr += "HTTP/1.1 " + toString(statusCode) + " " + statusMessage + "\r\n";
 
 	//check for Date:
 	{
@@ -313,16 +95,16 @@ void	HttpResponse::generateResponse()
 	check content length or transfer encoding
 	*/
 	{
-		if (_responseBodyType == HTTP_RESPONSE_BODY_FIXED_STR)
+		if (responseBodyType == HTTP_RESPONSE_BODY_FIXED_STR)
 		{
 			tempStr += "Content-Length: ";
-			tempStr += toString(_fixedBodyStr.size());
+			tempStr += toString(fixedBodyStr.size());
 			tempStr += "\r\n";
 		}
-		else if (_responseBodyType == HTTP_RESPONSE_BODY_FILE)
+		else if (responseBodyType == HTTP_RESPONSE_BODY_FILE)
 		{
 			tempStr += "Content-Length: ";
-			tempStr += toString(_fileSize);
+			tempStr += toString(fileSize);
 			tempStr += "\r\n";
 		}
 		else
@@ -334,10 +116,10 @@ void	HttpResponse::generateResponse()
 	// get the content type
 	{
 		// only if has body
-		if (_responseBodyType != HTTP_RESPONSE_NOBODY)
+		if (responseBodyType != HTTP_RESPONSE_NOBODY)
 		{
 			tempStr += "Content-Type: ";
-			tempStr += _contentType;
+			tempStr += contentType;
 			tempStr += "\r\n";
 		}
 	}
@@ -345,7 +127,7 @@ void	HttpResponse::generateResponse()
 	// about keep connection
 	{
 		tempStr += "Connection: ";
-		if (_keepAfterResponse == true)
+		if (keepAfterResponse == true)
 			tempStr += "keep-alive\r\n";
 		else
 			tempStr += "close\r\n";
@@ -353,11 +135,11 @@ void	HttpResponse::generateResponse()
 
 	// other optional header
 	{
-		std::map<std::string, std::vector<std::string> >::const_iterator responseHeaderIt = _responseHeader.begin();
+		std::map<std::string, std::vector<std::string> >::const_iterator responseHeaderIt = responseHeader.begin();
 
 		std::vector<std::string>::const_iterator responseHeaderFieldIt;
 
-		while (responseHeaderIt != _responseHeader.end())
+		while (responseHeaderIt != responseHeader.end())
 		{
 			tempStr += responseHeaderIt->first;
 			tempStr += ": ";
@@ -393,7 +175,7 @@ void	HttpResponse::generateResponse()
 
 	// about the body section
 	{
-		if (_responseBodyType == HTTP_RESPONSE_BODY_FIXED_STR)
+		if (responseBodyType == HTTP_RESPONSE_BODY_FIXED_STR)
 		{
 			_bufferList.push_back(s_response_buff());
 
@@ -401,7 +183,7 @@ void	HttpResponse::generateResponse()
 
 
 			targetBuff.currentIndex = 0;
-			targetBuff.buffer.insert(targetBuff.buffer.end(), _fixedBodyStr.begin(), _fixedBodyStr.end());
+			targetBuff.buffer.insert(targetBuff.buffer.end(), fixedBodyStr.begin(), fixedBodyStr.end());
 		}
 	}
 	
@@ -421,7 +203,7 @@ ssize_t	HttpResponse::sendHttpResponse(const Socket& clientSocket)
 	{
 		if (_bufferList.empty())
 		{
-			if (_responseBodyType == HTTP_RESPONSE_BODY_FILE && _isReachEOF == false)
+			if (responseBodyType == HTTP_RESPONSE_BODY_FILE && isReachEOF == false)
 			{
 				_bufferList.push_back(s_response_buff());
 
@@ -432,7 +214,7 @@ ssize_t	HttpResponse::sendHttpResponse(const Socket& clientSocket)
 				std::vector<char> temp(HTTP_SEND_BUFFER);
 
 				// read to buffer
-				ssize_t	readAmount = read(_fileFd.getFd(), &temp[0], HTTP_SEND_BUFFER);
+				ssize_t	readAmount = read(fileFd.getFd(), &temp[0], HTTP_SEND_BUFFER);
 
 				if (readAmount < 0)
 				{
@@ -446,7 +228,7 @@ ssize_t	HttpResponse::sendHttpResponse(const Socket& clientSocket)
 				else if (readAmount == 0)
 				{
 					// reach EOF
-					_isReachEOF = true;
+					isReachEOF = true;
 					//std::string tempchunkStr = "0\r\n\r\n";
 					//targetResBuff.buffer.insert(targetResBuff.buffer.end(), tempchunkStr.begin(), tempchunkStr.end());
 				}
@@ -507,10 +289,10 @@ ssize_t	HttpResponse::sendHttpResponse(const Socket& clientSocket)
 		_hasSomethingtoSend = false;
 		_isComplete = true;
 
-		if (_responseBodyType == HTTP_RESPONSE_BODY_FILE && _isReachEOF == false)
+		if (responseBodyType == HTTP_RESPONSE_BODY_FILE && isReachEOF == false)
 			_isComplete = false;
 
-		if (_isUseCgi == true && _isCgiFinished == false)
+		if (cgiData.isUseCgi == true && cgiData.isCgiFinished == false)
 			_isComplete = false;
 
 	}
@@ -532,7 +314,7 @@ void HttpResponse::forcePrintAllResponse()
 	}
 
 	// if the response is 
-	if (_responseBodyType == HTTP_RESPONSE_BODY_FILE)
+	if (responseBodyType == HTTP_RESPONSE_BODY_FILE)
 	{
 		std::vector<char>	writeBuff;
 		writeBuff.reserve(HTTP_SEND_BUFFER);
@@ -544,7 +326,7 @@ void HttpResponse::forcePrintAllResponse()
 		while (true)
 		{
 			amountToRead = HTTP_SEND_BUFFER - writeBuff.size();
-			ssize_t	readAmount = read(_fileFd.getFd(), &writeBuff[writeBuff.size() - 1], amountToRead);
+			ssize_t	readAmount = read(fileFd.getFd(), &writeBuff[writeBuff.size() - 1], amountToRead);
 			if (readAmount < 0 && writeBuff.size() == 0)
 			{
 				if (errno == EINTR)

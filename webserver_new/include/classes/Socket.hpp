@@ -27,6 +27,9 @@ struct s_cgidata {
 };
 
 
+struct s_webserv_event_controller;
+struct s_webserv_event;
+
 enum e_socket_type
 {
 	NO_TYPE,
@@ -43,7 +46,9 @@ class Socket
 private:
 	time_t	_lastEventTime;
 
-	FileDescriptor _epollFD;
+
+	s_webserv_event_controller _eventController;
+	//FileDescriptor _epollFD;
 	FileDescriptor _socketFD;
 	e_socket_type _socketType;
 	const std::vector<ServerConfig>* _serversConfig;
@@ -66,22 +71,23 @@ public:
 	~Socket();
 	const FileDescriptor& getSocketFD() const;
 	const FileDescriptor& getEpollFD() const;
+	const s_webserv_event_controller& getEventContoller() const;
 	const std::vector<ServerConfig> *getServersConfigPtr() const;
 	int getServerListenPort() const;
 
 	bool setupServerSocket(const std::vector<ServerConfig> *_serversConfigVec,
-		const FileDescriptor &epollFD, std::map<int, Socket>* socketMap);
+		const s_webserv_event_controller& eventController, std::map<int, Socket>* socketMap);
 	bool setupClientSocket(const std::vector<ServerConfig> *_serversConfigVec,
-		const FileDescriptor &epollFD, std::map<int, Socket>* socketMap);
+		const s_webserv_event_controller& eventController, std::map<int, Socket>* socketMap);
 	bool setupCGIINSocket(const std::vector<ServerConfig> *serversConfig,
-		const FileDescriptor &epollFD, std::map<int, Socket>* socketMap, const HttpCgi& cgiData);
+		const s_webserv_event_controller& eventController, std::map<int, Socket>* socketMap, const HttpCgi& cgiData);
 	bool setupCGIOUTSocket(const std::vector<ServerConfig> *serversConfig,
-		const FileDescriptor &epollFD, std::map<int, Socket>* socketMap, const HttpCgi& cgiData);
+		const s_webserv_event_controller& eventController, std::map<int, Socket>* socketMap, const HttpCgi& cgiData);
 
 	// Be sure that epollFD still available !
 
 	// return false means this Socket should be DESTROYED after handleEVENT
-	bool handleEvent(const epoll_event &event);
+	bool handleEvent(const s_webserv_event &event);
 
 	void setServerIpHost(const std::set<in_addr_t>& obj);
 	const std::set<in_addr_t>& getServerIpHost() const;

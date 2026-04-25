@@ -16,10 +16,13 @@ WebServ::WebServ(const std::string &configPath) : _webservConfigPath(configPath)
 	{
 		const std::map<int, std::vector<ServerConfig> > *serversConfigMapPtr = _configData.getServersConfigMap();
 		std::map<int, std::vector<ServerConfig> >::const_iterator serversConfigIterator = serversConfigMapPtr->begin();
+		s_webserv_event_controller tempEventController;
+		tempEventController.customEventMap = &_customEventMap;
+		tempEventController.epollFD = _epollFD;
 		while (serversConfigIterator != serversConfigMapPtr->end()){
 			try {
 				Socket tempSocket = socket(AF_INET, SOCK_STREAM, 0);
-				tempSocket.setupServerSocket(&serversConfigIterator->second, _epollFD, &sockets);
+				tempSocket.setupServerSocket(&serversConfigIterator->second, tempEventController, &sockets);
 				sockets.insert(std::make_pair(tempSocket.getSocketFD().getFd(), tempSocket));
 			} 
 			catch (std::exception &e) {
@@ -31,16 +34,56 @@ WebServ::WebServ(const std::string &configPath) : _webservConfigPath(configPath)
 
 }
 
+// return amount of event for quick check like epoll_wait
+int WebServ::webservCheckEvent(std::map<int , s_webserv_event>& returnEvents)
+{
+	returnEvents.clear();
+	
+	/* here we would need to use the epoll_wait*/
+	int epollWaitReturnEvent = epoll_wait(_epollFD.getFd(), _epollEvents, MAX_EPOLL_EVENT, WEBSERV_EPOLL_WAIT_MILLISEC);
+
+	/* if the return value is less than 0 should return back because some error might occur*/
+	if (epollWaitReturnEvent < 0)
+		return (epollWaitReturnEvent);
+	/* if more than 0 then we create the return event structure map*/
+
+	/* iterate to all events*/
+	for (int i = 0; i < epollWaitReturnEvent; i++)
+	{
+		returnEvents[_epollEvents[i].data.fd].epollEventData.data = &_epollEvents[i];
+		returnEvents[_epollEvents[i].data.fd].epollEventData.hasData = true;
+		returnEvents[_epollEvents[i].data.fd].eventFd = _epollEvents[i].data.fd;
+	}
+
+	// then for custom events
+	std::map<int, s_webserv_custom_event>::const_iterator it = _customEventMap.begin();
+	while (it != _customEventMap.end())
+	{
+		returnEvents[it->first].customEventData.hasData = true;
+		returnEvents[it->first].customEventData.data = it->second;
+		returnEvents[it->first].eventFd = it->first;
+		++it;
+	}
+
+	/* then need to clear the _customEventMap */
+	_customEventMap.clear();
+
+	/* return the size of the map*/
+	return (returnEvents.size());
+}
+
 void WebServ::run(){
 	//epoll loop
 	{
-		epoll_event	events[MAX_EPOLL_EVENT];
 		int returnEventsAmount;
 		int lastAmount = 0;
-		int	eventsIndex;
+		std::map<int, s_webserv_event>::const_iterator eventIt;
+		std::map<int, s_webserv_event> returnEvents;
 		Logger::log(LC_DEBUG, "Webserv is Waiting for connection!");
 		while (true){
-			returnEventsAmount = epoll_wait(_epollFD.getFd(), events, MAX_EPOLL_EVENT, WEBSERV_EPOLL_WAIT_MILLISEC);
+
+			returnEventsAmount = webservCheckEvent(returnEvents);
+
 			if (lastAmount != returnEventsAmount && returnEventsAmount >= 0)
 				Logger::log(LC_CONN_LOG, "Epoll event!:%d Total_Socket: %zu", returnEventsAmount, sockets.size());
 			lastAmount = returnEventsAmount;
@@ -55,7 +98,13 @@ void WebServ::run(){
 				throw WebservException("epoll_wait() failed::" + std::string(std::strerror(errno)));
 			}
 
-			eventsIndex = 0;
+			eventIt = returnEvents.begin();
+			while (eventIt != returnEvents.end())
+			{
+
+
+				++eventIt;
+			}
 			while (eventsIndex < returnEventsAmount){
 				if (sockets[events[eventsIndex].data.fd].handleEvent(events[eventsIndex]) == false){
 					sockets.erase(events[eventsIndex].data.fd);

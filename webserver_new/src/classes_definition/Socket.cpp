@@ -1,4 +1,5 @@
 #include "../../include/classes/Socket.hpp"
+#include "../../include/classes/WebServ.hpp"
 
 Socket::Socket() :
 _socketType(NO_TYPE),
@@ -8,7 +9,7 @@ _serversConfig(NULL)
 {}
 Socket::Socket(const Socket &obj) :
 _socketFD(obj._socketFD),
-_epollFD(obj._epollFD),
+_eventController(obj._eventController),
 _socketType(obj._socketType),
 _serversConfig(obj._serversConfig),
 _server_listen_port(obj._server_listen_port),
@@ -37,7 +38,7 @@ Socket& Socket::operator=(const Socket &obj)
 {
 	if (this != &obj)
 	{
-		_epollFD = obj._epollFD;
+		_eventController = obj._eventController;
 		_socketFD = obj._socketFD;
 		_socketType = obj._socketType;
 		_server_listen_port = obj._server_listen_port;
@@ -56,7 +57,12 @@ const FileDescriptor& Socket::getSocketFD() const
 }
 const FileDescriptor& Socket::getEpollFD() const
 {
-	return (_epollFD);
+	return (_eventController.epollFD);
+}
+
+const s_webserv_event_controller& Socket::getEventContoller() const
+{
+	return (_eventController);
 }
 
 void Socket::setServerIpHost(const std::set<in_addr_t>& obj)
@@ -70,7 +76,7 @@ const std::set<in_addr_t>& Socket::getServerIpHost() const
 }
 
 bool Socket::setupCGIOUTSocket(const std::vector<ServerConfig> *serversConfig,
-	const FileDescriptor &epollFD, std::map<int, Socket>* socketMap, const HttpCgi& cgiData)
+	const s_webserv_event_controller& eventController, std::map<int, Socket>* socketMap, const HttpCgi& cgiData)
 {
 
 	if (_socketType != NO_TYPE)
@@ -88,7 +94,7 @@ bool Socket::setupCGIOUTSocket(const std::vector<ServerConfig> *serversConfig,
 		throw WebservException("Socket::setupSocket::_socketFD cannot < 0");
 	}
 
-	_epollFD = epollFD;
+	_eventController = eventController;
 	_socketType = CGI_FD_STDOUT;
 	_socketMap = socketMap;
 	_serversConfig = serversConfig;
@@ -99,7 +105,7 @@ bool Socket::setupCGIOUTSocket(const std::vector<ServerConfig> *serversConfig,
 	std::memset(&event, 0, sizeof(event));
 	event.events = EPOLLIN;
 	event.data.fd = _socketFD.getFd();
-	if (epoll_ctl(_epollFD.getFd(), EPOLL_CTL_ADD, _socketFD.getFd(), &event) != 0)
+	if (epoll_ctl(_eventController.epollFD.getFd(), EPOLL_CTL_ADD, _socketFD.getFd(), &event) != 0)
 	{
 		std::string errorMsg = "Socket::setupSocket::SERVER_SCOKET::epoll_ctl() Error::";
 		errorMsg += std::strerror(errno);
@@ -111,7 +117,7 @@ bool Socket::setupCGIOUTSocket(const std::vector<ServerConfig> *serversConfig,
 }
 
 bool Socket::setupCGIINSocket(const std::vector<ServerConfig> *serversConfig,
-	const FileDescriptor &epollFD, std::map<int, Socket>* socketMap, const HttpCgi& cgiData)
+	const s_webserv_event_controller &eventController, std::map<int, Socket>* socketMap, const HttpCgi& cgiData)
 {
 
 	if (_socketType != NO_TYPE)
@@ -129,7 +135,7 @@ bool Socket::setupCGIINSocket(const std::vector<ServerConfig> *serversConfig,
 		throw WebservException("Socket::setupSocket::_socketFD cannot < 0");
 	}
 
-	_epollFD = epollFD;
+	_eventController = eventController;
 	_socketType = CGI_FD_STDIN;
 	_socketMap = socketMap;
 	_serversConfig = serversConfig;
@@ -139,7 +145,7 @@ bool Socket::setupCGIINSocket(const std::vector<ServerConfig> *serversConfig,
 	std::memset(&event, 0, sizeof(event));
 	event.events = EPOLLOUT;
 	event.data.fd = _socketFD.getFd();
-	if (epoll_ctl(_epollFD.getFd(), EPOLL_CTL_ADD, _socketFD.getFd(), &event) != 0)
+	if (epoll_ctl(_eventController.epollFD.getFd(), EPOLL_CTL_ADD, _socketFD.getFd(), &event) != 0)
 	{
 		std::string errorMsg = "Socket::setupSocket::SERVER_SCOKET::epoll_ctl() Error::";
 		errorMsg += std::strerror(errno);
@@ -152,7 +158,7 @@ bool Socket::setupCGIINSocket(const std::vector<ServerConfig> *serversConfig,
 
 
 bool Socket::setupServerSocket(const std::vector<ServerConfig> *serversConfig,
-		const FileDescriptor &epollFD, std::map<int, Socket>* socketMap)
+		const s_webserv_event_controller &eventController, std::map<int, Socket>* socketMap)
 {
 	if (_socketType != NO_TYPE)
 	{
@@ -169,7 +175,7 @@ bool Socket::setupServerSocket(const std::vector<ServerConfig> *serversConfig,
 		throw WebservException("Socket::setupSocket::_socketFD cannot < 0");
 	}
 
-	_epollFD = epollFD;
+	_eventController = eventController;
 	_socketType = SERVER_SOCKET;
 	_socketMap = socketMap;
 	_serversConfig = serversConfig;
@@ -240,7 +246,7 @@ bool Socket::setupServerSocket(const std::vector<ServerConfig> *serversConfig,
 	std::memset(&event, 0, sizeof(event));
 	event.events = EPOLLIN;
 	event.data.fd = _socketFD.getFd();
-	if (epoll_ctl(_epollFD.getFd(), EPOLL_CTL_ADD, _socketFD.getFd(), &event) != 0)
+	if (epoll_ctl(_eventController.epollFD.getFd(), EPOLL_CTL_ADD, _socketFD.getFd(), &event) != 0)
 	{
 		std::string errorMsg = "Socket::setupSocket::SERVER_SCOKET::epoll_ctl() Error::";
 		errorMsg += std::strerror(errno);
@@ -281,7 +287,7 @@ bool Socket::setupServerSocket(const std::vector<ServerConfig> *serversConfig,
 }
 
 bool Socket::setupClientSocket(const std::vector<ServerConfig> *serversConfig,
-	const FileDescriptor &epollFD, std::map<int, Socket>* socketMap)
+	const s_webserv_event_controller &eventController, std::map<int, Socket>* socketMap)
 {
 	if (_socketType != NO_TYPE)
 	{
@@ -298,7 +304,7 @@ bool Socket::setupClientSocket(const std::vector<ServerConfig> *serversConfig,
 		throw WebservException("Socket::setupSocket::_socketFD cannot < 0");
 	}
 
-	_epollFD = epollFD;
+	_eventController = eventController;
 	_socketType = CLIENT_SOCKET;
 	_socketMap = socketMap;
 	_serversConfig = serversConfig;
@@ -321,7 +327,7 @@ bool Socket::setupClientSocket(const std::vector<ServerConfig> *serversConfig,
 	std::memset(&event, 0, sizeof(event));
 	event.events = EPOLLIN;
 	event.data.fd = _socketFD.getFd();
-	if (epoll_ctl(_epollFD.getFd(), EPOLL_CTL_ADD, _socketFD.getFd(), &event) != 0)
+	if (epoll_ctl(_eventController.epollFD.getFd(), EPOLL_CTL_ADD, _socketFD.getFd(), &event) != 0)
 	{
 		std::string errorMsg = "Socket::setupSocket::CLIENT_SCOKET::epoll_ctl() Error::";
 		errorMsg += std::strerror(errno);
@@ -334,139 +340,165 @@ bool Socket::setupClientSocket(const std::vector<ServerConfig> *serversConfig,
 }
 
 // return false means this Socket should be DESTROYED after handleEVENT
-bool Socket::handleEvent(const epoll_event &event)
+bool Socket::handleEvent(const s_webserv_event &event)
 {
 	_lastEventTime = std::time(NULL);
 	switch (_socketType)
 	{
 		case SERVER_SOCKET:
 		{
-
-			// Error Handling
-			if ((event.events & EPOLLRDHUP) || (event.events & EPOLLHUP) || (event.events & EPOLLERR))
+			if (event.epollEventData.hasData == true)
 			{
-				int error_code;
-				socklen_t len = sizeof(error_code);
-				if (getsockopt(_socketFD.getFd(), SOL_SOCKET, SO_ERROR, &error_code, &len) != 0)
+				// Error Handling
+				if ((event.epollEventData.data->events & EPOLLRDHUP) || (event.epollEventData.data->events & EPOLLHUP) || (event.epollEventData.data->events & EPOLLERR))
 				{
-					std::string errMsg = "Socket#" + toString(_socketFD.getFd()) + "Error::getsockopt()::";
-					errMsg += std::strerror(errno);
-					Logger::log(LC_CONN_LOG, errMsg);
-				}
-				else
-				{
-					std::string errMsg = "Socket#" + toString(_socketFD.getFd()) + "Error::";
-					errMsg += std::strerror(error_code);
-					Logger::log(LC_CONN_LOG, errMsg);
-				}
-				return true;
-			}
-			// Request new connection from client
-			else if (event.events & EPOLLIN)
-			{
-				sockaddr_in client_address;
-				std::memset(&client_address, 0, sizeof(sockaddr_in));
-				socklen_t len = sizeof(client_address);
-				int client_socket;
-				while (true)
-				{
-					client_socket = accept(event.data.fd, (sockaddr *)&client_address, &len);
-					if (client_socket > 0)
+					int error_code;
+					socklen_t len = sizeof(error_code);
+					if (getsockopt(_socketFD.getFd(), SOL_SOCKET, SO_ERROR, &error_code, &len) != 0)
 					{
-						// need to check if cilent access to this server with the same ip that server recieves
-						if (_server_ip_host.size() != 0
-						&& _server_ip_host.find(client_address.sin_addr.s_addr) == _server_ip_host.end())
-						{
-							Logger::log(LC_CON_FAIL, "Incoming connection does not match any server %s", in_addr_t_to_string(client_address.sin_addr.s_addr).c_str());
-							close(client_socket);
-							continue;
-						}
-						Logger::log(LC_CONN_LOG, "Connection from %s", in_addr_t_to_string(client_address.sin_addr.s_addr).c_str());
-
-						Logger::log(LC_CONN_LOG, "Port %d Establishing connection from client#%d", _server_listen_port, client_socket);
-
-						// set up client Socket
-						_socketMap->insert(std::make_pair(client_socket, Socket(client_socket)));
-						(*_socketMap)[client_socket]._client_addr_in = client_address.sin_addr.s_addr;
-						(*_socketMap)[client_socket].setServerIpHost(_server_ip_host);
-						(*_socketMap)[client_socket].setupClientSocket(_serversConfig, _epollFD, _socketMap);
-
-						continue;
-					}
-					if (errno == EAGAIN || errno == EWOULDBLOCK)
-						return (true);
-					else if (errno == EMFILE || errno == ENFILE)
-					{
-						Logger::log(LC_RED, "ERROR::ServerSocker#%d::fd limit reached!", static_cast<int>(_epollFD.getFd()));
-						return (true);
-					}
-					else if (errno == EINTR || errno == ECONNABORTED || errno == EPROTO 
-					|| errno == ENETDOWN || errno == EHOSTDOWN || errno == ENONET
-					|| errno == EHOSTUNREACH || errno == EOPNOTSUPP)
-					{
-						continue;
+						std::string errMsg = "Socket#" + toString(_socketFD.getFd()) + "Error::getsockopt()::";
+						errMsg += std::strerror(errno);
+						Logger::log(LC_CONN_LOG, errMsg);
 					}
 					else
 					{
-						std::string errorMsg = "ServerSocket#" + toString(_socketFD.getFd()) + "::Fatal Error::";
-						errorMsg += std::strerror(errno);
-						throw(WebservException(errorMsg));
+						std::string errMsg = "Socket#" + toString(_socketFD.getFd()) + "Error::";
+						errMsg += std::strerror(error_code);
+						Logger::log(LC_CONN_LOG, errMsg);
+					}
+					return true;
+				}
+				// Request new connection from client
+				else if (event.epollEventData.data->events & EPOLLIN)
+				{
+					sockaddr_in client_address;
+					std::memset(&client_address, 0, sizeof(sockaddr_in));
+					socklen_t len = sizeof(client_address);
+					int client_socket;
+					while (true)
+					{
+						client_socket = accept(event.epollEventData.data->data.fd, (sockaddr *)&client_address, &len);
+						if (client_socket > 0)
+						{
+							// need to check if cilent access to this server with the same ip that server recieves
+							if (_server_ip_host.size() != 0
+							&& _server_ip_host.find(client_address.sin_addr.s_addr) == _server_ip_host.end())
+							{
+								Logger::log(LC_CON_FAIL, "Incoming connection does not match any server %s", in_addr_t_to_string(client_address.sin_addr.s_addr).c_str());
+								close(client_socket);
+								continue;
+							}
+							Logger::log(LC_CONN_LOG, "Connection from %s", in_addr_t_to_string(client_address.sin_addr.s_addr).c_str());
+
+							Logger::log(LC_CONN_LOG, "Port %d Establishing connection from client#%d", _server_listen_port, client_socket);
+
+							// set up client Socket
+							_socketMap->insert(std::make_pair(client_socket, Socket(client_socket)));
+							(*_socketMap)[client_socket]._client_addr_in = client_address.sin_addr.s_addr;
+							(*_socketMap)[client_socket].setServerIpHost(_server_ip_host);
+							(*_socketMap)[client_socket].setupClientSocket(_serversConfig, _eventController, _socketMap);
+
+							continue;
+						}
+						if (errno == EAGAIN || errno == EWOULDBLOCK)
+							return (true);
+						else if (errno == EMFILE || errno == ENFILE)
+						{
+							Logger::log(LC_RED, "ERROR::ServerSocker#%d::fd limit reached!", static_cast<int>(_eventController.epollFD.getFd()));
+							return (true);
+						}
+						else if (errno == EINTR || errno == ECONNABORTED || errno == EPROTO 
+						|| errno == ENETDOWN || errno == EHOSTDOWN || errno == ENONET
+						|| errno == EHOSTUNREACH || errno == EOPNOTSUPP)
+						{
+							continue;
+						}
+						else
+						{
+							std::string errorMsg = "ServerSocket#" + toString(_socketFD.getFd()) + "::Fatal Error::";
+							errorMsg += std::strerror(errno);
+							throw(WebservException(errorMsg));
+						}
 					}
 				}
+				return (true);
+				break;
+
 			}
-			return (true);
-			break;
+
+			if (event.customEventData.hasData == true)
+			{
+				/* custom event for server socket?? don't know yet */
+				break;
+			}
+
 		}
 		case CLIENT_SOCKET: {
 
-			if ((event.events & EPOLLRDHUP) || (event.events & EPOLLHUP) || (event.events & EPOLLERR))
+			if (event.epollEventData.hasData == true)
 			{
-				int error_code;
-				socklen_t len = sizeof(error_code);
-				if (getsockopt(_socketFD.getFd(), SOL_SOCKET, SO_ERROR, &error_code, &len) != 0)
+				if ((event.epollEventData.data->events & EPOLLRDHUP) || (event.epollEventData.data->events & EPOLLHUP) || (event.epollEventData.data->events & EPOLLERR))
 				{
-					std::string errMsg = "Closing ClientSocket#" + toString(_socketFD.getFd()) + "Error::getsockopt()::";
-					errMsg += std::strerror(errno);
-					Logger::log(LC_CONN_LOG, errMsg);
+					int error_code;
+					socklen_t len = sizeof(error_code);
+					if (getsockopt(_socketFD.getFd(), SOL_SOCKET, SO_ERROR, &error_code, &len) != 0)
+					{
+						std::string errMsg = "Closing ClientSocket#" + toString(_socketFD.getFd()) + "Error::getsockopt()::";
+						errMsg += std::strerror(errno);
+						Logger::log(LC_CONN_LOG, errMsg);
+					}
+					else
+					{
+						std::string errMsg = "Closing ClientSocket#" + toString(_socketFD.getFd()) + "Error::";
+						errMsg += std::strerror(error_code);
+						Logger::log(LC_CONN_LOG, errMsg);
+					}
+					// return false to signal to remove from socket map
+					return false;
 				}
-				else
+				try {
+
+					if (event.epollEventData.data->events & EPOLLOUT){
+						http[0].writeToClient();
+						// Handle http response
+					}
+					if (event.epollEventData.data->events & EPOLLIN){
+						http[0].readFromClient();
+						// Handle http request
+					}
+
+				}
+				// should not have any throw in normal circum stance
+				/*
+					though the error that got thrown here can be
+
+					epoll_ctl() error because we lose the control
+					and best way to handle is just to close this socket
+				*/
+				catch (std::exception &e)
 				{
-					std::string errMsg = "Closing ClientSocket#" + toString(_socketFD.getFd()) + "Error::";
-					errMsg += std::strerror(error_code);
-					Logger::log(LC_CONN_LOG, errMsg);
+					Logger::log(LC_ERROR, "socket#%d unexpected error occured closing this connection::%s", _socketFD.getFd(), e.what());
+					return (false);
 				}
-				// return false to signal to remove from socket map
-				return false;
+				//catch (...)
+				//{
+				//	Logger::log(LC_ERROR, "socket#%d unexpected error occured closing this connection", _socketFD.getFd());
+				//	return (false);
+				//}
+
+				if (http[0].isKeepConnection() == false)
+					return (false);
 			}
-			try {
 
-				if (event.events & EPOLLOUT){
-					http[0].writeToClient();
-					// Handle http response
-				}
-				if (event.events & EPOLLIN){
-					http[0].readFromClient();
-					// Handle http request
-				}
+			/* for custom event in client socket */
 
-			}
-			// should not have any throw in normal circum stance
-			/*
-				though the error that got thrown here can be
-
-				epoll_ctl() error because we lose the control
-				and best way to handle is just to close this socket
-			*/
-			catch (std::exception &e)
+			if (event.customEventData.hasData == true)
 			{
-				Logger::log(LC_ERROR, "socket#%d unexpected error occured closing this connection::%s", _socketFD.getFd(), e.what());
-				return (false);
+				// process local redirect here
+				if (event.customEventData.data.httpRequestData.hasData == true)
+					http[0].directRequestProcess(event.customEventData.data.httpRequestData.data);
 			}
-			//catch (...)
-			//{
-			//	Logger::log(LC_ERROR, "socket#%d unexpected error occured closing this connection", _socketFD.getFd());
-			//	return (false);
-			//}
+
 
 			return http[0].isKeepConnection();
 		}

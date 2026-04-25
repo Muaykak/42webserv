@@ -19,122 +19,66 @@ enum e_http_response_body_type
 	HTTP_RESPONSE_BODY_FILE
 };
 
+struct s_http_response_cgidata
+{
+		bool isUseCgi;
+		bool isCgiProcessOpen;
+		pid_t cgiPid;
+		bool isCgiInSocketAlive;
+		bool isCgiOutSocketAlive;
+		int  cgiInSocketFd;
+		int  cgiOutSocketFd;
+		bool isCgiFinished;
+};
+
 class HttpResponse {
 	private:
+
+		bool _isComplete;
+		bool _hasSomethingtoSend;
 
 		//bool	isCgiAlive;
 		//bool	isComplete;
 		std::vector<char> _sendBuffer;
 		size_t			_sendBufferOffset;
 
-		std::map<std::string, std::vector<std::string> > _responseHeader;
-		unsigned int _statusCode;
-		std::string	_statusMessage;
-		std::string _contentType;
-		FileDescriptor _fileFd;
-		FileDescriptor _cgiOutFd;
-		size_t	_fileSize;
-
-		std::string _fixedBodyStr;
-		e_http_response_body_type	_responseBodyType;
-		bool _keepAfterResponse;
-		bool _canModify;
-		bool _isComplete;
-		bool _hasSomethingtoSend;
-		bool _isReachEOF;
-
-		// need to fix this later
-		
-		// all about cgi
-		bool _isUseCgi;
-		bool _isCgiProcessOpen;
-		pid_t _cgiPid;
-		bool _isCgiInSocketAlive;
-		bool _isCgiOutSocketAlive;
-		int  _cgiInSocketFd;
-		int  _cgiOutSocketFd;
-		std::map<int, Socket> *_socketMapPtr;
-		const ServerConfig*	_targetServer;
-		const t_config_map* _targetLocationBlock;
-
-
-		bool _isCgiFinished;
-
-
 		// if all Buffer is sent. the response has nothing
 		// to send
 		std::list<s_response_buff> _bufferList;
-
 
 	public:
 		HttpResponse();
 		~HttpResponse();
 
-		void setTargetLocationBlock(const t_config_map* targetLocationBlock);
-		const t_config_map* getTargetLocationBlock() const;
+		std::map<std::string, std::vector<std::string> > responseHeader;
+		unsigned int statusCode;
+		std::string	statusMessage;
+		std::string contentType;
+		FileDescriptor fileFd;
+		FileDescriptor cgiOutFd;
+		size_t	fileSize;
 
-		void setTargetServer(const ServerConfig* targetServer);
-		const ServerConfig*	getTargetServer() const;
+		std::string fixedBodyStr;
+		e_http_response_body_type	responseBodyType;
+		bool keepAfterResponse;
+		bool canModify;
+		bool isReachEOF;
 
-		void setSocketMapPtr(std::map<int, Socket>* socketMapPtr);
-		std::map<int, Socket>* getSocketMapPtr() const;
+		std::vector<HttpRequest> httpRequestData;
+
+		// all about cgi
+		s_http_response_cgidata cgiData;
+
+		std::map<int, Socket> *socketMapPtr;
+		const ServerConfig*	targetServer;
+		const t_config_map* targetLocationBlock;
 
 		void pushNewResponseBuff(s_response_buff& newBuff);
-
-		void setIsCgiUse(bool state);
-		bool getIsCgiUse() const;
-
-		void setIsCgiProcessOpen(bool state);
-		bool getIsCgiProcessOpen() const;
-
-		void setIsCgiFinished(bool state);
-		bool getIsCgiFinished() const;
-
-		void setCgiPid(pid_t cgiPid);
-		pid_t getCgiPid() const;
-
-		void setIsCgiInSocketAlive(bool state);
-		bool getIsCgiInSocketAlive() const;
-
-		void setIsCgiOutSocketAlive(bool state);
-		bool getIsCgiOutSocketAlive() const;
-
-		void setCgiInSocketFd(int fd);
-		int getCgiInSocketFd() const;
-
-		void setCgiOutSocketFd(int fd);
-		int getCgiOutSocketFd() const;
 
 		void addHeader(const std::string& headerName, const std::string& headerValue);
 		std::map<std::string, std::vector<std::string> >& getHeader();
 
 		void generateResponse();
-
-		bool getKeepAfterResponse() const;
-		void setKeepAfterResponse(bool op);
-
-		int	getStatusCode() const;
-		void setStatusCode(unsigned int statusCode);
-
-		const std::string& getStatusMessage() const;
-		void setStatusMessage(const std::string& statusMessage);
-
-		//
-
-		const std::string& getContentType() const;
-		void setContentType(const std::string& contentType);
-
-		e_http_response_body_type getResponseBodyType() const;
-		void setResponseBodyType(e_http_response_body_type bodyType);
-
-		const std::string& getFixedBodyStr() const;
-		void setFixedBodyStr(const std::string& bodyStr);
-
-		const FileDescriptor& getFileFd() const;
-		void setFileFd(const FileDescriptor& fd);
-
-		size_t	getFileSize() const;
-		void	setFileSize(size_t fileSize);
 
 		ssize_t	sendHttpResponse(const Socket& clientSocket);
 
