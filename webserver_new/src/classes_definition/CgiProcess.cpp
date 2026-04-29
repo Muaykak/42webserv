@@ -1,100 +1,76 @@
 #include "../../include/classes/CgiProcess.hpp"
+#include <cerrno>
 
-CgiProcess::CgiProcess():
-_pid(-1),
-_reference_count(NULL)
+CgiProcess::CgiProcess()
+: isCgiProcessOpen(false),
+cgiPid(-1),
+isCgiInSocketAlive(false),
+isCgiOutSocketAlive(false),
+cgiInSocketFd(-1),
+cgiOutSocketFd(-1),
+isCgiFinished(false)
 {
 
 }
 
-CgiProcess::CgiProcess(pid_t pid):
-_pid(pid),
-_reference_count(NULL)
-{
-	if (pid < 1)
-		throw WebservException("CgiProcess::pid is invalid");
 
-	try
-	{
-		_reference_count = new size_t(1);
-	}
-	catch (std::exception &e)
-	{
-		kill(_pid, SIGKILL);
-		waitpid(_pid, NULL, 0);
-		throw;
-	}
-}
-
-CgiProcess::CgiProcess(const CgiProcess& obj):
-_pid(obj._pid),
-_reference_count(obj._reference_count)
+void CgiProcess::sigProcess(int signal)
 {
-	if (_reference_count)
-		(*_reference_count)++;
-}
-
-CgiProcess& CgiProcess::operator=(const CgiProcess& obj)
-{
-	if (this != &obj)
+	if (status == CGI_PROCESS_RUNNING)
 	{
-		release();
-		_reference_count = obj._reference_count;
-		if (_reference_count)
-			(*_reference_count)++;
-		_pid = obj._pid;
-	}
-	return (*this);
-}
-CgiProcess& CgiProcess::operator=(pid_t pid)
-{
-	if (pid < 1)
-		throw WebservException("CgiProcess::pid is invalid");
-	if (_pid != pid)
-	{
-		size_t	*new_ref_count = NULL;
-		try
+		int ret;
+		while (true)
 		{
-			new_ref_count = new size_t(1);
-		}
-		catch (std::exception &e)
-		{
-			kill(pid, SIGKILL);
-			waitpid(pid, NULL, 0);
-			throw;
-		}
-		release();
-		_pid = pid;
-		_reference_count = new_ref_count;	
-	}
-	return (*this);
-}
-
-CgiProcess::~CgiProcess()
-{
-	release();
-}
-
-void	CgiProcess::release()
-{
-	if (_reference_count)
-	{
-		(*_reference_count)--;
-		if (*_reference_count == 0)
-		{
-			kill(_pid, SIGKILL);
-			waitpid(_pid, NULL, 0);
-			delete _reference_count;
-			_reference_count = NULL;
-			_pid = -1;
+			ret = kill(cgiPid, signal);
+			if (ret != 0)
+			{
+				if (errno == EINTR)
+					continue ;
+				else
+				{
+					status = CGI_PROCESS_WAITING;
+					break ;
+				}
+			}
+			else
+			{
+				status = CGI_PROCESS_WAITING;
+				break ;
+			}
 		}
 	}
+
+	return ;
 }
 
-size_t	CgiProcess::getRefCount() const
+OptionalData<int> CgiProcess::waitProcess()
 {
-	if (_reference_count)
-		return (*_reference_count);
-	else
-		return (0);
+	OptionalData<int> returnValue;
+
+	if (status == CGI_PROCESS_WAITING)
+	{
+		int ret;
+		int waitstatus = 0;
+		while (true)
+		{
+			ret = waitpid(cgiPid, &waitstatus, WNOHANG);
+
+			if (ret < 0)
+			{
+				if (errno == EINTR)
+					continue ;
+				else
+					break ;
+			}
+			else
+			{
+				returnValue = waitstatus;
+				status = CGI_PROCESS_FINISHED;
+				break ;
+			}
+		}
+	}
+
+	return (returnValue);
 }
+

@@ -16,6 +16,8 @@
 # include "Http.hpp"
 # include "CgiProcess.hpp"
 # include "HttpCgi.hpp"
+# include "WebServ.hpp"
+# include "Shared.hpp"
 
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
@@ -54,8 +56,11 @@ private:
 	const std::vector<ServerConfig>* _serversConfig;
 	int _server_listen_port;
 	std::set<in_addr_t>	_server_ip_host;
-	std::vector<Http>	http;
-	std::vector<HttpCgi> httpCgi;			
+	
+	OptionalData<Http> http;
+	OptionalData<Shared<HttpCgi> > httpCgi;
+	//std::vector<Http>	http;
+	//std::vector<HttpCgi> httpCgi;			
 
 	// for CGI part
 	std::map<int, Socket>	*_socketMap;
@@ -80,9 +85,9 @@ public:
 	bool setupClientSocket(const std::vector<ServerConfig> *_serversConfigVec,
 		const s_webserv_event_controller& eventController, std::map<int, Socket>* socketMap);
 	bool setupCGIINSocket(const std::vector<ServerConfig> *serversConfig,
-		const s_webserv_event_controller& eventController, std::map<int, Socket>* socketMap, const HttpCgi& cgiData);
+		const s_webserv_event_controller& eventController, std::map<int, Socket>* socketMap, const Shared<HttpCgi>& cgiData);
 	bool setupCGIOUTSocket(const std::vector<ServerConfig> *serversConfig,
-		const s_webserv_event_controller& eventController, std::map<int, Socket>* socketMap, const HttpCgi& cgiData);
+		const s_webserv_event_controller& eventController, std::map<int, Socket>* socketMap, const Shared<HttpCgi>& cgiData);
 
 	// Be sure that epollFD still available !
 

@@ -50,8 +50,7 @@ int WebServ::webservCheckEvent(std::map<int , s_webserv_event>& returnEvents)
 	/* iterate to all events*/
 	for (int i = 0; i < epollWaitReturnEvent; i++)
 	{
-		returnEvents[_epollEvents[i].data.fd].epollEventData.data = &_epollEvents[i];
-		returnEvents[_epollEvents[i].data.fd].epollEventData.hasData = true;
+		returnEvents[_epollEvents[i].data.fd].epollEventData = &_epollEvents[i];
 		returnEvents[_epollEvents[i].data.fd].eventFd = _epollEvents[i].data.fd;
 	}
 
@@ -59,8 +58,7 @@ int WebServ::webservCheckEvent(std::map<int , s_webserv_event>& returnEvents)
 	std::map<int, s_webserv_custom_event>::const_iterator it = _customEventMap.begin();
 	while (it != _customEventMap.end())
 	{
-		returnEvents[it->first].customEventData.hasData = true;
-		returnEvents[it->first].customEventData.data = it->second;
+		returnEvents[it->first].customEventData = it->second;
 		returnEvents[it->first].eventFd = it->first;
 		++it;
 	}
@@ -101,15 +99,8 @@ void WebServ::run(){
 			eventIt = returnEvents.begin();
 			while (eventIt != returnEvents.end())
 			{
-
-
+				sockets[eventIt->first].handleEvent(returnEvents[eventIt->first]);
 				++eventIt;
-			}
-			while (eventsIndex < returnEventsAmount){
-				if (sockets[events[eventsIndex].data.fd].handleEvent(events[eventsIndex]) == false){
-					sockets.erase(events[eventsIndex].data.fd);
-				}
-				++eventsIndex;
 			}
 
 			// check socket timeout

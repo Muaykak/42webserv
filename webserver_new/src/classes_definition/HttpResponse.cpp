@@ -31,7 +31,7 @@ HttpResponse::~HttpResponse()
 {
 	if (cgiData.isCgiProcessOpen)
 	{
-		kill(cgiData.cgiPid, SIGTERM);
+		kill(cgiData.cgiPid, SIGKILL);
 		waitpid(cgiData.cgiPid, NULL, 0);
 	}
 

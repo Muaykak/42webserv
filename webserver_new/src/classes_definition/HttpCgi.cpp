@@ -5,6 +5,7 @@
 HttpCgi::HttpCgi()
 :_clientResponseList(NULL),
 _cgiTargetResponse(NULL),
+_cgiOutSocket(NULL),
 _isFinishedRead(false),
 _keepConnection(true),
 _cgioutProcessStatus(HTTPCGIOUT_NO_STATUS)
@@ -15,15 +16,14 @@ _cgioutProcessStatus(HTTPCGIOUT_NO_STATUS)
 HttpCgi::HttpCgi(std::list<HttpResponse>* clientResponseList,
 HttpResponse* cgiTargetResponse,
 const FileDescriptor& mainHttpSocket,
-Socket *thisCgiSocket)
+Socket *cgiOutSocket)
 : _clientResponseList(clientResponseList),
 _cgiTargetResponse(cgiTargetResponse),
-_thisCgiSocket(thisCgiSocket),
+_cgiOutSocket(cgiOutSocket),
 _mainHttpSocketFd(mainHttpSocket),
 _isFinishedRead(false),
 _keepConnection(true),
 _cgioutProcessStatus(HTTPCGIOUT_NO_STATUS)
-
 {
 	_readCgiBuffer.reserve(HTTP_READ_FROM_CGI_BUFFER_SIZE);
 }
@@ -31,11 +31,13 @@ _cgioutProcessStatus(HTTPCGIOUT_NO_STATUS)
 HttpCgi::HttpCgi(std::list<HttpResponse>* clientResponseList,
 HttpResponse* cgiTargetResponse,
 const FileDescriptor& mainHttpSocket,
-Socket *thisCgiSocket,
+Socket *cgiOutSocket,
+Socket *cgiInSocket,
 const FileDescriptor& tempReadFileFd)
 : _clientResponseList(clientResponseList),
 _cgiTargetResponse(cgiTargetResponse),
-_thisCgiSocket(thisCgiSocket),
+_cgiOutSocket(cgiOutSocket),
+_cgiInSocket(cgiInSocket),
 _mainHttpSocketFd(mainHttpSocket),
 _tempReadFileFd(tempReadFileFd),
 _isFinishedRead(false),
@@ -48,13 +50,14 @@ _cgioutProcessStatus(HTTPCGIOUT_NO_STATUS)
 HttpCgi::HttpCgi(const HttpCgi& obj)
 : _clientResponseList(obj._clientResponseList),
 _cgiTargetResponse(obj._cgiTargetResponse),
-_thisCgiSocket(obj._thisCgiSocket),
+_cgiOutSocket(obj._cgiOutSocket),
+_cgiInSocket(obj._cgiInSocket),
 _mainHttpSocketFd(obj._mainHttpSocketFd),
 _isFinishedRead(obj._isFinishedRead),
 _keepConnection(obj._keepConnection),
 _cgioutProcessStatus(obj._cgioutProcessStatus)
 {
-	if (obj._tempReadFileFd.getFd() >= 0)
+	if (obj._tempReadFileFd->getFd() >= 0)
 		_tempReadFileFd = obj._tempReadFileFd;
 	_readCgiBuffer.reserve(HTTP_READ_FROM_CGI_BUFFER_SIZE);
 }
@@ -409,12 +412,11 @@ void HttpCgi::validateCGIOUTresponse()
 			/* change the request target to new ?*/
 			newRequestData.requestData.requestTarget = string;
 
-			std::map<int, s_webserv_custom_event>& customEventMap = *_thisCgiSocket->getEventContoller().customEventMap;
+			std::map<int, s_webserv_custom_event>& customEventMap = *_cgiOutSocket->getEventContoller().customEventMap;
 
-			s_webserv_custom_event& targetCustomEvent = customEventMap[_thisCgiSocket->getSocketFD().getFd()];
+			s_webserv_custom_event& targetCustomEvent = customEventMap[_cgiOutSocket->getSocketFD().getFd()];
 
-			targetCustomEvent.httpRequestData.hasData = true;
-			targetCustomEvent.httpRequestData.data = newRequestData;
+			targetCustomEvent.httpRequestData = newRequestData;
 
 			/* now i think we should finish this CGI socket so we can reprocess all over again */
 			_keepConnection = false;
@@ -474,11 +476,11 @@ void HttpCgi::readFromCGI()
 	// use read() right?
 	ssize_t	readAmount;
 
-	readAmount = read(_thisCgiSocket->getSocketFD().getFd(), &_readCgiBuffer[0], HTTP_READ_FROM_CGI_BUFFER_SIZE);
+	readAmount = read(_cgiOutSocket->getSocketFD().getFd(), &_readCgiBuffer[0], HTTP_READ_FROM_CGI_BUFFER_SIZE);
 	// this mean done
 	if (readAmount == 0)
 	{
-		Logger::log(LC_CONN_LOG, "CGI socket out (has nothing to read).#%d:: Disconnecting..", _thisCgiSocket->getSocketFD().getFd());
+		Logger::log(LC_CONN_LOG, "CGI socket out (has nothing to read).#%d:: Disconnecting..", _cgiOutSocket->getSocketFD().getFd());
 		_isFinishedRead = true;
 
 		// something here that would remove this socket cleanly

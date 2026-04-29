@@ -76,7 +76,7 @@ const std::set<in_addr_t>& Socket::getServerIpHost() const
 }
 
 bool Socket::setupCGIOUTSocket(const std::vector<ServerConfig> *serversConfig,
-	const s_webserv_event_controller& eventController, std::map<int, Socket>* socketMap, const HttpCgi& cgiData)
+	const s_webserv_event_controller& eventController, std::map<int, Socket>* socketMap, const Shared<HttpCgi>& cgiData)
 {
 
 	if (_socketType != NO_TYPE)
@@ -99,7 +99,7 @@ bool Socket::setupCGIOUTSocket(const std::vector<ServerConfig> *serversConfig,
 	_socketMap = socketMap;
 	_serversConfig = serversConfig;
 
-	httpCgi.push_back(cgiData);
+	httpCgi = cgiData;
 
 	epoll_event event;
 	std::memset(&event, 0, sizeof(event));
@@ -117,7 +117,7 @@ bool Socket::setupCGIOUTSocket(const std::vector<ServerConfig> *serversConfig,
 }
 
 bool Socket::setupCGIINSocket(const std::vector<ServerConfig> *serversConfig,
-	const s_webserv_event_controller &eventController, std::map<int, Socket>* socketMap, const HttpCgi& cgiData)
+	const s_webserv_event_controller &eventController, std::map<int, Socket>* socketMap, const Shared<HttpCgi>& cgiData)
 {
 
 	if (_socketType != NO_TYPE)
@@ -333,7 +333,8 @@ bool Socket::setupClientSocket(const std::vector<ServerConfig> *serversConfig,
 		errorMsg += std::strerror(errno);
 		throw(WebservException(errorMsg));
 	}
-	http.push_back(Http(this, socketMap));
+
+	http = Http(this, socketMap);
 
 	_lastEventTime = std::time(NULL);
 	return (true);
@@ -347,10 +348,10 @@ bool Socket::handleEvent(const s_webserv_event &event)
 	{
 		case SERVER_SOCKET:
 		{
-			if (event.epollEventData.hasData == true)
+			if (event.epollEventData.hasData() == true)
 			{
 				// Error Handling
-				if ((event.epollEventData.data->events & EPOLLRDHUP) || (event.epollEventData.data->events & EPOLLHUP) || (event.epollEventData.data->events & EPOLLERR))
+				if ((event.epollEventData->events & EPOLLRDHUP) || (event.epollEventData->events & EPOLLHUP) || (event.epollEventData->events & EPOLLERR))
 				{
 					int error_code;
 					socklen_t len = sizeof(error_code);
@@ -369,7 +370,7 @@ bool Socket::handleEvent(const s_webserv_event &event)
 					return true;
 				}
 				// Request new connection from client
-				else if (event.epollEventData.data->events & EPOLLIN)
+				else if (event.epollEventData->events & EPOLLIN)
 				{
 					sockaddr_in client_address;
 					std::memset(&client_address, 0, sizeof(sockaddr_in));
@@ -377,7 +378,7 @@ bool Socket::handleEvent(const s_webserv_event &event)
 					int client_socket;
 					while (true)
 					{
-						client_socket = accept(event.epollEventData.data->data.fd, (sockaddr *)&client_address, &len);
+						client_socket = accept(event.epollEventData->data.fd, (sockaddr *)&client_address, &len);
 						if (client_socket > 0)
 						{
 							// need to check if cilent access to this server with the same ip that server recieves
@@ -426,7 +427,7 @@ bool Socket::handleEvent(const s_webserv_event &event)
 
 			}
 
-			if (event.customEventData.hasData == true)
+			if (event.customEventData.hasData() == true)
 			{
 				/* custom event for server socket?? don't know yet */
 				break;
@@ -435,9 +436,9 @@ bool Socket::handleEvent(const s_webserv_event &event)
 		}
 		case CLIENT_SOCKET: {
 
-			if (event.epollEventData.hasData == true)
+			if (event.epollEventData.hasData() == true)
 			{
-				if ((event.epollEventData.data->events & EPOLLRDHUP) || (event.epollEventData.data->events & EPOLLHUP) || (event.epollEventData.data->events & EPOLLERR))
+				if ((event.epollEventData->events & EPOLLRDHUP) || (event.epollEventData->events & EPOLLHUP) || (event.epollEventData->events & EPOLLERR))
 				{
 					int error_code;
 					socklen_t len = sizeof(error_code);
@@ -458,12 +459,12 @@ bool Socket::handleEvent(const s_webserv_event &event)
 				}
 				try {
 
-					if (event.epollEventData.data->events & EPOLLOUT){
-						http[0].writeToClient();
+					if (event.epollEventData->events & EPOLLOUT){
+						http->writeToClient();
 						// Handle http response
 					}
-					if (event.epollEventData.data->events & EPOLLIN){
-						http[0].readFromClient();
+					if (event.epollEventData->events & EPOLLIN){
+						http->readFromClient();
 						// Handle http request
 					}
 
@@ -486,21 +487,21 @@ bool Socket::handleEvent(const s_webserv_event &event)
 				//	return (false);
 				//}
 
-				if (http[0].isKeepConnection() == false)
+				if (http->isKeepConnection() == false)
 					return (false);
 			}
 
 			/* for custom event in client socket */
 
-			if (event.customEventData.hasData == true)
+			if (event.customEventData.hasData() == true)
 			{
 				// process local redirect here
-				if (event.customEventData.data.httpRequestData.hasData == true)
-					http[0].directRequestProcess(event.customEventData.data.httpRequestData.data);
+				if (event.customEventData->httpRequestData.hasData() == true)
+					http->directRequestProcess(event.customEventData->httpRequestData);
 			}
 
 
-			return http[0].isKeepConnection();
+			return http->isKeepConnection();
 		}
 		case CGI_FD_STDOUT: {
 			// EPOLLIN is coming here 
@@ -516,9 +517,9 @@ bool Socket::handleEvent(const s_webserv_event &event)
 
 				just read() only once and check the errno() would be more practical
 			*/
-			httpCgi[0].readFromCGI();
+			(*httpCgi)->readFromCGI();
 
-			return httpCgi[0].isKeepConnection();
+			return (*httpCgi)->isKeepConnection();
 		}
 		case CGI_FD_STDIN: {
 			/*
@@ -526,9 +527,9 @@ bool Socket::handleEvent(const s_webserv_event &event)
 				and we need to send the temporay file body to the CGI process
 			*/
 
-			httpCgi[0].sendToCGI();
+			(*httpCgi)->sendToCGI();
 
-			return httpCgi[0].isKeepConnection();
+			return (*httpCgi)->isKeepConnection();
 		}
 		default:
 		{

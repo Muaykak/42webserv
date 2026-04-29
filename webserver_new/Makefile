@@ -23,6 +23,7 @@ CLASS_HEADER_FILE =	ConfigData.hpp \
 					HttpThrowStatus.hpp \
 					OptionalData.hpp \
 					Socket.hpp \
+					Shared.hpp \
 					TempFileManager.hpp \
 					WebServ.hpp \
 					WebservException.hpp \

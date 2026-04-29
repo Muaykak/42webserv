@@ -4,22 +4,38 @@
 # include <cstdlib>
 # include "WebservException.hpp"
 # include <sys/wait.h>
+# include <ctime>
+# include "OptionalData.hpp"
+
+enum e_cgi_process_status
+{
+	CGI_PROCESS_NO_PROCESS,
+	CGI_PROCESS_RUNNING,
+	CGI_PROCESS_WAITING,
+	CGI_PROCESS_FINISHED
+};
 
 class CgiProcess {
 	private:
-		pid_t	_pid;
-		size_t	*_reference_count;
-
-		void release();
 	public:
+		e_cgi_process_status status;
+		bool isCgiProcessOpen;
+		pid_t cgiPid;
+		bool isCgiInSocketAlive;
+		bool isCgiOutSocketAlive;
+		int  cgiInSocketFd;
+		int  cgiOutSocketFd;
+		bool isCgiFinished;
+
 		CgiProcess();
-		CgiProcess(const CgiProcess& obj);
-		CgiProcess(pid_t CgiPid);
-		CgiProcess& operator=(const CgiProcess& obj);
-		CgiProcess& operator=(pid_t pid);
-		~CgiProcess();
-		pid_t	getPid() const;
-		size_t	getRefCount() const;
+
+
+		/* send sigterm to the process */
+		void sigProcess(int signal);
+
+		/* return a status if possible, because with WNOHANG may not return status yet */
+		OptionalData<int> waitProcess();
+
 };
 
 #endif
