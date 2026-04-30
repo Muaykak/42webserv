@@ -81,35 +81,35 @@ class OptionalData
 		T* operator->()
 		{
 			if (_data == NULL)
-				throw std::runtime_error("OptionalData::Accessing Null Member");
+				_data = new T();
 			return (_data);
 		}
 
 		const T* operator->() const
 		{
 			if (_data == NULL)
-				throw std::runtime_error("OptionalData::Accessing Null Member");
+				_data = new T();
 			return (_data);
 		}
 
 		T& operator*()
 		{
 			if (_data == NULL)
-				throw std::runtime_error("OptionalData::Accessing Null Member");
+				_data = new T();
 			return (*_data);
 		}
 
 		const T& operator*() const
 		{
 			if (_data == NULL)
-				throw std::runtime_error("OptionalData::Accessing Null Member");
+				_data = new T();
 			return (*_data);
 		}
 
 		operator T() const
 		{
 			if (_data == NULL)
-				throw std::runtime_error("OptionalData::Accessing Null Member");
+				_data = new T();
 			return (*_data);
 		}
 
@@ -130,20 +130,6 @@ class OptionalData
 };
 
 template <typename T>
-/*
-I think this class should need a little bit more explanation
-
-I'd been thinking about this. and come one with new idea.
-because some checking infromation i always need a variable to
-determine if which data is already have or not because some data
-is just struct or int or char and there is no possible way to 
-tell whether that variable actually has some information or not unless
-i dedicated-ly purposely create new boolean variable to tell if
-this data has some information. And I noticed that i use this kind of
-method a lot in this project. And from what i searched from google, 
-the C++17 or newer version has this kind of features but c++98 doesn't
-have that yet so
-*/
 class OptionalData<T*>
 {
 	/* template function need to implement in header*/
@@ -207,35 +193,35 @@ class OptionalData<T*>
 		T* operator->()
 		{
 			if (_data == NULL)
-				throw std::runtime_error("OptionalData::Accessing Null Member");
+				_data = T*();
 			return (*_data);
 		}
 
 		const T* operator->() const
 		{
 			if (_data == NULL)
-				throw std::runtime_error("OptionalData::Accessing Null Member");
+				_data = T*();
 			return (*_data);
 		}
 
 		T& operator*()
 		{
 			if (_data == NULL)
-				throw std::runtime_error("OptionalData::Accessing Null Member");
+				_data = T*();
 			return (*_data);
 		}
 
 		const T& operator*() const
 		{
 			if (_data == NULL)
-				throw std::runtime_error("OptionalData::Accessing Null Member");
+				_data = T*();
 			return (*_data);
 		}
 
 		operator T*() const
 		{
 			if (_data == NULL)
-				throw std::runtime_error("OptionalData::Accessing Null Member");
+				_data = T*();
 			return (*_data);
 		}
 

@@ -8,7 +8,7 @@ _cgiTargetResponse(NULL),
 _cgiOutSocket(NULL),
 _isFinishedRead(false),
 _keepConnection(true),
-_cgioutProcessStatus(HTTPCGIOUT_NO_STATUS)
+httpCgiStatus(HTTPCGI_NO_STATUS)
 {
 	_readCgiBuffer.reserve(HTTP_READ_FROM_CGI_BUFFER_SIZE);
 }
@@ -16,14 +16,14 @@ _cgioutProcessStatus(HTTPCGIOUT_NO_STATUS)
 HttpCgi::HttpCgi(std::list<HttpResponse>* clientResponseList,
 HttpResponse* cgiTargetResponse,
 const FileDescriptor& mainHttpSocket,
-Socket *cgiOutSocket)
+Socket *cgiOutSocket, Shared<CgiProcess>& cgiProcessData)
 : _clientResponseList(clientResponseList),
 _cgiTargetResponse(cgiTargetResponse),
 _cgiOutSocket(cgiOutSocket),
 _mainHttpSocketFd(mainHttpSocket),
 _isFinishedRead(false),
 _keepConnection(true),
-_cgioutProcessStatus(HTTPCGIOUT_NO_STATUS)
+httpCgiStatus(HTTPCGI_READING_RESPONSE_HEADER)
 {
 	_readCgiBuffer.reserve(HTTP_READ_FROM_CGI_BUFFER_SIZE);
 }
@@ -33,7 +33,8 @@ HttpResponse* cgiTargetResponse,
 const FileDescriptor& mainHttpSocket,
 Socket *cgiOutSocket,
 Socket *cgiInSocket,
-const FileDescriptor& tempReadFileFd)
+const FileDescriptor& tempReadFileFd,
+Shared<CgiProcess>& cgiProcessData)
 : _clientResponseList(clientResponseList),
 _cgiTargetResponse(cgiTargetResponse),
 _cgiOutSocket(cgiOutSocket),
@@ -42,7 +43,7 @@ _mainHttpSocketFd(mainHttpSocket),
 _tempReadFileFd(tempReadFileFd),
 _isFinishedRead(false),
 _keepConnection(true),
-_cgioutProcessStatus(HTTPCGIOUT_NO_STATUS)
+httpCgiStatus(HTTPCGI_SENDING_TO_CGI)
 {
 	_readCgiBuffer.reserve(HTTP_READ_FROM_CGI_BUFFER_SIZE);
 }
@@ -55,7 +56,7 @@ _cgiInSocket(obj._cgiInSocket),
 _mainHttpSocketFd(obj._mainHttpSocketFd),
 _isFinishedRead(obj._isFinishedRead),
 _keepConnection(obj._keepConnection),
-_cgioutProcessStatus(obj._cgioutProcessStatus)
+httpCgiStatus(obj.httpCgiStatus)
 {
 	if (obj._tempReadFileFd->getFd() >= 0)
 		_tempReadFileFd = obj._tempReadFileFd;
@@ -211,10 +212,7 @@ void HttpCgi::generate5xxCGIOUTresponseError(unsigned int errorCode, const std::
 
 void HttpCgi::parsingCGIOUTresponseHeader()
 {
-	if (_cgioutProcessStatus == HTTPCGIOUT_NO_STATUS)
-		_cgioutProcessStatus = HTTPCGIOUT_READING_RESPONSE_HEADER;
-
-	if (_cgioutProcessStatus != HTTPCGIOUT_READING_RESPONSE_HEADER)
+	if (httpCgiStatus= HTTPCGI_READING_RESPONSE_HEADER)
 		return ;
 
 	size_t	responseBuffSize = _responseBuffer.size();
@@ -227,7 +225,7 @@ void HttpCgi::parsingCGIOUTresponseHeader()
 	size_t temp;
 
 	size_t endlinePos;
-	while (_cgioutProcessStatus == HTTPCGIOUT_READING_RESPONSE_HEADER)
+	while (httpCgiStatus == HTTPCGI_READING_RESPONSE_HEADER)
 	{
 		endlinePos = _responseBuffer.find('\n', currIndex);
 
@@ -251,7 +249,7 @@ void HttpCgi::parsingCGIOUTresponseHeader()
 			but how about the CRLF ?? simple, the endlinePos is need
 			to be at currIndex + 1 and currIndex needs to be '\r' */
 
-			_cgioutProcessStatus = HTTPCGIOUT_VALIDATING_RESPONSE;
+			httpCgiStatus = HTTPCGI_VALIDATING_RESPONSE;
 			if (currIndex + 2 >= responseBuffSize)
 				_responseBuffer.clear();
 			else
@@ -352,7 +350,7 @@ void HttpCgi::validateCGIOUTresponse()
 {
 	/* check the response header overall */
 
-	if (_cgioutProcessStatus != HTTPCGIOUT_VALIDATING_RESPONSE)
+	if (httpCgiStatus != HTTPCGI_VALIDATING_RESPONSE)
 		return ;
 	/* would not tolerate if the response has no header */
 	if (_responseHeaderCGIOUT.empty())
@@ -421,7 +419,7 @@ void HttpCgi::validateCGIOUTresponse()
 			/* now i think we should finish this CGI socket so we can reprocess all over again */
 			_keepConnection = false;
 			_isFinishedRead = true;
-			_cgioutProcessStatus = HTTPCGIOUT_FINISHED;
+			httpCgiStatus = HTTPCGI_FINISHED;
 			return ;
 		}
 		else
@@ -507,4 +505,9 @@ void HttpCgi::readFromCGI()
 void HttpCgi::sendToCGI()
 {
 	ssize_t	writeAmount;
+}
+
+e_httpcgi_process_status HttpCgi::status() const
+{
+	return (httpCgiStatus);
 }

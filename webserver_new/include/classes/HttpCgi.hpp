@@ -6,10 +6,11 @@
 
 enum e_httpcgi_process_status
 {
-	HTTPCGIOUT_NO_STATUS,
-	HTTPCGIOUT_READING_RESPONSE_HEADER,
-	HTTPCGIOUT_VALIDATING_RESPONSE,
-	HTTPCGIOUT_FINISHED
+	HTTPCGI_NO_STATUS,
+	HTTPCGI_SENDING_TO_CGI,
+	HTTPCGI_READING_RESPONSE_HEADER,
+	HTTPCGI_VALIDATING_RESPONSE,
+	HTTPCGI_FINISHED
 };
 
 class HttpCgi {
@@ -19,6 +20,8 @@ class HttpCgi {
 		Socket	*_cgiOutSocket;
 		OptionalData<Socket *> _cgiInSocket;
 
+		e_httpcgi_process_status httpCgiStatus;
+		Shared<CgiProcess> cgiProcessData;
 		// need the parent client socket to set the
 		// epoll_ctl()
 		FileDescriptor	_mainHttpSocketFd;
@@ -30,7 +33,6 @@ class HttpCgi {
 		OptionalData<FileDescriptor> _tempReadFileFd;
 
 		// FOR CGIOUT
-		e_httpcgi_process_status _cgioutProcessStatus;
 		std::map<std::string, std::string> _responseHeaderCGIOUT;
 
 		void generate5xxCGIOUTresponseError(unsigned int errorCode, const std::string& throwMsg);
@@ -49,23 +51,28 @@ class HttpCgi {
 		bool _isFinishedRead;
 		bool _keepConnection;
 	public:
+
+
 		HttpCgi();
 		HttpCgi(const HttpCgi& obj);
 
 		HttpCgi(std::list<HttpResponse>* clientResponseList,
 		HttpResponse* cgiTargetResponse,
 		const FileDescriptor& mainHttpSocket,
-		Socket *cgiOutSocket);
+		Socket *cgiOutSocket, Shared<CgiProcess>& cgiProcessData);
 		HttpCgi(std::list<HttpResponse>* clientResponseList,
 		HttpResponse* cgiTargetResponse,
 		const FileDescriptor& mainHttpSocket,
-		Socket *cgiOutSocket, Socket* cgiInSocket, const FileDescriptor& tempReadFileFd);
+		Socket *cgiOutSocket, Socket* cgiInSocket,
+		const FileDescriptor& tempReadFileFd,
+		Shared<CgiProcess>& cgiProcessData);
 
 		HttpCgi& operator=(const HttpCgi& obj); // declare but no implement
 		~HttpCgi();
 
 		bool isKeepConnection() const;
 
+		e_httpcgi_process_status status() const;
 
 		void sendToCGI();
 		void readFromCGI();

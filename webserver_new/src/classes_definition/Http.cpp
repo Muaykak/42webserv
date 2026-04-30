@@ -1843,22 +1843,27 @@ void	Http::handleGetRequest(HttpRequest& requestData, bool isEndWithSlash, const
 				{
 					HttpResponse& targetResponse = *requestData.responseTargetPtr;
 
+					Shared<CgiProcess> tempCgiProcess;
+
+					tempCgiProcess->isCgiOutSocketAlive = true;
+					tempCgiProcess->cgiPid = pid;
+					tempCgiProcess->cgiOutSocketFd = pipe_out[0];
+					tempCgiProcess->isCgiProcessOpen = true;
+					tempCgiProcess->status = CGI_PROCESS_RUNNING;
+
 					socketMap.insert(std::make_pair(pipe_out[0], Socket(pipe_out[0])));
 					socketMap[pipe_out[0]].setupCGIOUTSocket(clientSocket.getServersConfigPtr(),
 					clientSocket.getEventContoller(), &socketMap,
 					HttpCgi(&_httpResponseList,
-						&_httpResponseList.back(),
+						httpRequest.responseTargetPtr,
 						clientSocket.getSocketFD(),
-						&(socketMap[pipe_out[0]])));
+						&(socketMap[pipe_out[0]]),
+						tempCgiProcess));
 
-					targetResponse.cgiData.isCgiOutSocketAlive = true;
-					targetResponse.cgiData.cgiPid = pid;
-					targetResponse.cgiData.cgiOutSocketFd = pipe_out[0];
-					targetResponse.cgiData.isCgiProcessOpen = true;
+					targetResponse.cgiProcessData = tempCgiProcess;
 					targetResponse.socketMapPtr = &socketMap;
 					targetResponse.targetServer = requestData.serverData.targetServerPtr;
 					targetResponse.targetLocationBlock = requestData.serverData.targetLocationBlockPtr;
-					targetResponse.cgiData.isUseCgi = true;
 
 					targetResponse.httpRequestData.push_back(requestData);
 
@@ -3177,31 +3182,38 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 					{
 						HttpResponse& targetResponse = *requestData.responseTargetPtr;
 
+						Shared<CgiProcess>	tempCgiData;
+
+						tempCgiData->isCgiOutSocketAlive = true;
+						tempCgiData->cgiPid = pid;
+						tempCgiData->status = CGI_PROCESS_RUNNING;
+						tempCgiData->cgiOutSocketFd = pipe_out[0];
+						tempCgiData->isCgiProcessOpen = true;
+						tempCgiData->cgiInSocketFd = pipe_in[1];
+						tempCgiData->isCgiInSocketAlive = true;
+						tempCgiData->isCgiFinished = false;
+
+						Shared<HttpCgi> tempShareHttpCgi(HttpCgi(&_httpResponseList,
+							httpRequest.responseTargetPtr,
+							clientSocket.getSocketFD(),
+							&(socketMap[pipe_out[0]]),
+							&(socketMap[pipe_in[1]]),
+							fd, tempCgiData));
+
 						socketMap.insert(std::make_pair(pipe_out[0], Socket(pipe_out[0])));
 						socketMap[pipe_out[0]].setupCGIOUTSocket(clientSocket.getServersConfigPtr(),
 						clientSocket.getEventContoller(), &socketMap,
-						HttpCgi(&_httpResponseList, &_httpResponseList.back(),
-						clientSocket.getSocketFD(), &(socketMap[pipe_out[0]])));
+						tempShareHttpCgi);
 
 						socketMap.insert(std::make_pair(pipe_in[1], Socket(pipe_in[1])));
 						socketMap[pipe_out[0]].setupCGIINSocket(clientSocket.getServersConfigPtr(),
 						clientSocket.getEventContoller(), &socketMap,
-						HttpCgi(&_httpResponseList, &_httpResponseList.back(),
-						clientSocket.getSocketFD(), &(socketMap[pipe_out[0]]), fd));
+						tempShareHttpCgi);
 
-
-						targetResponse.cgiData.isCgiOutSocketAlive = true;
-						targetResponse.cgiData.cgiPid = pid;
-						targetResponse.cgiData.cgiOutSocketFd = pipe_out[0];
-						targetResponse.cgiData.isCgiProcessOpen = true;
-
-						targetResponse.cgiData.cgiInSocketFd = pipe_in[1];
-						targetResponse.cgiData.isCgiInSocketAlive = true;
-
+						targetResponse.cgiProcessData = tempCgiData;
 						targetResponse.socketMapPtr = &socketMap;
 						targetResponse.targetServer = requestData.serverData.targetServerPtr;
 						targetResponse.targetLocationBlock = requestData.serverData.targetLocationBlockPtr;
-						targetResponse.cgiData.isUseCgi = true;
 
 						targetResponse.httpRequestData.push_back(requestData);
 					}

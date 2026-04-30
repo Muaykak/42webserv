@@ -17,6 +17,7 @@ enum e_cgi_process_status
 
 class CgiProcess {
 	private:
+		OptionalData<time_t> lastSignalTimeStamp;
 	public:
 		e_cgi_process_status status;
 		bool isCgiProcessOpen;
@@ -28,6 +29,7 @@ class CgiProcess {
 		bool isCgiFinished;
 
 		CgiProcess();
+		~CgiProcess();
 
 
 		/* send sigterm to the process */
@@ -36,6 +38,7 @@ class CgiProcess {
 		/* return a status if possible, because with WNOHANG may not return status yet */
 		OptionalData<int> waitProcess();
 
+		const OptionalData<time_t>& getTimeLastSigTimeStamp() const;
 };
 
 #endif

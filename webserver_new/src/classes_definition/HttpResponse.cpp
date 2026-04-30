@@ -15,33 +15,26 @@ socketMapPtr(NULL),
 targetServer(NULL),
 targetLocationBlock(NULL)
 {
-	cgiData.isUseCgi = false;
-	cgiData.isCgiProcessOpen = false;
-	cgiData.cgiPid = -1;
-	cgiData.isCgiInSocketAlive = false;
-	cgiData.isCgiOutSocketAlive = false;
-	cgiData.cgiInSocketFd = -1;
-	cgiData.cgiOutSocketFd = -1;
-	cgiData.isCgiFinished = false;
-
 	_sendBuffer.reserve(HTTP_SEND_BUFFER);
 }
 
 HttpResponse::~HttpResponse()
 {
-	if (cgiData.isCgiProcessOpen)
+	if (cgiProcessData.hasData())
 	{
-		kill(cgiData.cgiPid, SIGKILL);
-		waitpid(cgiData.cgiPid, NULL, 0);
+		if ((*cgiProcessData)->isCgiProcessOpen == true)
+		{
+			(*cgiProcessData)->sigProcess(SIGTERM);
+		}
 	}
 
-	if (socketMapPtr != NULL)
-	{
-		if (cgiData.isCgiInSocketAlive)
-			socketMapPtr->erase(cgiData.cgiInSocketFd);
-		if (cgiData.isCgiOutSocketAlive)
-			socketMapPtr->erase(cgiData.cgiOutSocketFd);
-	}
+	// if (socketMapPtr != NULL)
+	// {
+	// 	if (cgiData.isCgiInSocketAlive)
+	// 		socketMapPtr->erase(cgiData.cgiInSocketFd);
+	// 	if (cgiData.isCgiOutSocketAlive)
+	// 		socketMapPtr->erase(cgiData.cgiOutSocketFd);
+	// }
 }
 
 void HttpResponse::pushNewResponseBuff(s_response_buff& newBuff)
@@ -292,7 +285,7 @@ ssize_t	HttpResponse::sendHttpResponse(const Socket& clientSocket)
 		if (responseBodyType == HTTP_RESPONSE_BODY_FILE && isReachEOF == false)
 			_isComplete = false;
 
-		if (cgiData.isUseCgi == true && cgiData.isCgiFinished == false)
+		if (cgiProcessData.hasData() == true && (*cgiProcessData)->isCgiFinished == false)
 			_isComplete = false;
 
 	}

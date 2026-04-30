@@ -30,6 +30,11 @@
 
 #define MAX_HTTP_LOCAL_REDIRECT_COUNT 10
 
+/* max seconds to force SIGKILL to the CGI process
+ usually, after we send SIGTERM to the process for a while*/
+ /* in seconds */
+#define MAX_HTTP_CGI_PROCESS_WAIT_SIGTERM 10
+
 
 // Color Text
 #define LC_RED "\033[31m"

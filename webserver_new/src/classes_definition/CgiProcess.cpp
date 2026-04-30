@@ -8,9 +8,30 @@ isCgiInSocketAlive(false),
 isCgiOutSocketAlive(false),
 cgiInSocketFd(-1),
 cgiOutSocketFd(-1),
-isCgiFinished(false)
+isCgiFinished(false),
+lastSignalTimeStamp(0)
 {
 
+}
+
+CgiProcess::~CgiProcess()
+{
+	if (status != CGI_PROCESS_NO_PROCESS && status != CGI_PROCESS_FINISHED)
+	{
+		int ret;
+		while (true)
+		{
+			ret = kill(cgiPid, SIGKILL);
+			if (ret != 0)
+			{
+				if (errno == EINTR)
+					continue;
+			}
+			waitpid(cgiPid, NULL, 0);
+				break ;
+			/* should announce something when the process is killed */
+		}
+	}
 }
 
 
@@ -28,12 +49,14 @@ void CgiProcess::sigProcess(int signal)
 					continue ;
 				else
 				{
+					lastSignalTimeStamp = std::time(NULL);
 					status = CGI_PROCESS_WAITING;
 					break ;
 				}
 			}
 			else
 			{
+				lastSignalTimeStamp = std::time(NULL);
 				status = CGI_PROCESS_WAITING;
 				break ;
 			}
@@ -72,5 +95,10 @@ OptionalData<int> CgiProcess::waitProcess()
 	}
 
 	return (returnValue);
+}
+
+const OptionalData<time_t>& CgiProcess::getTimeLastSigTimeStamp() const
+{
+	return (lastSignalTimeStamp);
 }
 

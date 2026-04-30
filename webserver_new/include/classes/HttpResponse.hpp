@@ -9,6 +9,7 @@
 # include "./utility_function.hpp"
 # include <ctime>
 # include "../../include/classes/FileDescriptor.hpp"
+# include "CgiProcess.hpp"
 
 class Socket;
 
@@ -19,17 +20,17 @@ enum e_http_response_body_type
 	HTTP_RESPONSE_BODY_FILE
 };
 
-struct s_http_response_cgidata
-{
-		bool isUseCgi;
-		bool isCgiProcessOpen;
-		pid_t cgiPid;
-		bool isCgiInSocketAlive;
-		bool isCgiOutSocketAlive;
-		int  cgiInSocketFd;
-		int  cgiOutSocketFd;
-		bool isCgiFinished;
-};
+// struct s_http_response_cgidata
+// {
+// 		bool isUseCgi;
+// 		bool isCgiProcessOpen;
+// 		pid_t cgiPid;
+// 		bool isCgiInSocketAlive;
+// 		bool isCgiOutSocketAlive;
+// 		int  cgiInSocketFd;
+// 		int  cgiOutSocketFd;
+// 		bool isCgiFinished;
+// };
 
 class HttpResponse {
 	private:
@@ -67,7 +68,9 @@ class HttpResponse {
 		std::vector<HttpRequest> httpRequestData;
 
 		// all about cgi
-		s_http_response_cgidata cgiData;
+
+		// s_http_response_cgidata cgiData;
+		OptionalData<Shared<CgiProcess> > cgiProcessData;
 
 		std::map<int, Socket> *socketMapPtr;
 		const ServerConfig*	targetServer;
