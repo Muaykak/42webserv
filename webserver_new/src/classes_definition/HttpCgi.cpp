@@ -67,10 +67,6 @@ HttpCgi::~HttpCgi()
 {
 }
 
-bool HttpCgi::isKeepConnection() const
-{
-	return (_keepConnection);
-}
 
 void HttpCgi::generate5xxCGIOUTresponseError(unsigned int errorCode, const std::string& throwMsg)
 {
@@ -471,6 +467,8 @@ void HttpCgi::processCGIOUTresponseBuffer()
 
 void HttpCgi::readFromCGI()
 {
+	if (cgiProcessData->status != CGI_PROCESS_RUNNING)
+		return ;
 	// use read() right?
 	ssize_t	readAmount;
 
@@ -504,10 +502,98 @@ void HttpCgi::readFromCGI()
 
 void HttpCgi::sendToCGI()
 {
+	if (cgiProcessData->status != CGI_PROCESS_RUNNING)
+		return ;
+
 	ssize_t	writeAmount;
+}
+
+bool HttpCgi::isKeepConnection(const Socket* currentCgiSocket) const
+{
+	if (currentCgiSocket == NULL)
+		throw WebservException("HttpCgi::isKeepConnection::cannot be NULL in argument");
+
+	/* for cgi in socket */
+	if (_cgiInSocket.hasData() == true && &(*_cgiInSocket) == currentCgiSocket)
+	{
+		if (httpCgiStatus != HTTPCGI_SENDING_TO_CGI)
+			return (false);
+		else
+			return (true);
+	}
+
+	/* this is for cgi out */
+	if (currentCgiSocket == _cgiOutSocket)
+	{
+		if (httpCgiStatus == HTTPCGI_CLOSED_CGI)
+			return (false);
+		else
+			return (true);
+	}
+
+	return (false);
 }
 
 e_httpcgi_process_status HttpCgi::status() const
 {
 	return (httpCgiStatus);
+}
+
+void HttpCgi::processCGI(Socket* currentSocket)
+{
+	if (currentSocket == NULL)
+		throw WebservException("HttpCgi::processCgi::don't accept NULL pointer");
+
+	if (cgiProcessData->status != CGI_PROCESS_RUNNING)
+	{
+		if (cgiProcessData->status == NO_STATUS)
+			throw WebservException("HttpCgi::processCgi::CgiProcessData->status cannot be NO_STATUS");
+
+		if (cgiProcessData->status == CGI_PROCESS_WAITING)
+		{
+			httpCgiStatus = HTTPCGI_FINISHED;
+		}
+	}
+
+	if (httpCgiStatus != HTTPCGI_FINISHED)
+	{
+		if (currentSocket == _cgiOutSocket)
+		{
+			readFromCGI();
+		}
+		else if (_cgiInSocket.hasData() == true && currentSocket == &(*_cgiInSocket))
+		{
+			sendToCGI();
+		}
+	}
+
+	if (httpCgiStatus == HTTPCGI_FINISHED)
+	{
+		if (_cgiInSocket.hasData() == true && &(*_cgiInSocket) == currentSocket)
+		{
+			/* should announce to close socket in here */
+			return ;
+		}
+
+		/* here is for cgi out */
+		if (cgiProcessData->status == CGI_PROCESS_RUNNING)
+		{
+			/* wanna gracefully exit by SIGTERM process */
+			cgiProcessData->sigProcess(SIGTERM);
+		}
+
+		if (cgiProcessData->status == CGI_PROCESS_WAITING)
+		{
+			OptionalData<int> waitstatus = cgiProcessData->waitProcess();
+
+			if (waitstatus.hasData() == true)
+			{
+				/* you can say the CGI process exit status here */
+				cgiProcessData->status = CGI_PROCESS_FINISHED;
+				httpCgiStatus = HTTPCGI_CLOSED_CGI;
+			}
+		}
+	}
+
+	return ;
 }

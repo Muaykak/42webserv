@@ -10,7 +10,8 @@ enum e_httpcgi_process_status
 	HTTPCGI_SENDING_TO_CGI,
 	HTTPCGI_READING_RESPONSE_HEADER,
 	HTTPCGI_VALIDATING_RESPONSE,
-	HTTPCGI_FINISHED
+	HTTPCGI_FINISHED,
+	HTTPCGI_CLOSED_CGI
 };
 
 class HttpCgi {
@@ -50,6 +51,9 @@ class HttpCgi {
 
 		bool _isFinishedRead;
 		bool _keepConnection;
+
+		void sendToCGI();
+		void readFromCGI();
 	public:
 
 
@@ -70,12 +74,11 @@ class HttpCgi {
 		HttpCgi& operator=(const HttpCgi& obj); // declare but no implement
 		~HttpCgi();
 
-		bool isKeepConnection() const;
+		bool isKeepConnection(const Socket* currentCgiSocket) const;
 
 		e_httpcgi_process_status status() const;
 
-		void sendToCGI();
-		void readFromCGI();
+		void processCGI(Socket* currentSocket);
 };
 
 #endif
