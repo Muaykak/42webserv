@@ -99,7 +99,10 @@ void WebServ::run(){
 			eventIt = returnEvents.begin();
 			while (eventIt != returnEvents.end())
 			{
-				sockets[eventIt->first].handleEvent(returnEvents[eventIt->first]);
+				if (sockets[eventIt->first].handleEvent(returnEvents[eventIt->first]) == false);
+				{
+					sockets.erase(eventIt->first);
+				}
 				++eventIt;
 			}
 
@@ -118,7 +121,30 @@ void WebServ::run(){
 							continue ;
 						}
 					}
+					else if (socketIt->second.getServerSockerType() == CGI_FD_STDOUT)
+					{
+						/* check both the output time out and closing process timeout*/
+						
+						/* check normal timeout connection first*/
+						HttpCgi& httpCgi = **socketIt->second.getHttpCgi();
+
+						if (httpCgi.status() == HTTPCGI_SENDING_TO_CGI)
+						{
+							/* meaning that it would okay because we not finished sending the data to cgi yet
+							so the process doesn't have anything to send us yet*/
+							return ;
+						}
+
+						if (httpCgi.status() != HTTPCGI_FINISHED && httpCgi.status() != HTTPCGI_CLOSED_CGI)
+						{
+							if (std::difftime(currentTime, socketIt->second.getLastEventTime()) >= WEBSERV_CGI_SOCKET_TIMEOUT_SECOND)
+							{
+								httpCgi.forceSigTerm();
+							}
+						}
+					}
 					++socketIt;
+
 				}
 			}
 		}

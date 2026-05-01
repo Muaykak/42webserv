@@ -20,6 +20,11 @@
 #define WEBSERV_CLIENT_SOCKET_TIMEOUT_SECOND 15.0
 #define WEBSERV_CGI_SOCKET_TIMEOUT_SECOND 15.0
 
+/* max seconds to force SIGKILL to the CGI process
+ usually, after we send SIGTERM to the process for a while*/
+ /* in seconds */
+#define MAX_HTTP_CGI_PROCESS_WAIT_SIGTERM 10
+
 // limit to prevent client sending too much request
 #define	MAX_REQUEST_BUFFER_SIZE 8192
 
@@ -30,10 +35,6 @@
 
 #define MAX_HTTP_LOCAL_REDIRECT_COUNT 10
 
-/* max seconds to force SIGKILL to the CGI process
- usually, after we send SIGTERM to the process for a while*/
- /* in seconds */
-#define MAX_HTTP_CGI_PROCESS_WAIT_SIGTERM 10
 
 
 // Color Text

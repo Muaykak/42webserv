@@ -100,6 +100,7 @@ public:
 	time_t	getLastEventTime() const;
 	e_socket_type	getServerSockerType() const;
 
+	OptionalData<Shared<HttpCgi> >& getHttpCgi();
 };
 
 #endif

@@ -517,9 +517,9 @@ bool Socket::handleEvent(const s_webserv_event &event)
 
 				just read() only once and check the errno() would be more practical
 			*/
-			(*httpCgi)->readFromCGI();
+			(*httpCgi)->processCGI(this);
 
-			return (*httpCgi)->isKeepConnection();
+			return (*httpCgi)->isKeepConnection(this);
 		}
 		case CGI_FD_STDIN: {
 			/*
@@ -527,9 +527,9 @@ bool Socket::handleEvent(const s_webserv_event &event)
 				and we need to send the temporay file body to the CGI process
 			*/
 
-			(*httpCgi)->sendToCGI();
+			(*httpCgi)->processCGI(this);
 
-			return (*httpCgi)->isKeepConnection();
+			return (*httpCgi)->isKeepConnection(this);
 		}
 		default:
 		{
@@ -559,4 +559,9 @@ time_t	Socket::getLastEventTime() const
 e_socket_type Socket::getServerSockerType() const
 {
 	return (_socketType);
+}
+
+OptionalData<Shared<HttpCgi> >& Socket::getHttpCgi()
+{
+	return (httpCgi);
 }

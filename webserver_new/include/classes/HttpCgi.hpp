@@ -52,8 +52,8 @@ class HttpCgi {
 		bool _isFinishedRead;
 		bool _keepConnection;
 
-		void sendToCGI();
-		void readFromCGI();
+		void sendToCGI(Socket* currentSocket);
+		void readFromCGI(Socket* currentSocket);
 	public:
 
 
@@ -76,9 +76,14 @@ class HttpCgi {
 
 		bool isKeepConnection(const Socket* currentCgiSocket) const;
 
-		e_httpcgi_process_status status() const;
+		CgiProcess& cgiProcess();
+
+		e_httpcgi_process_status& status();
 
 		void processCGI(Socket* currentSocket);
+
+		void forceSigTerm();
+		void forceSigKill();
 };
 
 #endif

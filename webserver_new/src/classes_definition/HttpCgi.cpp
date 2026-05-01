@@ -65,6 +65,32 @@ httpCgiStatus(obj.httpCgiStatus)
 
 HttpCgi::~HttpCgi()
 {
+	/* heereree */
+	if (httpCgiStatus == HTTPCGI_SENDING_TO_CGI || httpCgiStatus == HTTPCGI_READING_RESPONSE_HEADER)
+	{
+		/* if this HttpCgi object, during the process that we not finish working with Cgi process yet
+		meaning that we */
+
+		try
+		{
+			generate5xxCGIOUTresponseError(500, "Internal Error::CGI closed unfinished");
+		}
+		catch (HttpThrowStatus &e)
+		{
+			Logger::log(LC_INFO, "Http::CgiSocket#%d::response with status code %d::%s", _cgiOutSocket->getSocketFD().getFd(), e.statusCode(), e.message());
+		}
+		catch (std::exception &e)
+		{
+			Logger::log(LC_INFO, "CgiSocket#%d::Error Occurred when writing error response::%s", _cgiOutSocket->getSocketFD().getFd(), e.what());
+		}
+		catch (...)
+		{
+			Logger::log(LC_INFO, "CgiSocket#%d::unknown error", _cgiOutSocket->getSocketFD().getFd());
+		}
+
+		httpCgiStatus = HTTPCGI_FINISHED;
+	}
+
 }
 
 
@@ -465,7 +491,7 @@ void HttpCgi::processCGIOUTresponseBuffer()
 }
 
 
-void HttpCgi::readFromCGI()
+void HttpCgi::readFromCGI(Socket* currentSocket)
 {
 	if (cgiProcessData->status != CGI_PROCESS_RUNNING)
 		return ;
@@ -496,11 +522,27 @@ void HttpCgi::readFromCGI()
 		/* we can try the same method from http here. but the implementation
 		is a bit different from Http class so it would be kinda the same but it's not
 		*/
+		try
+		{
+			processCGIOUTresponseBuffer();
+		}
+		catch (HttpThrowStatus &e)
+		{
+			Logger::log(LC_INFO, "Http::CgiSocket#%d::response with status code %d::%s", currentSocket->getSocketFD().getFd(), e.statusCode(), e.message());
+		}
+		catch (std::exception &e)
+		{
+
+		}
+		catch (...)
+		{
+
+		}
 	}
 	return ;
 }
 
-void HttpCgi::sendToCGI()
+void HttpCgi::sendToCGI(Socket* currentSocket)
 {
 	if (cgiProcessData->status != CGI_PROCESS_RUNNING)
 		return ;
@@ -534,7 +576,7 @@ bool HttpCgi::isKeepConnection(const Socket* currentCgiSocket) const
 	return (false);
 }
 
-e_httpcgi_process_status HttpCgi::status() const
+e_httpcgi_process_status& HttpCgi::status()
 {
 	return (httpCgiStatus);
 }
@@ -559,11 +601,11 @@ void HttpCgi::processCGI(Socket* currentSocket)
 	{
 		if (currentSocket == _cgiOutSocket)
 		{
-			readFromCGI();
+			readFromCGI(currentSocket);
 		}
 		else if (_cgiInSocket.hasData() == true && currentSocket == &(*_cgiInSocket))
 		{
-			sendToCGI();
+			sendToCGI(currentSocket);
 		}
 	}
 
@@ -596,4 +638,47 @@ void HttpCgi::processCGI(Socket* currentSocket)
 	}
 
 	return ;
+}
+
+void HttpCgi::forceSigTerm()
+{
+	if (httpCgiStatus != HTTPCGI_FINISHED && httpCgiStatus != HTTPCGI_CLOSED_CGI)
+	{
+		try
+		{
+			generate5xxCGIOUTresponseError(500, "Internal Error::CGI closed Timeout");
+		}
+		catch (HttpThrowStatus &e)
+		{
+			Logger::log(LC_INFO, "Http::CgiSocket#%d::response with status code %d::%s", _cgiOutSocket->getSocketFD().getFd(), e.statusCode(), e.message());
+		}
+		catch (std::exception &e)
+		{
+			Logger::log(LC_INFO, "CgiSocket#%d::Error Occurred when writing error response::%s", _cgiOutSocket->getSocketFD().getFd(), e.what());
+		}
+		catch (...)
+		{
+			Logger::log(LC_INFO, "CgiSocket#%d::unknown error", _cgiOutSocket->getSocketFD().getFd());
+		}
+
+		if (cgiProcessData->status == CGI_PROCESS_RUNNING)
+			cgiProcessData->sigProcess(SIGTERM);
+			
+		httpCgiStatus = HTTPCGI_FINISHED;
+
+		OptionalData<int> waitStatus = cgiProcessData->waitProcess();
+
+		if (waitStatus.hasData())
+		{
+			/* can tell the exit code of the process here*/
+			httpCgiStatus = HTTPCGI_CLOSED_CGI;
+		}
+	}
+
+	/* this function will make the httpCgiStatus either HTTPCGI_FINISHED or HTTPCGI_CLOSED_CGI */
+}
+
+CgiProcess& HttpCgi::cgiProcess()
+{
+	return (*cgiProcessData);
 }
