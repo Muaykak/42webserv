@@ -142,6 +142,58 @@ void WebServ::run(){
 								httpCgi.forceSigTerm();
 							}
 						}
+
+						if (httpCgi.status() == HTTPCGI_FINISHED)
+						{
+							/* check if it close the proess in the given time or not*/
+
+							OptionalData<int> statusWait = httpCgi.getCgiProcess().waitProcess();
+
+							if(statusWait.hasData() == true)
+							{
+								/* here we can specify the status of waitpid furthermore*/
+
+								/* this mean the process is quit with sigterm and wait receives the return status
+								correctly*/
+								Logger::log(LC_INFO, "Closing Cgi Socket#%d::gracefully terminate the process", socketIt->first);
+								sockets.erase(socketIt++);
+								continue;
+							}
+
+							/* if the statusWait has no data, meaning that the process is not terminated by
+							the signal yet, so we need to check if it takes too much time*/
+							if (std::difftime(currentTime, httpCgi.getCgiProcess().getTimeLastSigTimeStamp()) >= MAX_HTTP_CGI_PROCESS_WAIT_SIGTERM)
+							{
+								Logger::log(LC_INFO, "Closing Cgi Socket#%d::force terminate with SIGKILL to CGI process", socketIt->first);
+								sockets.erase(socketIt++);
+								continue;
+							}
+						}
+					}
+					else if (socketIt->second.getServerSockerType() == CGI_FD_STDIN)
+					{
+						/* here is that if it takes too much time to send data CGI, what that i can
+						imagine of is the body that we need to send to CGI is too large and but the main
+						point is the EPOLLIN takes too much time */
+						
+						HttpCgi& httpCgi = **socketIt->second.getHttpCgi();
+
+						if (httpCgi.status() == HTTPCGI_SENDING_TO_CGI)
+						{
+							if (std::difftime(currentTime, socketIt->second.getLastEventTime()) >= WEBSERV_CGI_SOCKET_TIMEOUT_SECOND)
+							{
+								Logger::log(LC_INFO, "Closing Cgi In Socket#%d::due to timeout", socketIt->first);
+								sockets.erase(socketIt++);
+								continue;
+							}
+						}
+						else
+						{
+							/* if the httpCgiStatus is already finished sending, then should delete the socket also */
+							Logger::log(LC_INFO, "Closing Cgi In Socket#%d::finished sending to CGI", socketIt->first);
+							sockets.erase(socketIt++);
+							continue;
+						}
 					}
 					++socketIt;
 

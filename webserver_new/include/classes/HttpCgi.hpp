@@ -76,14 +76,12 @@ class HttpCgi {
 
 		bool isKeepConnection(const Socket* currentCgiSocket) const;
 
-		CgiProcess& cgiProcess();
-
 		e_httpcgi_process_status& status();
 
 		void processCGI(Socket* currentSocket);
+		CgiProcess& getCgiProcess();
 
 		void forceSigTerm();
-		void forceSigKill();
 };
 
 #endif

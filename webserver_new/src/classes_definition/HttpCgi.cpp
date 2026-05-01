@@ -678,7 +678,7 @@ void HttpCgi::forceSigTerm()
 	/* this function will make the httpCgiStatus either HTTPCGI_FINISHED or HTTPCGI_CLOSED_CGI */
 }
 
-CgiProcess& HttpCgi::cgiProcess()
+CgiProcess& HttpCgi::getCgiProcess()
 {
 	return (*cgiProcessData);
 }

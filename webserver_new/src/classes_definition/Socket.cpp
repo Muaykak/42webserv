@@ -6,7 +6,9 @@ _socketType(NO_TYPE),
 _server_listen_port(-1),
 _socketMap(NULL),
 _serversConfig(NULL)
-{}
+{
+	_lastEventTime = std::time(NULL);
+}
 Socket::Socket(const Socket &obj) :
 _socketFD(obj._socketFD),
 _eventController(obj._eventController),
@@ -16,6 +18,7 @@ _server_listen_port(obj._server_listen_port),
 _socketMap(obj._socketMap),
 _server_ip_host(obj._server_ip_host)
 {
+	_lastEventTime = std::time(NULL);
 }
 Socket::Socket(int fd) :
 _socketFD(fd),
@@ -24,6 +27,7 @@ _server_listen_port(-1),
 _socketMap(NULL),
 _serversConfig(NULL)
 {
+	_lastEventTime = std::time(NULL);
 
 }
 Socket::Socket(const FileDescriptor& fd) :
@@ -33,11 +37,13 @@ _server_listen_port(-1),
 _socketMap(NULL),
 _serversConfig(NULL)
 {
+	_lastEventTime = std::time(NULL);
 }
 Socket& Socket::operator=(const Socket &obj)
 {
 	if (this != &obj)
 	{
+		_lastEventTime = std::time(NULL);
 		_eventController = obj._eventController;
 		_socketFD = obj._socketFD;
 		_socketType = obj._socketType;

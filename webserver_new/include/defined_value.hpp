@@ -23,7 +23,7 @@
 /* max seconds to force SIGKILL to the CGI process
  usually, after we send SIGTERM to the process for a while*/
  /* in seconds */
-#define MAX_HTTP_CGI_PROCESS_WAIT_SIGTERM 10
+#define MAX_HTTP_CGI_PROCESS_WAIT_SIGTERM 10.0
 
 // limit to prevent client sending too much request
 #define	MAX_REQUEST_BUFFER_SIZE 8192
