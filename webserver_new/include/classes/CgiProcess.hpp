@@ -5,7 +5,10 @@
 # include "WebservException.hpp"
 # include <sys/wait.h>
 # include <ctime>
+# include <map>
 # include "OptionalData.hpp"
+
+class Socket;
 
 enum e_cgi_process_status
 {
@@ -20,13 +23,11 @@ class CgiProcess {
 		OptionalData<time_t> lastSignalTimeStamp;
 	public:
 		e_cgi_process_status status;
-		bool isCgiProcessOpen;
 		pid_t cgiPid;
-		bool isCgiInSocketAlive;
-		bool isCgiOutSocketAlive;
-		int  cgiInSocketFd;
-		int  cgiOutSocketFd;
-		bool isCgiFinished;
+		//OptionalData<Socket *> cgiOutSocketPtr;
+		//OptionalData<Socket *> cgiInSocketPtr;
+		OptionalData<Socket *> clientSocketPtr;
+		std::map<int, Socket>* socketMapPtr;
 
 		CgiProcess();
 		~CgiProcess();

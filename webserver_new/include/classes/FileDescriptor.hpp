@@ -3,7 +3,6 @@
 
 # include <iostream>
 # include <unistd.h>
-# include "../defined_value.hpp"
 # include "WebservException.hpp"
 # include <cerrno>
 # include <cstring>

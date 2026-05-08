@@ -10,14 +10,19 @@
 # include <ctime>
 # include "../../include/classes/FileDescriptor.hpp"
 # include "CgiProcess.hpp"
+# include "Shared.hpp"
+# include "../webserv_structs.hpp"
 
 class Socket;
+class HttpRequest;
+class ServerConfig;
 
 enum e_http_response_body_type
 {
 	HTTP_RESPONSE_NOBODY,
 	HTTP_RESPONSE_BODY_FIXED_STR,
-	HTTP_RESPONSE_BODY_FILE
+	HTTP_RESPONSE_BODY_FILE,
+	HTTP_RESPONSE_CGI_BODY
 };
 
 // struct s_http_response_cgidata
@@ -52,11 +57,15 @@ class HttpResponse {
 		~HttpResponse();
 
 		std::map<std::string, std::vector<std::string> > responseHeader;
-		unsigned int statusCode;
-		std::string	statusMessage;
+
+		//unsigned int statusCode;
+		//std::string	statusMessage;
+
+		OptionalData<std::pair<unsigned int, std::string> > statusLine;
+
 		std::string contentType;
-		FileDescriptor fileFd;
-		FileDescriptor cgiOutFd;
+		OptionalData<FileDescriptor> fileFd;
+		//FileDescriptor cgiOutFd;
 		size_t	fileSize;
 
 		std::string fixedBodyStr;
@@ -65,7 +74,7 @@ class HttpResponse {
 		bool canModify;
 		bool isReachEOF;
 
-		std::vector<HttpRequest> httpRequestData;
+		OptionalData<HttpRequest> httpRequestData;
 
 		// all about cgi
 

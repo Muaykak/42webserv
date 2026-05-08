@@ -7,12 +7,15 @@
 
 TempFileManager::TempFileManager()
 : _nextGenNumber(1)
+, isChildProcess(false)
 {
 }
 
 // will remove all the file
 TempFileManager::~TempFileManager()
 {
+	if (isChildProcess == true)
+		return ;
 
 	if (!_tempFileSet.empty())
 	{
@@ -28,6 +31,16 @@ TempFileManager::~TempFileManager()
 	}
 }
 
+void TempFileManager::setIsChild(bool op)
+{
+	isChildProcess = op;
+}
+
+bool TempFileManager::getIsChild() const
+{
+	return (isChildProcess);
+}
+
 unsigned int TempFileManager::generateNewTempFile()
 {
 	unsigned int thisgennum = _nextGenNumber;
@@ -40,7 +53,7 @@ unsigned int TempFileManager::generateNewTempFile()
 		int fd;
 		while (true)
 		{
-			fd = open(tempPath.c_str(), O_CREAT | O_TRUNC | O_RDWR);
+			fd = open(tempPath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
 			if (fd < 0)
 			{
 				if (errno == EINTR)

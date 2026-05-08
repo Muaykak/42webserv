@@ -18,19 +18,11 @@
 # include "HttpCgi.hpp"
 # include "WebServ.hpp"
 # include "Shared.hpp"
+# include "../defined_value.hpp"
+# include "../webserv_structs.hpp"
 
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
 /*||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
-
-struct s_cgidata {
-	std::map<std::string, std::string> modifyEnvpMap;
-	const std::map<std::string, std::set<std::string> >* headerFieldPtr;
-	bool *isCgiProcessOpen;
-};
-
-
-struct s_webserv_event_controller;
-struct s_webserv_event;
 
 enum e_socket_type
 {

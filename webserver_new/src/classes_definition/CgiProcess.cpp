@@ -1,15 +1,12 @@
 #include "../../include/classes/CgiProcess.hpp"
 #include <cerrno>
+#include <iostream>
 
 CgiProcess::CgiProcess()
-: isCgiProcessOpen(false),
-cgiPid(-1),
-isCgiInSocketAlive(false),
-isCgiOutSocketAlive(false),
-cgiInSocketFd(-1),
-cgiOutSocketFd(-1),
-isCgiFinished(false),
-lastSignalTimeStamp(0)
+:
+lastSignalTimeStamp(0),
+status(CGI_PROCESS_NO_PROCESS),
+cgiPid(-1)
 {
 
 }
@@ -19,6 +16,7 @@ CgiProcess::~CgiProcess()
 	if (status != CGI_PROCESS_NO_PROCESS && status != CGI_PROCESS_FINISHED)
 	{
 		int ret;
+
 		while (true)
 		{
 			ret = kill(cgiPid, SIGKILL);
@@ -85,12 +83,14 @@ OptionalData<int> CgiProcess::waitProcess()
 				else
 					break ;
 			}
-			else
+			else if (ret > 0)
 			{
 				returnValue = waitstatus;
 				status = CGI_PROCESS_FINISHED;
 				break ;
 			}
+			else
+				break ;
 		}
 	}
 

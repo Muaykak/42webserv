@@ -2,15 +2,15 @@
 #include "../../include/classes/Socket.hpp"
 
 HttpResponse::HttpResponse()
-:statusCode(1000),
-canModify(true),
-keepAfterResponse(false),
-responseBodyType(HTTP_RESPONSE_NOBODY),
+:
 _isComplete(false),
 _hasSomethingtoSend(false),
-isReachEOF(false),
 _sendBufferOffset(0),
 fileSize(0),
+responseBodyType(HTTP_RESPONSE_NOBODY),
+keepAfterResponse(false),
+canModify(true),
+isReachEOF(false),
 socketMapPtr(NULL),
 targetServer(NULL),
 targetLocationBlock(NULL)
@@ -22,19 +22,8 @@ HttpResponse::~HttpResponse()
 {
 	if (cgiProcessData.hasData())
 	{
-		if ((*cgiProcessData)->isCgiProcessOpen == true)
-		{
-			(*cgiProcessData)->sigProcess(SIGTERM);
-		}
+		(*cgiProcessData)->clientSocketPtr.clear();
 	}
-
-	// if (socketMapPtr != NULL)
-	// {
-	// 	if (cgiData.isCgiInSocketAlive)
-	// 		socketMapPtr->erase(cgiData.cgiInSocketFd);
-	// 	if (cgiData.isCgiOutSocketAlive)
-	// 		socketMapPtr->erase(cgiData.cgiOutSocketFd);
-	// }
 }
 
 void HttpResponse::pushNewResponseBuff(s_response_buff& newBuff)
@@ -43,6 +32,28 @@ void HttpResponse::pushNewResponseBuff(s_response_buff& newBuff)
 	_hasSomethingtoSend = true;
 }
 
+void HttpResponse::addHeader(const std::string& headerName, const std::string& headerValue)
+{
+	std::vector<std::string>& targetVec = responseHeader[headerName];
+
+	if (!headerName.empty() && !headerValue.empty())
+	{
+
+		std::vector<std::string>::const_iterator vecIt = targetVec.begin();
+
+		while (vecIt != targetVec.end())
+		{
+			/* don't modify if the value is the same */
+			if (headerValue == *vecIt)
+				return ;
+
+			++vecIt;
+		}
+
+		targetVec.push_back(headerValue);
+
+	}
+}
 
 void	HttpResponse::generateResponse()
 {
@@ -50,6 +61,7 @@ void	HttpResponse::generateResponse()
 		throw WebservException("HttpResponse:: can only generate response 1 time only");
 
 	// tell the browser to not caching
+	if (responseHeader.find("Cache-Control") == responseHeader.end())
 	{
 		this->addHeader("Cache-Control", "no-store");
 		this->addHeader("Cache-Control", "no-cache");
@@ -59,17 +71,19 @@ void	HttpResponse::generateResponse()
 	canModify = false;
 
 	// some safety checking
-	if (statusCode >= 1000)
-		throw WebservException("HttpResponse:: _statusCode must not >= 1000 ");
 	
 	if (_bufferList.size() != 0)
 		throw WebservException("HttpResponse:: _bufferList size() != 0 something wrong");
 
 	std::string tempStr;
 
-	tempStr += "HTTP/1.1 " + toString(statusCode) + " " + statusMessage + "\r\n";
+	if (statusLine.hasData())
+	{
+		tempStr += "HTTP/1.1 " + toString(statusLine->first) + " " + statusLine->second + "\r\n";
+	}
 
 	//check for Date:
+	if (responseHeader.find("Date") == responseHeader.end())
 	{
 		time_t	rawTimeData = std::time(NULL);
 
@@ -87,6 +101,7 @@ void	HttpResponse::generateResponse()
 	/*
 	check content length or transfer encoding
 	*/
+	if (responseHeader.find("Content-Length") == responseHeader.end() && responseHeader.find("Transfer-Encoding") == responseHeader.end())
 	{
 		if (responseBodyType == HTTP_RESPONSE_BODY_FIXED_STR)
 		{
@@ -107,6 +122,7 @@ void	HttpResponse::generateResponse()
 	}
 
 	// get the content type
+	if (responseHeader.find("Content-Type") == responseHeader.end())
 	{
 		// only if has body
 		if (responseBodyType != HTTP_RESPONSE_NOBODY)
@@ -118,6 +134,7 @@ void	HttpResponse::generateResponse()
 	}
 
 	// about keep connection
+	if (responseHeader.find("Connection") == responseHeader.end())
 	{
 		tempStr += "Connection: ";
 		if (keepAfterResponse == true)
@@ -188,80 +205,84 @@ ssize_t	HttpResponse::sendHttpResponse(const Socket& clientSocket)
 	if (_bufferList.empty() && _sendBuffer.empty())
 		return (0);
 
-	size_t	needToappendSize = HTTP_RECV_BUFFER - _sendBuffer.size();
-	// appending buffer
-
-	std::list<s_response_buff>::iterator bufferListIt;
-	while (needToappendSize > 0)
+	if (_sendBuffer.size() < HTTP_SEND_BUFFER)
 	{
-		if (_bufferList.empty())
+		size_t	needToappendSize = HTTP_SEND_BUFFER - _sendBuffer.size();
+		// appending buffer
+
+		std::list<s_response_buff>::iterator bufferListIt;
+		while (needToappendSize > 0)
 		{
-			if (responseBodyType == HTTP_RESPONSE_BODY_FILE && isReachEOF == false)
+			if (_bufferList.empty())
 			{
-				_bufferList.push_back(s_response_buff());
-
-				s_response_buff& targetResBuff = _bufferList.back();
-
-				targetResBuff.currentIndex = 0;
-
-				std::vector<char> temp(HTTP_SEND_BUFFER);
-
-				// read to buffer
-				ssize_t	readAmount = read(fileFd.getFd(), &temp[0], HTTP_SEND_BUFFER);
-
-				if (readAmount < 0)
+				if (responseBodyType == HTTP_RESPONSE_BODY_FILE && isReachEOF == false)
 				{
-					// fatal error
-					if (errno != EINTR)
+					_bufferList.push_back(s_response_buff());
+
+					s_response_buff& targetResBuff = _bufferList.back();
+
+					targetResBuff.currentIndex = 0;
+
+					std::vector<char> temp(HTTP_SEND_BUFFER);
+
+					// read to buffer
+					ssize_t	readAmount = read(fileFd->getFd(), &temp[0], HTTP_SEND_BUFFER);
+
+					if (readAmount < 0)
 					{
-						return (-1);
+						// fatal error
+						if (errno != EINTR)
+						{
+							return (-1);
+						}
+						continue;
 					}
-					continue;
-				}
-				else if (readAmount == 0)
-				{
-					// reach EOF
-					isReachEOF = true;
-					//std::string tempchunkStr = "0\r\n\r\n";
-					//targetResBuff.buffer.insert(targetResBuff.buffer.end(), tempchunkStr.begin(), tempchunkStr.end());
+					else if (readAmount == 0)
+					{
+						// reach EOF
+						isReachEOF = true;
+						//std::string tempchunkStr = "0\r\n\r\n";
+						//targetResBuff.buffer.insert(targetResBuff.buffer.end(), tempchunkStr.begin(), tempchunkStr.end());
+					}
+					else
+					{
+						//std::string startchunkhex = size_t_to_hex(readAmount);
+
+						//startchunkhex += "\r\n";
+
+						//targetResBuff.buffer.insert(targetResBuff.buffer.end(), startchunkhex.begin(), startchunkhex.end());
+						targetResBuff.buffer.insert(targetResBuff.buffer.end(), temp.begin(), temp.begin() + readAmount);
+
+						//std::string endlind = "\r\n";
+
+						//targetResBuff.buffer.insert(targetResBuff.buffer.end(), endlind.begin(), endlind.end());
+					}
+
 				}
 				else
-				{
-					//std::string startchunkhex = size_t_to_hex(readAmount);
+					break ;
+				//else if (_responseBodyType == HTTP_RESPONSE_BODY_CGI && _isReachEOF == false)
+				//	break ;
+			}
 
-					//startchunkhex += "\r\n";
+			bufferListIt = _bufferList.begin();
 
-					//targetResBuff.buffer.insert(targetResBuff.buffer.end(), startchunkhex.begin(), startchunkhex.end());
-					targetResBuff.buffer.insert(targetResBuff.buffer.end(), temp.begin(), temp.begin() + readAmount);
+			if (needToappendSize < bufferListIt->buffer.size() - bufferListIt->currentIndex)
+			{
+				_sendBuffer.insert(_sendBuffer.end(), bufferListIt->buffer.begin() + bufferListIt->currentIndex, bufferListIt->buffer.begin() + bufferListIt->currentIndex + needToappendSize);
 
-					//std::string endlind = "\r\n";
-
-					//targetResBuff.buffer.insert(targetResBuff.buffer.end(), endlind.begin(), endlind.end());
-				}
-
+				bufferListIt->currentIndex += needToappendSize;
+				needToappendSize = 0;
 			}
 			else
-				break ;
-			//else if (_responseBodyType == HTTP_RESPONSE_BODY_CGI && _isReachEOF == false)
-			//	break ;
-		}
-
-		bufferListIt = _bufferList.begin();
-
-		if (needToappendSize < bufferListIt->buffer.size() - bufferListIt->currentIndex)
-		{
-			_sendBuffer.insert(_sendBuffer.end(), bufferListIt->buffer.begin() + bufferListIt->currentIndex, bufferListIt->buffer.begin() + bufferListIt->currentIndex + needToappendSize);
-
-			bufferListIt->currentIndex += needToappendSize;
-			needToappendSize = 0;
-		}
-		else
-		{
-			_sendBuffer.insert(_sendBuffer.end(), bufferListIt->buffer.begin() + bufferListIt->currentIndex, bufferListIt->buffer.end());
-			needToappendSize -= bufferListIt->buffer.size() - bufferListIt->currentIndex;
-			_bufferList.pop_front();
+			{
+				_sendBuffer.insert(_sendBuffer.end(), bufferListIt->buffer.begin() + bufferListIt->currentIndex, bufferListIt->buffer.end());
+				needToappendSize -= bufferListIt->buffer.size() - bufferListIt->currentIndex;
+				_bufferList.pop_front();
+			}
 		}
 	}
+
 
 	ssize_t	sendAmount = send(clientSocket.getSocketFD().getFd(), &_sendBuffer[_sendBufferOffset], _sendBuffer.size() - _sendBufferOffset, 0);
 
@@ -285,9 +306,8 @@ ssize_t	HttpResponse::sendHttpResponse(const Socket& clientSocket)
 		if (responseBodyType == HTTP_RESPONSE_BODY_FILE && isReachEOF == false)
 			_isComplete = false;
 
-		if (cgiProcessData.hasData() == true && (*cgiProcessData)->isCgiFinished == false)
+		if (cgiProcessData.hasData() == true && (*cgiProcessData)->status == CGI_PROCESS_RUNNING)
 			_isComplete = false;
-
 	}
 	
 	return (sendAmount);
@@ -301,7 +321,7 @@ void HttpResponse::forcePrintAllResponse()
 
 		while (respBuffIt != _bufferList.end())
 		{
-			std::cout << &respBuffIt->buffer[0];
+			std::cout << std::string(respBuffIt->buffer.begin(), respBuffIt->buffer.end());
 			++respBuffIt;
 		}
 	}
@@ -319,7 +339,7 @@ void HttpResponse::forcePrintAllResponse()
 		while (true)
 		{
 			amountToRead = HTTP_SEND_BUFFER - writeBuff.size();
-			ssize_t	readAmount = read(fileFd.getFd(), &writeBuff[writeBuff.size() - 1], amountToRead);
+			readAmount = read(fileFd->getFd(), &writeBuff[writeBuff.size() - 1], amountToRead);
 			if (readAmount < 0 && writeBuff.size() == 0)
 			{
 				if (errno == EINTR)

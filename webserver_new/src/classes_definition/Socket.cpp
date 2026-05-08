@@ -7,6 +7,8 @@ _server_listen_port(-1),
 _socketMap(NULL),
 _serversConfig(NULL)
 {
+	Logger::log(LC_DEBUG, "socket default construct called!;");
+	sleep(5);
 	_lastEventTime = std::time(NULL);
 }
 Socket::Socket(const Socket &obj) :
@@ -56,6 +58,22 @@ Socket& Socket::operator=(const Socket &obj)
 }
 Socket::~Socket()
 {
+	//if (_socketType != NO_TYPE)
+	//{
+	//	std::string tempstr = "SocketType=";
+
+	//	if (_socketType == CLIENT_SOCKET)
+	//		tempstr += "CLIENT_SOCKET";
+	//	else if (_socketType == SERVER_SOCKET)
+	//		tempstr += "SERVER_SOCKET";
+	//	else if (_socketType == CGI_FD_STDOUT)
+	//		tempstr += "CGIOUT_SOCKET";
+	//	else
+	//		tempstr += "CGIIN_SOCKET";
+
+	//	Logger::log(LC_RES_NOK_LOG, "REMOVE socket#%d %s EPOLL_CTL_DEL", _socketFD.getFd(), tempstr.c_str());
+	//	epoll_ctl(_eventController.epollFD.getFd(), EPOLL_CTL_DEL, _socketFD.getFd(), NULL);
+	//}
 }
 const FileDescriptor& Socket::getSocketFD() const
 {
@@ -146,6 +164,7 @@ bool Socket::setupCGIINSocket(const std::vector<ServerConfig> *serversConfig,
 	_socketMap = socketMap;
 	_serversConfig = serversConfig;
 
+	httpCgi = cgiData;
 
 	epoll_event event;
 	std::memset(&event, 0, sizeof(event));
@@ -350,6 +369,18 @@ bool Socket::setupClientSocket(const std::vector<ServerConfig> *serversConfig,
 bool Socket::handleEvent(const s_webserv_event &event)
 {
 	_lastEventTime = std::time(NULL);
+
+	std::cout << "   HANDLING ";
+	if (_socketType == SERVER_SOCKET)
+		std::cout << "SERVER_SOCKET" << std::endl;
+	else if (_socketType == CLIENT_SOCKET)
+		std::cout << "CLIENT_SOCKET" << std::endl;
+	else if (_socketType == CGI_FD_STDOUT)
+		std::cout << "CGI OUT SOCKET" << std::endl;
+	else
+		std::cout << "NO_TYPE" << std::endl;
+
+
 	switch (_socketType)
 	{
 		case SERVER_SOCKET:
@@ -408,7 +439,9 @@ bool Socket::handleEvent(const s_webserv_event &event)
 							continue;
 						}
 						if (errno == EAGAIN || errno == EWOULDBLOCK)
+						{
 							return (true);
+						}
 						else if (errno == EMFILE || errno == ENFILE)
 						{
 							Logger::log(LC_RED, "ERROR::ServerSocker#%d::fd limit reached!", static_cast<int>(_eventController.epollFD.getFd()));
@@ -438,9 +471,11 @@ bool Socket::handleEvent(const s_webserv_event &event)
 				/* custom event for server socket?? don't know yet */
 				break;
 			}
-
+			return (true);
 		}
 		case CLIENT_SOCKET: {
+			/* for custom event in client socket */
+
 
 			if (event.epollEventData.hasData() == true)
 			{
@@ -497,10 +532,14 @@ bool Socket::handleEvent(const s_webserv_event &event)
 					return (false);
 			}
 
-			/* for custom event in client socket */
-
 			if (event.customEventData.hasData() == true)
 			{
+				if (event.customEventData->clientSocketManualDisconnect.hasData() == true)
+				{
+					 /* here means we want to terminate the client immediately */
+					if (*event.customEventData->clientSocketManualDisconnect == true)
+						return (false);
+				}
 				// process local redirect here
 				if (event.customEventData->httpRequestData.hasData() == true)
 					http->directRequestProcess(event.customEventData->httpRequestData);
@@ -522,8 +561,10 @@ bool Socket::handleEvent(const s_webserv_event &event)
 				in this case we don't need to check what event came here
 
 				just read() only once and check the errno() would be more practical
+
+				no we cannot check errno according to the subject
 			*/
-			(*httpCgi)->processCGI(this);
+			(*httpCgi)->processCGI(this, **event.epollEventData);
 
 			return (*httpCgi)->isKeepConnection(this);
 		}
@@ -533,7 +574,7 @@ bool Socket::handleEvent(const s_webserv_event &event)
 				and we need to send the temporay file body to the CGI process
 			*/
 
-			(*httpCgi)->processCGI(this);
+			(*httpCgi)->processCGI(this, **event.epollEventData);
 
 			return (*httpCgi)->isKeepConnection(this);
 		}

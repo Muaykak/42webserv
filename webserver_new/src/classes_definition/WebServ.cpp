@@ -21,9 +21,10 @@ WebServ::WebServ(const std::string &configPath) : _webservConfigPath(configPath)
 		tempEventController.epollFD = _epollFD;
 		while (serversConfigIterator != serversConfigMapPtr->end()){
 			try {
-				Socket tempSocket = socket(AF_INET, SOCK_STREAM, 0);
-				tempSocket.setupServerSocket(&serversConfigIterator->second, tempEventController, &sockets);
-				sockets.insert(std::make_pair(tempSocket.getSocketFD().getFd(), tempSocket));
+				int socketFdInt = socket(AF_INET, SOCK_STREAM, 0);
+
+				sockets.insert(std::make_pair(socketFdInt, Socket(socketFdInt)));
+				sockets[socketFdInt].setupServerSocket(&serversConfigIterator->second, tempEventController, &sockets);
 			} 
 			catch (std::exception &e) {
 				throw WebservException("::Create serverSocket failed::" + std::string(e.what()));
@@ -78,7 +79,7 @@ void WebServ::run(){
 		std::map<int, s_webserv_event>::const_iterator eventIt;
 		std::map<int, s_webserv_event> returnEvents;
 		Logger::log(LC_DEBUG, "Webserv is Waiting for connection!");
-		while (true){
+		while (closeWebservSignal() == 0){
 
 			returnEventsAmount = webservCheckEvent(returnEvents);
 
@@ -89,8 +90,13 @@ void WebServ::run(){
 			// ERROR but should retry if EINTR
 			if (returnEventsAmount < 0){
 				if (errno == EINTR){
-					Logger::log(LC_DEBUG, "epoll_wait() got interrupted. Retrying...");
-					Logger::log(LC_DEBUG, "Webserv is Waiting for connection!");
+					Logger::log(LC_DEBUG, "epoll_wait() got interrupted.");
+					if (closeWebservSignal() == 1)
+					{
+						Logger::log(LC_DEBUG, "Closing the Webserv");
+						break ;
+					}
+					Logger::log(LC_DEBUG, "Retrying... Webserv is Waiting for connection!");
 					continue;
 				}
 				throw WebservException("epoll_wait() failed::" + std::string(std::strerror(errno)));
@@ -99,8 +105,22 @@ void WebServ::run(){
 			eventIt = returnEvents.begin();
 			while (eventIt != returnEvents.end())
 			{
-				if (sockets[eventIt->first].handleEvent(returnEvents[eventIt->first]) == false);
+				std::cout << "EVENT FD = " << eventIt->first << std::endl;
+
+				if (sockets[eventIt->first].handleEvent(returnEvents[eventIt->first]) == false)
 				{
+					std::cout << "        REMOVING ";
+					if (sockets[eventIt->first].getServerSockerType() == SERVER_SOCKET)
+						std::cout << "SERVER_SOCKET" << std::endl;
+					else if (sockets[eventIt->first].getServerSockerType() == CLIENT_SOCKET)
+						std::cout << "CLIENT_SOCKET" << std::endl;
+					else if (sockets[eventIt->first].getServerSockerType() == CGI_FD_STDOUT)
+						std::cout << "CGI OUT SOCKET" << std::endl;
+					else if (sockets[eventIt->first].getServerSockerType() == CGI_FD_STDIN)
+						std::cout << "CGI IN SOCKET" << std::endl;
+					else
+						std::cout << "NO_STATUS" << std::endl;
+
 					sockets.erase(eventIt->first);
 				}
 				++eventIt;
@@ -132,7 +152,8 @@ void WebServ::run(){
 						{
 							/* meaning that it would okay because we not finished sending the data to cgi yet
 							so the process doesn't have anything to send us yet*/
-							return ;
+							++socketIt;
+							continue;
 						}
 
 						if (httpCgi.status() != HTTPCGI_FINISHED && httpCgi.status() != HTTPCGI_CLOSED_CGI)

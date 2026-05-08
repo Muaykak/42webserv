@@ -94,6 +94,7 @@ class Http {
 		void	printHeaderField(HttpRequest& requestData) const;
 
 		void	generate4xx5xxErrorReponse(HttpRequest& requestData, unsigned int errorStatusCode, bool keepAfterResponse, const std::string& throwMsg);
+		void	generate4xx5xxErrorReponseChildProcess(HttpRequest& requestData, unsigned int errorStatusCode, bool keepAfterResponse, const std::string& throwMsg);
 		void	generate3xxRedirectResponse(HttpRequest& requestData, unsigned int statusCode);
 
 	public:

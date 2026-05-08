@@ -8,14 +8,16 @@ _needReallocate(false)
 
 }
 EnvpWrapper::EnvpWrapper(const EnvpWrapper& obj)
-:_map(obj._map),
-_needReallocate(true)
+:
+_needReallocate(true),
+_map(obj._map)
 {
 	reallocate_envp();
 }
 EnvpWrapper::EnvpWrapper(const char * const * const envp)
-: _needReallocate(true),
-_envp(NULL)
+:
+_envp(NULL),
+_needReallocate(true)
 {
 	if (envp == NULL)
 		throw (std::runtime_error("Whaatttt!"));
@@ -145,6 +147,7 @@ void EnvpWrapper::printEnvp() const
 {
 	std::map<std::string, std::string>::const_iterator it = _map.begin();
 
+	std::cout << "env count = " << _map.size() << std::endl;
 	while (it != _map.end())
 	{
 		std::cout << it->first << '=' << it->second << std::endl;

@@ -12,7 +12,7 @@
 # include "WebservException.hpp"
 # include "../defined_value.hpp"
 # include "../utility_function.hpp"
-
+# include "../webserv_structs.hpp"
 
 class ServerConfig
 {

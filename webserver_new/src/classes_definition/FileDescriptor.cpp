@@ -1,4 +1,5 @@
 #include "../../include/classes/FileDescriptor.hpp"
+#include "../../include/defined_value.hpp"
 
 
 FileDescriptor::FileDescriptor() : _fd(-1), _reference_counter(NULL)
@@ -82,8 +83,10 @@ void FileDescriptor::release()
 		(*_reference_counter)--;
 		if (*_reference_counter == 0)
 		{
-			if (close(_fd) != 0)
-				std::cerr << "FileDescriptor::close() failed" << std::strerror(errno) << std::endl;
+			if (close(_fd) == -1)
+			{
+				std::cout << "FileDescriptor::close()::" << std::string(std::strerror(errno)) << std::endl;
+			}
 			delete _reference_counter;
 			_reference_counter = NULL;
 		}

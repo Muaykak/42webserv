@@ -15,6 +15,7 @@
 #define HTTP_RECV_BUFFER 4096
 #define HTTP_SEND_BUFFER 4096
 #define HTTP_READ_FROM_CGI_BUFFER_SIZE 4096
+#define HTTP_WRITE_TO_CGI_BUFFER_SIZE 4096
 
 #define WEBSERV_EPOLL_WAIT_MILLISEC 1000
 #define WEBSERV_CLIENT_SOCKET_TIMEOUT_SECOND 15.0
@@ -63,13 +64,5 @@
 # 	 define TEMP_FILE_DIR "./temp/"
 # endif
 
-typedef std::map<std::string, std::vector<std::string> > t_config_map;
-typedef std::map<std::string, const t_config_map> t_location_map;
-
-struct s_response_buff
-{
-	std::vector<char> buffer;
-	size_t	currentIndex;
-};
 
 #endif

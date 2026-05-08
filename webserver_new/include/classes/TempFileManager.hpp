@@ -12,6 +12,7 @@ class TempFileManager {
 
 		unsigned int	_nextGenNumber;
 
+		bool isChildProcess;
 
 	public:
 		TempFileManager();
@@ -20,7 +21,11 @@ class TempFileManager {
 		// return the number to access this file manager
 		unsigned int generateNewTempFile();
 
+
 		void	removeTempFile(unsigned int tempfileNum);
+
+		void setIsChild(bool op);
+		bool getIsChild() const;
 };
 
 #endif

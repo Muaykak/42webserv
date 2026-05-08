@@ -22,7 +22,7 @@ class OptionalData
 {
 	/* template function need to implement in header*/
 	private:
-		T		*_data;
+		mutable T *_data;
 
 	public:
 
@@ -40,6 +40,8 @@ class OptionalData
 		{
 			if (obj._data != NULL)
 				_data = new T(*(obj._data));
+			else
+				_data = NULL;
 		}
 
 		~OptionalData()
@@ -52,7 +54,7 @@ class OptionalData
 			if (this != &obj)
 			{
 				if (obj._data == NULL)
-					clear()
+					clear();
 				else
 				{
 					if (_data == NULL)
@@ -134,7 +136,7 @@ class OptionalData<T*>
 {
 	/* template function need to implement in header*/
 	private:
-		T		**_data;
+		mutable T **_data;
 
 	public:
 
@@ -143,7 +145,7 @@ class OptionalData<T*>
 		{
 		}
 
-		OptionalData(const T* obj)
+		OptionalData(T* obj)
 		{
 			_data = new T*(obj);
 		}
@@ -151,7 +153,9 @@ class OptionalData<T*>
 		OptionalData(const OptionalData& obj)
 		{
 			if (obj._data != NULL)
-				_data = new T(*(obj._data));
+				_data = new T*(*(obj._data));
+			else
+				_data = NULL;
 		}
 
 		~OptionalData()
@@ -164,7 +168,7 @@ class OptionalData<T*>
 			if (this != &obj)
 			{
 				if (obj._data == NULL)
-					clear()
+					clear();
 				else
 				{
 					if (_data == NULL)
@@ -177,7 +181,7 @@ class OptionalData<T*>
 			return (*this);
 		}
 
-		OptionalData& operator=(const T* obj)
+		OptionalData& operator=(T* obj)
 		{
 			if (this->_data != &obj)
 			{
@@ -193,35 +197,135 @@ class OptionalData<T*>
 		T* operator->()
 		{
 			if (_data == NULL)
-				_data = T*();
+				_data = new T*();
 			return (*_data);
 		}
 
 		const T* operator->() const
 		{
 			if (_data == NULL)
-				_data = T*();
+				_data = new T*();
 			return (*_data);
 		}
 
-		T& operator*()
+		T*& operator*()
 		{
 			if (_data == NULL)
-				_data = T*();
+				_data = new T*();
 			return (*_data);
 		}
 
-		const T& operator*() const
+		T* const & operator*() const
 		{
 			if (_data == NULL)
-				_data = T*();
+				_data = new T*();
 			return (*_data);
 		}
 
 		operator T*() const
 		{
 			if (_data == NULL)
-				_data = T*();
+				_data = new T*();
+			return (*_data);
+		}
+
+		bool hasData() const
+		{
+			return (_data == NULL ? false : true);
+		}
+
+		void clear()
+		{
+			if (_data != NULL)
+			{
+				delete _data;
+				_data = NULL;
+			}
+		};
+
+};
+
+template <typename T>
+class OptionalData<const T*>
+{
+	/* template function need to implement in header*/
+	private:
+		mutable const T **_data;
+
+	public:
+
+
+		OptionalData() : _data(NULL)
+		{
+		}
+
+		OptionalData(const T* obj)
+		{
+			_data = new const T*(obj);
+		}
+
+		OptionalData(const OptionalData& obj)
+		{
+			if (obj._data != NULL)
+				_data = new const T*(*(obj._data));
+			else
+				_data = NULL;
+		}
+
+		~OptionalData()
+		{
+			clear();
+		}
+
+		OptionalData& operator=(const OptionalData& obj)
+		{
+			if (this != &obj)
+			{
+				if (obj._data == NULL)
+					clear();
+				else
+				{
+					if (_data == NULL)
+						_data = new const T*(*(obj._data));
+					else
+						*_data = *(obj._data);
+				}
+			}
+
+			return (*this);
+		}
+
+		OptionalData& operator=(const T* obj)
+		{
+			if (this->_data != &obj)
+			{
+				if (_data == NULL)
+					_data = new const T*(obj);
+				else
+					*_data = obj;
+			}
+
+			return (*this);
+		}
+
+		const T* operator->() const
+		{
+			if (_data == NULL)
+				_data = new const T*();
+			return (*_data);
+		}
+
+		const T* const & operator*()
+		{
+			if (_data == NULL)
+				_data = new T*();
+			return (*_data);
+		}
+
+		operator const T*() const
+		{
+			if (_data == NULL)
+				_data = new T*();
 			return (*_data);
 		}
 

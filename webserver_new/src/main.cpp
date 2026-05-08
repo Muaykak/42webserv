@@ -7,6 +7,7 @@ int main(int argc, char **argv, char** envp){
 	signal(SIGPIPE, SIG_IGN);
 	signal(SIGINT, serverStopHandler);
 	signal(SIGQUIT, serverStopHandler);
+	signal(SIGTERM, serverStopHandler);
 
 	int ret = 0;
 

@@ -9,30 +9,33 @@
 #include <sys/wait.h>
 
 Http::Http()
-: _keepConnection(true),
-_isEpollout(false),
+:
 _clientSocketPtr(NULL),
-_socketMapPtr(NULL)
+_socketMapPtr(NULL),
+_keepConnection(true),
+_isEpollout(false)
 {
 	_recvBuffer.reserve(HTTP_RECV_BUFFER);
 	_sendBuffer.reserve(HTTP_SEND_BUFFER);
 }
 
 Http::Http(Socket *clientSocketPtr, std::map<int, Socket>* socketMapPtr)
-: _keepConnection(true),
-_isEpollout(false),
+:
 _clientSocketPtr(clientSocketPtr),
-_socketMapPtr(socketMapPtr)
+_socketMapPtr(socketMapPtr),
+_keepConnection(true),
+_isEpollout(false)
 {
 	_recvBuffer.reserve(HTTP_RECV_BUFFER);
 	_sendBuffer.reserve(HTTP_SEND_BUFFER);
 }
 
 Http::Http(const Http& obj)
-: _keepConnection(true),
-_isEpollout(false),
+:
 _clientSocketPtr(obj._clientSocketPtr),
-_socketMapPtr(obj._socketMapPtr)
+_socketMapPtr(obj._socketMapPtr),
+_keepConnection(true),
+_isEpollout(false)
 {
 	_recvBuffer.reserve(HTTP_RECV_BUFFER);
 	_sendBuffer.reserve(HTTP_SEND_BUFFER);
@@ -74,38 +77,40 @@ void Http::cgiChildProcessNoRequestBody(HttpRequest& requestData, int pipeForCgi
 {
 	try 
 	{
-
-
+		TempFileManager().setIsChild(true);
 		// for this particular
 		// close the read end of pipe
 		close(pipeForCgiStdOut[0]);
 
-
 		// then dup2 to replace the stdout
-		if (dup2(pipeForCgiStdOut[1], STDOUT_FILENO) != 0)
+		if (dup2(pipeForCgiStdOut[1], STDOUT_FILENO) == -1)
 		{
+			Logger::log(LC_DEBUG, "CGI_PROCESS dup2 failed::%s", std::strerror(errno));
 			for (int i = 3; i < MAX_FD; i++)
 				close(i);
 			// cannot even sent the error message to parent proc
 			throw int(42);
 		}
 
-		// then close all the unused fds
-		//  leave only 0, 1, 2
-		for (int i = 3; i < MAX_FD; i++)
-			close(i);
+		close(pipeForCgiStdOut[1]);
+		close(STDIN_FILENO);
+
 
 		// chdir()
 		{
-			size_t	pos = requestData.cgiData.cgiPath.find_last_of('/');
-			std::string cgiPathDir = requestData.cgiData.cgiPath.substr(0, pos == requestData.cgiData.cgiPath.npos ? requestData.cgiData.cgiPath.size() : pos + 1);
+			size_t	pos = requestData.targetData.combinedPath.find_last_of('/');
+			std::string scriptPathDir = requestData.targetData.combinedPath.substr(0, pos == std::string::npos ? requestData.targetData.combinedPath.size() : pos + 1);
 
-			if (chdir(cgiPathDir.c_str()) != 0)
+			if (chdir(scriptPathDir.c_str()) != 0)
 			{
 				// just need to tell and may create error reponse
 				// to output
-				generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI chdir() failed");
+				generate4xx5xxErrorReponseChildProcess(requestData, 500, false, "Internal Error::CGI chdir() failed");
 			}
+
+			/* change the PWD and OLDPWD */
+			envData().assignEnv("OLDPWD", envData().findValue("PWD"));
+			envData().assignEnv("PWD", scriptPathDir);
 		}
 
 		/* I don't wanna do the authrization so i just leave that*/
@@ -171,7 +176,9 @@ void Http::cgiChildProcessNoRequestBody(HttpRequest& requestData, int pipeForCgi
 		/* SERVER_SOFTWARE is just our program which mean like webserv/1.0 looks good */
 		envData().assignEnv("SERVER_SOFTWARE", "webserv/1.0");
 
+		envData().assignEnv("REDIRECT_STATUS", "200");
 
+		envData().assignEnv("SCRIPT_FILENAME", requestData.targetData.combinedPath);
 		
 
 		// convert the http header to env
@@ -215,18 +222,50 @@ void Http::cgiChildProcessNoRequestBody(HttpRequest& requestData, int pipeForCgi
 			argv[1] = const_cast<char *>(requestData.targetData.combinedPath.c_str());
 			argv[2] = NULL;
 
-			execve(requestData.cgiData.cgiPath.c_str(), argv, envData().getEnvp());
+			//int storeTemp = open("/home/muaykak/Coding/42webserv/webserver_new/StoreTemp.txt", O_CREAT | O_RDWR | O_TRUNC, 0644);
+
+			//if (storeTemp == -1)
+			//{
+			//	Logger::log(LC_DEBUG, "StoreTemp fd open FAILED:: %s", std::strerror(errno));
+
+			//}
+
+			//if (dup2(storeTemp, STDOUT_FILENO) == -1)
+			//{
+			//	Logger::log(LC_DEBUG, "StoreTemp fd dup2 FAILED:: %s", std::strerror(errno));
+
+			//}
+
+			// then close all the unused fds
+			//  leave only 0, 1, 2
+			for (int i = 3; i < MAX_FD; i++)
+				close(i);
+			
+			signal(SIGINT, SIG_DFL);
+		    signal(SIGQUIT, SIG_DFL);
+		    signal(SIGTERM, SIG_DFL);
+		    signal(SIGPIPE, SIG_DFL);
+
+			if (execve(argv[0], argv, envData().getEnvp()) == -1)
+			{
+				signal(SIGINT, serverStopHandler);
+			    signal(SIGQUIT, serverStopHandler);
+			    signal(SIGTERM, serverStopHandler);
+			    signal(SIGPIPE, SIG_IGN);
+				generate4xx5xxErrorReponseChildProcess(requestData, 500, false, "Internal Error:: GET to CGI:: failed execve()");
+			}
+
 
 			// should say something back to parent with reasons								
-			generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error:: GET to CGI:: failed execve()");
-			
 		}
 	}
 	catch (HttpThrowStatus &e)
 	{
-		HttpResponse& target = _httpResponseList.back();
+		HttpResponse& target = *httpRequest.responseTargetPtr;
 
 		target.forcePrintAllResponse();
+		close(STDOUT_FILENO);
+		httpRequest.clear();
 	}
 	catch (int &e)
 	{
@@ -236,13 +275,15 @@ void Http::cgiChildProcessNoRequestBody(HttpRequest& requestData, int pipeForCgi
 	{
 		try 
 		{
-			generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::Unknown Error Occurred");
+			generate4xx5xxErrorReponseChildProcess(requestData, 500, false, "Internal Error::Unknown Error Occurred");
 		}
 		catch (HttpThrowStatus &e)
 		{
-			HttpResponse& target = _httpResponseList.back();
+			HttpResponse& target = *httpRequest.responseTargetPtr;
 
 			target.forcePrintAllResponse();
+			close(STDOUT_FILENO);
+			httpRequest.clear();
 		}
 	}
 
@@ -370,7 +411,6 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 	std::string	tempFieldValue;
 	std::string	tempSep;
 	size_t	colonPos;
-	size_t	temp;
 
 	while (httpRequest.processStatus == READING_HEADER)
 	{
@@ -507,7 +547,7 @@ void	Http::generate3xxRedirectResponse(HttpRequest& requestData, unsigned int st
 	// but if it has body we need to read and discard
 	// that body first
 	targetResponse.keepAfterResponse = true;
-	targetResponse.statusCode = statusCode;
+	targetResponse.statusLine->first = statusCode;
 	targetResponse.contentType = "text/html";
 
 	// status message
@@ -515,27 +555,27 @@ void	Http::generate3xxRedirectResponse(HttpRequest& requestData, unsigned int st
 	{
 		case 301:
 		{
-			targetResponse.statusMessage = "Moved Permanently";
+			targetResponse.statusLine->second = "Moved Permanently";
 			break;
 		}
 		case 302:
 		{
-			targetResponse.statusMessage = "Found";
+			targetResponse.statusLine->second = "Found";
 			break;
 		}
 		case 303:
 		{
-			targetResponse.statusMessage = "See Other";
+			targetResponse.statusLine->second = "See Other";
 			break;
 		}
 		case 307:
 		{
-			targetResponse.statusMessage = "Temporary Redirect";
+			targetResponse.statusLine->second = "Temporary Redirect";
 			break;
 		}
 		case 308:
 		{
-			targetResponse.statusMessage = "Permanent Redirect";
+			targetResponse.statusLine->second = "Permanent Redirect";
 			break;
 		}
 		default:
@@ -557,13 +597,13 @@ void	Http::generate3xxRedirectResponse(HttpRequest& requestData, unsigned int st
 	"<html>\r\n"
 	"<head><title>";
 
-	tempHtml += targetResponse.statusMessage;
+	tempHtml += targetResponse.statusLine->second;
 
 	tempHtml +=
 	"</title></head>\r\n"
 	"<body><h1>";
 
-	tempHtml += targetResponse.statusMessage;
+	tempHtml += targetResponse.statusLine->second;
 
 	tempHtml +=
 	"</h1>\r\n<p>Redirect <a href=\"";
@@ -586,6 +626,198 @@ void	Http::generate3xxRedirectResponse(HttpRequest& requestData, unsigned int st
 
 	//throw HttpThrowStatus(returnCode, (*return_redirect)[1]);
 
+}
+
+void	Http::generate4xx5xxErrorReponseChildProcess(HttpRequest& requestData, unsigned int errorStatusCode, bool keepAfterResponse, const std::string& throwMsg)
+{
+	// first we check if there is already default error page
+	bool	hasDefaultErrorPageFile = false;
+
+	const std::vector<std::string>* foundErrorPageVec = NULL;
+	if (requestData.serverData.targetServerPtr != NULL)
+	{
+		if (requestData.serverData.targetLocationBlockPtr != NULL)
+		{
+			foundErrorPageVec = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "error_page");
+		}
+		else
+		{
+			// found targetServer but not _target location
+			foundErrorPageVec = requestData.serverData.targetServerPtr->getServerData("error_page");
+		}
+	}
+
+	std::string errorPageFilePath;
+
+	size_t	convertCode;
+
+	if (foundErrorPageVec != NULL)
+	{
+		size_t i = 0;
+		while (i < foundErrorPageVec->size())
+		{
+			if (string_to_size_t((*foundErrorPageVec)[i], convertCode) == false)
+			{
+				i += 2;
+				continue;
+			}
+
+			if (convertCode == errorStatusCode)
+			{
+				if (++i < foundErrorPageVec->size())
+				{
+					errorPageFilePath = (*foundErrorPageVec)[i];
+					break ;
+				}
+				else
+					break ;
+			}
+			else
+			{
+				i += 2;
+			}
+		}
+	}
+
+	// testing if the file is open and readable
+	FileDescriptor errorFileFD;
+	size_t			fileSize = 0;
+
+	if (!errorPageFilePath.empty())
+	{
+		// check stat to get the file 
+		struct stat fileStat;
+		std::memset(&fileStat, 0, sizeof(fileStat));
+		if (stat(errorPageFilePath.c_str(), &fileStat) == 0)
+		{
+			if (S_ISREG(fileStat.st_mode))
+			{
+				int fd = open(errorPageFilePath.c_str(), O_RDONLY);
+				if (fd > -1)
+				{
+					fileSize = fileStat.st_size;
+					errorFileFD = fd;
+					hasDefaultErrorPageFile = true;
+				}
+			}
+		}
+	}
+
+	HttpResponse& targetResponse = *requestData.responseTargetPtr;
+
+	targetResponse.keepAfterResponse = keepAfterResponse;
+	targetResponse.contentType = "text/html";
+
+	targetResponse.addHeader("Status", toString(errorStatusCode));
+
+	// set status message
+	if (errorStatusCode == 405)
+	{
+		const std::vector<std::string>* foundAllowedMethodPtr = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "allowed_methods");
+
+		for (size_t i = 0; i < foundAllowedMethodPtr->size(); i++)
+		{
+			targetResponse.addHeader("Allow", (*foundAllowedMethodPtr)[i]);
+		}
+	}
+
+	std::string statusMessageTemp;
+	{
+		switch (errorStatusCode)
+		{
+			case (400):
+			{
+				statusMessageTemp = "Bad Request";
+				break;
+			}
+			case (404):
+			{
+				statusMessageTemp = "Not Found";
+				break;
+			}
+			case (500):
+			{
+				statusMessageTemp = "Internal Error";
+				break;
+			}
+			case (403):
+			{
+				statusMessageTemp = "Forbidden";
+				break;
+			}
+			case (405):
+			{
+				// the allowed method to the header
+				{
+					const std::vector<std::string>* foundAllowedMethodPtr = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "allowed_methods");
+
+					for (size_t i = 0; i < foundAllowedMethodPtr->size(); i++)
+					{
+						targetResponse.addHeader("Allow", (*foundAllowedMethodPtr)[i]);
+					}
+				}
+
+				statusMessageTemp = "Method Not Allowed";
+				break;
+			}
+			case (417):
+			{
+				statusMessageTemp = "Expection Failed";
+				break;
+			}
+			default:
+			{
+				statusMessageTemp = "";
+				break;
+			}
+
+		}
+
+
+	}
+
+	if (hasDefaultErrorPageFile == true)
+	{
+		targetResponse.responseBodyType = HTTP_RESPONSE_BODY_FILE;
+
+		targetResponse.fileFd = errorFileFD;
+
+		targetResponse.fileSize = fileSize;
+	}
+	else
+	{
+		targetResponse.responseBodyType = HTTP_RESPONSE_BODY_FIXED_STR;
+
+		std::string htmlMsg = toString(errorStatusCode) + " " + statusMessageTemp;
+
+		std::string bodyStr =
+		"<html>\r\n"
+		"<head><title>";
+
+		bodyStr += htmlMsg;
+
+		bodyStr +=
+		"</title></head>\r\n"
+		"<body>\r\n"
+		"<center><h1>";
+
+		bodyStr += htmlMsg;
+
+		bodyStr += "</h1>\r\n";
+
+		bodyStr += throwMsg;
+		
+		bodyStr +=
+		"</center>\r\n"
+		"</body>\r\n"
+		"</html>\r\n";
+
+		targetResponse.fixedBodyStr = bodyStr;
+	}
+
+	targetResponse.generateResponse();
+
+	throw HttpThrowStatus(errorStatusCode, throwMsg);
 }
 
 void	Http::generate4xx5xxErrorReponse(HttpRequest& requestData, unsigned int errorStatusCode, bool keepAfterResponse, const std::string& throwMsg)
@@ -663,10 +895,10 @@ void	Http::generate4xx5xxErrorReponse(HttpRequest& requestData, unsigned int err
 		}
 	}
 
-	HttpResponse& targetResponse = *httpRequest.responseTargetPtr;
+	HttpResponse& targetResponse = *requestData.responseTargetPtr;
 
 	targetResponse.keepAfterResponse = keepAfterResponse;
-	targetResponse.statusCode = errorStatusCode;
+	targetResponse.statusLine->first = errorStatusCode;
 	targetResponse.contentType = "text/html";
 
 	// set status message
@@ -675,22 +907,22 @@ void	Http::generate4xx5xxErrorReponse(HttpRequest& requestData, unsigned int err
 		{
 			case (400):
 			{
-				targetResponse.statusMessage = "Bad Request";
+				targetResponse.statusLine->second = "Bad Request";
 				break;
 			}
 			case (404):
 			{
-				targetResponse.statusMessage = "Not Found";
+				targetResponse.statusLine->second = "Not Found";
 				break;
 			}
 			case (500):
 			{
-				targetResponse.statusMessage = "Internal Error";
+				targetResponse.statusLine->second = "Internal Error";
 				break;
 			}
 			case (403):
 			{
-				targetResponse.statusMessage = "Forbidden";
+				targetResponse.statusLine->second = "Forbidden";
 				break;
 			}
 			case (405):
@@ -705,17 +937,17 @@ void	Http::generate4xx5xxErrorReponse(HttpRequest& requestData, unsigned int err
 					}
 				}
 
-				targetResponse.statusMessage = "Method Not Allowed";
+				targetResponse.statusLine->second = "Method Not Allowed";
 				break;
 			}
 			case (417):
 			{
-				targetResponse.statusMessage = "Expection Failed";
+				targetResponse.statusLine->second = "Expection Failed";
 				break;
 			}
 			default:
 			{
-				targetResponse.statusMessage = "";
+				targetResponse.statusLine->second = "";
 				break;
 			}
 
@@ -736,7 +968,7 @@ void	Http::generate4xx5xxErrorReponse(HttpRequest& requestData, unsigned int err
 	{
 		targetResponse.responseBodyType = HTTP_RESPONSE_BODY_FIXED_STR;
 
-		std::string htmlMsg = toString(errorStatusCode) + " " + targetResponse.statusMessage;
+		std::string htmlMsg = toString(errorStatusCode) + " " + targetResponse.statusLine->second;
 
 		std::string bodyStr =
 		"<html>\r\n"
@@ -764,8 +996,6 @@ void	Http::generate4xx5xxErrorReponse(HttpRequest& requestData, unsigned int err
 	}
 
 	targetResponse.generateResponse();
-
-	requestData.clear();
 
 	throw HttpThrowStatus(errorStatusCode, throwMsg);
 }
@@ -1502,6 +1732,7 @@ void	Http::checkCgiPath(HttpRequest& requestData)
 		// devide into segment
 
 		std::string tempTofil = requestData.targetData.targetPath.substr(tempPath.size());
+		std::cout << "tempToFill: " << tempTofil << std::endl;
 		size_t	slashPos;
 		size_t	dotPos;
 		std::string tempExtensionStr;
@@ -1541,6 +1772,7 @@ void	Http::checkCgiPath(HttpRequest& requestData)
 				{
 					requestData.cgiData.cgiPath = it->second;
 					requestData.cgiData.cgiScriptPath = tempPath;
+					Logger::log(LC_RES_NOK_LOG, "cgiScriptPath = %s", tempPath.c_str());
 					requestData.cgiData.cgiVirtualPath = tempTofil;
 					break ;
 				}
@@ -1553,9 +1785,9 @@ void	Http::checkCgiPath(HttpRequest& requestData)
 	/* access() is a good practice to check the cgi_path() first
 		because forking new process and turns out the cgi_path is not working
 		will cost a lot more, leave that error for only rare cases*/
-	{
-		
-	}
+	
+	if (requestData.cgiData.cgiPath.empty())
+		return ;
 
 
 	// now we know if the request target is CGI or not by
@@ -1638,6 +1870,23 @@ void Http::createSystemPath(HttpRequest& requestData, std::string& systemPath)
 
 		systemPath = (*foundRoot)[0];
 	}
+
+	/* here if the systempath is relative path, we need to append it with the
+	this program current directory to make it absolute path */
+	{
+		/* if it doesn't start with '/' then it is relative path */
+		if (systemPath[0] != '/')
+		{
+			/* append it with PWD environment variable */
+
+			std::string pwdString = envData().findValue("PWD");
+
+			if (!pwdString.empty())
+			{
+				systemPath = pwdString + '/' + systemPath;
+			}
+		}
+	}
 }
 
 void Http::handleDeleteRequest(HttpRequest& requestData)
@@ -1670,8 +1919,8 @@ void Http::handleDeleteRequest(HttpRequest& requestData)
 
 			targetResponse.responseBodyType = HTTP_RESPONSE_NOBODY;
 			targetResponse.keepAfterResponse = true;
-			targetResponse.statusCode = 204;
-			targetResponse.statusMessage = "No Content";
+			targetResponse.statusLine->first = 204;
+			targetResponse.statusLine->second = "No Content";
 
 			targetResponse.generateResponse();
 			requestData.processStatus = FINISHED_READ_BODY;
@@ -1791,8 +2040,8 @@ void	Http::handleGetRequest(HttpRequest& requestData, bool isEndWithSlash, const
 			targetResponse.fileFd = tempFd;
 			targetResponse.fileSize = fileStat.st_size;
 			targetResponse.keepAfterResponse = true;
-			targetResponse.statusCode = 200;
-			targetResponse.statusMessage = "OK";
+			targetResponse.statusLine->first = 200;
+			targetResponse.statusLine->second = "OK";
 
 			requestData.processStatus = FINISHED_READ_BODY;
 			targetResponse.generateResponse();
@@ -1843,29 +2092,33 @@ void	Http::handleGetRequest(HttpRequest& requestData, bool isEndWithSlash, const
 				{
 					HttpResponse& targetResponse = *requestData.responseTargetPtr;
 
-					Shared<CgiProcess> tempCgiProcess;
 
-					tempCgiProcess->isCgiOutSocketAlive = true;
-					tempCgiProcess->cgiPid = pid;
-					tempCgiProcess->cgiOutSocketFd = pipe_out[0];
-					tempCgiProcess->isCgiProcessOpen = true;
-					tempCgiProcess->status = CGI_PROCESS_RUNNING;
+					Shared<HttpCgi> tempSharedHttpCgi;
 
 					socketMap.insert(std::make_pair(pipe_out[0], Socket(pipe_out[0])));
 					socketMap[pipe_out[0]].setupCGIOUTSocket(clientSocket.getServersConfigPtr(),
-					clientSocket.getEventContoller(), &socketMap,
-					HttpCgi(&_httpResponseList,
+					clientSocket.getEventContoller(), &socketMap, tempSharedHttpCgi);
+
+					Shared<CgiProcess> tempCgiProcess;
+
+					tempCgiProcess->cgiPid = pid;
+					tempCgiProcess->status = CGI_PROCESS_RUNNING;
+					//tempCgiProcess->cgiOutSocketPtr = &socketMap[pipe_out[0]];
+					tempCgiProcess->clientSocketPtr = _clientSocketPtr;
+					tempCgiProcess->socketMapPtr = &socketMap;
+
+					tempSharedHttpCgi->setHttpCgiNoCgiIn(&_httpResponseList,
 						httpRequest.responseTargetPtr,
-						clientSocket.getSocketFD(),
 						&(socketMap[pipe_out[0]]),
-						tempCgiProcess));
+						tempCgiProcess);
+
 
 					targetResponse.cgiProcessData = tempCgiProcess;
 					targetResponse.socketMapPtr = &socketMap;
 					targetResponse.targetServer = requestData.serverData.targetServerPtr;
 					targetResponse.targetLocationBlock = requestData.serverData.targetLocationBlockPtr;
 
-					targetResponse.httpRequestData.push_back(requestData);
+					targetResponse.httpRequestData = requestData;
 
 				}
 				catch (...)
@@ -2099,7 +2352,7 @@ void	Http::validateRequestData(HttpRequest& requestData, const Socket& clientSoc
 						{
 							std::string tempFilePath = TEMP_FILE_DIR + toString(requestData.bodyData.tempRequestBodyFileNum);
 
-							int fd = open(tempFilePath.c_str(), O_CREAT, O_TRUNC, O_RDWR);
+							int fd = open(tempFilePath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
 
 							if (fd < 0)
 							{
@@ -2242,9 +2495,9 @@ void	Http::validateRequestData(HttpRequest& requestData, const Socket& clientSoc
 							HttpResponse& target = *requestData.responseTargetPtr;
 
 							target.responseBodyType = HTTP_RESPONSE_NOBODY;
-							target.statusCode = 415;
+							target.statusLine->first = 415;
 							target.keepAfterResponse = false;
-							target.statusMessage = "Unsupported Media Type";
+							target.statusLine->second = "Unsupported Media Type";
 
 							// get all the content type to the response header
 							{
@@ -2300,11 +2553,11 @@ void	Http::validateRequestData(HttpRequest& requestData, const Socket& clientSoc
 				{
 					std::string tempFilePath = TEMP_FILE_DIR + toString(requestData.bodyData.tempRequestBodyFileNum);
 
-					int fd = open(tempFilePath.c_str(), O_CREAT, O_TRUNC, O_RDWR);
+					int fd = open(tempFilePath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
 
 					if (fd < 0)
 					{
-						generate4xx5xxErrorReponse(requestData, 500, false, "POST method to non-cgi with Content-Type: multipart/form-data::open() error");
+						generate4xx5xxErrorReponse(requestData, 500, false, "HTTP::validating::POST method to non-cgi with Content-Type: multipart/form-data::open() error::" + std::string(std::strerror(errno)));
 					}
 
 					requestData.bodyData.bodyFd.push_back(fd);
@@ -2464,7 +2717,7 @@ void Http::readingRequestBody(HttpRequest& requestData)
 			_requestBuffer.erase(0, readBodyAmount);
 			requestData.bodyData.curr_body_read += readBodyAmount;
 			
-			if (requestData.bodyData.curr_body_read == requestData.bodyData.curr_body_read)
+			if (requestData.bodyData.curr_body_read == requestData.bodyData.body_size)
 				requestData.processStatus = FINISHED_READ_BODY;
 		
 			return ;
@@ -2651,57 +2904,25 @@ void Http::readingRequestBody(HttpRequest& requestData)
 							}
 
 							std::string tempSep = headerLineStr.substr(colonPos + 1);
-
-							std::vector<std::string> tempVec;
+							tempSep = my_ft_trim(tempSep, " \t");
 
 							if (!tempSep.empty())
 							{
-								size_t commaPos;
-								size_t i = 0;
-								size_t j = 0;
-								std::string newStr;
-								size_t temp;
-
-								while (i < tempSep.size())
-								{
-									temp = htabSp().findFirstNotCharset(tempSep, i);
-
-									if (temp == tempSep.npos)
-									 break ;
-
-									i = temp;
-									commaPos = tempSep.find_first_of(',', i);
-									if (commaPos == tempSep.npos)
-										commaPos = tempSep.size();
-
-									j = htabSp().findLastNotCharset(tempSep, commaPos - 1, commaPos - 1 - i);
-
-									if (j <= i || j == tempSep.npos)
-										newStr = tempSep.substr(i, 1);
-									else
-										newStr = tempSep.substr(i, j - i + 1);
-
-									if (forbiddenFieldValueChar().isNotMatch(newStr) == false)
-									{
-										requestData.bodyData.bodyFd.clear();
-										if (requestData.bodyData.isUseTempFile)
-											tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
-										else
-											std::remove(requestData.targetData.combinedPath.c_str());
-										generate4xx5xxErrorReponse(requestData, 400, false, "chunked trailer header::value in header field must not contain any forbidden char");
-									}
-
-									tempVec.push_back(newStr);
-									newStr.clear();
-
-									i = commaPos + 1;
-								}
+								if (forbiddenFieldValueChar().isNotMatch(tempSep) == false)
+									generate4xx5xxErrorReponse(httpRequest, 400, false, "value in trailer header field must not contain any forbidden char");
 							}
+
 
 							tempFieldName = stringToLower(tempFieldName);
 
-							if (!tempVec.empty())
-								requestData.requestData.headerField[tempFieldName].insert(requestData.requestData.headerField[tempFieldName].end(), tempVec.begin(), tempVec.end());
+							std::string &headerValueTarget = httpRequest.requestData.headerField[tempFieldName];
+
+							// separated by the ", "
+							if (headerValueTarget.empty() == false)
+								headerValueTarget += ", ";
+
+							headerValueTarget += tempSep;
+
 							tempSep.clear();
 						}
 					}
@@ -2918,8 +3139,8 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 					HttpResponse& targetResponse = *requestData.responseTargetPtr;
 
 					targetResponse.keepAfterResponse = true;
-					targetResponse.statusCode = 201;
-					targetResponse.statusMessage = "Created";
+					targetResponse.statusLine->first = 201;
+					targetResponse.statusLine->second = "Created";
 					targetResponse.contentType = "text/plain";
 					targetResponse.responseBodyType = HTTP_RESPONSE_BODY_FIXED_STR;
 
@@ -2953,19 +3174,21 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 
 				}
 
+				FileDescriptor fdFile(fd);
+
 				int pipe_in[2];
 				int pipe_out[2];
 
 				if (pipe(pipe_in) != 0)
 				{
-					close(fd);
+					tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 					generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI:: pipe() failed::" + std::string(std::strerror(errno)));
 				}
 				if (pipe(pipe_out) != 0)
 				{
-					close(fd);
 					close(pipe_in[0]);
 					close(pipe_in[1]);
+					tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 					generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI:: pipe() failed::" + std::string(std::strerror(errno)));
 				}
 
@@ -2977,8 +3200,7 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 					close(pipe_in[1]);
 					close(pipe_out[0]);
 					close(pipe_out[1]);
-					close(fd);
-
+					tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 					generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI:: fork() failed::" + std::string(std::strerror(errno)));
 				}
 
@@ -2986,8 +3208,9 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 				{
 					try
 					{
+						TempFileManager().setIsChild(true);
 					
-						if (dup2(pipe_out[1], STDOUT_FILENO) != 0)
+						if (dup2(pipe_out[1], STDOUT_FILENO) == -1)
 						{
 							for (int i = 3; i < MAX_FD; i++)
 								close(i);
@@ -2995,12 +3218,12 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 							throw(42);
 						}
 					
-						if (dup2(pipe_in[0], STDIN_FILENO) != 0)
+						if (dup2(pipe_in[0], STDIN_FILENO) == -1)
 						{
 							for (int i = 3; i < MAX_FD; i++)
 								close(i);
 						
-							generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error:: dup2 to stdin failed");
+							generate4xx5xxErrorReponseChildProcess(requestData, 500, false, "Internal Error:: dup2 to stdin failed");
 						}
 					
 						for (int i = 3; i < MAX_FD; i++)
@@ -3011,11 +3234,14 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 
 							// chdir() to change directory
 							{
-								size_t pos = requestData.cgiData.cgiPath.find_last_of('/');
-								std::string cgiPathDir = requestData.cgiData.cgiPath.substr(0, pos == std::string::npos ? requestData.cgiData.cgiPath.size() : pos + 1);
+								size_t pos = requestData.targetData.combinedPath.find_last_of('/');
+								std::string scriptPathDir = requestData.targetData.combinedPath.substr(0, pos == std::string::npos ? requestData.targetData.combinedPath.size() : pos + 1);
 
-								if (chdir(cgiPathDir.c_str()) != 0)
-									generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI chdir() failed");
+								if (chdir(scriptPathDir.c_str()) != 0)
+									generate4xx5xxErrorReponseChildProcess(requestData, 500, false, "Internal Error::CGI chdir() failed");
+								
+								envData().assignEnv("OLDPWD", envData().findValue("PWD"));
+								envData().assignEnv("PWD", scriptPathDir);
 							}
 
 							/* The GATEWAY_INTERFACE variable MUST be set to the dialect of CGI being used by the server
@@ -3047,7 +3273,7 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 								std::string temp;
 								if (httpFieldNormalSingletonTrim(requestData.requestData.headerField.find("content-type")->second, temp) == false)
 								{
-									generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error:: Post to CGI:: error occured when building env");
+									generate4xx5xxErrorReponseChildProcess(requestData, 500, false, "Internal Error:: Post to CGI:: error occured when building env");
 								}
 
 								envData().assignEnv("CONTENT_TYPE", temp);
@@ -3074,6 +3300,10 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 
 							/* SERVER_SOFTWARE is just our program which mean like webserv/1.0 looks good */
 							envData().assignEnv("SERVER_SOFTWARE", "webserv/1.0");
+
+							envData().assignEnv("REDIRECT_STATUS", "200");
+
+							envData().assignEnv("SCRIPT_FILENAME", requestData.targetData.combinedPath);
 
 							/* now we can convert http header to env */
 							{
@@ -3118,18 +3348,35 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 							argv[0] = const_cast<char *>(requestData.cgiData.cgiPath.c_str());
 							argv[1] = const_cast<char *>(requestData.targetData.combinedPath.c_str());
 
-							execve(requestData.cgiData.cgiPath.c_str(), argv, envData().getEnvp());
+							for (int i = 3; i < MAX_FD; i++)
+								close(i);
 
-							generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error:: Post to CGI:: failed execve()");
+							signal(SIGINT, SIG_DFL);
+						    signal(SIGQUIT, SIG_DFL);
+						    signal(SIGTERM, SIG_DFL);
+						    signal(SIGPIPE, SIG_DFL);
+
+							if (execve(argv[0], argv, envData().getEnvp()) == -1)
+							{
+								signal(SIGINT, serverStopHandler);
+							    signal(SIGQUIT, serverStopHandler);
+							    signal(SIGTERM, serverStopHandler);
+							    signal(SIGPIPE, SIG_IGN);
+
+								generate4xx5xxErrorReponseChildProcess(requestData, 500, false, "Internal Error:: Post to CGI:: failed execve()");
+							}
+
 						}
 					}
 					catch (HttpThrowStatus &e)
 					{
 						// should generate response on the list
-						HttpResponse& target = _httpResponseList.back();
+						HttpResponse& target = *httpRequest.responseTargetPtr;
 
 						// here print all of that to STDOUT
 						target.forcePrintAllResponse();
+						close(STDOUT_FILENO);
+						httpRequest.clear();
 					}
 					catch (int &e)
 					{
@@ -3139,13 +3386,15 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 					{
 						try 
 						{
-							generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::Unknown Error Occurred");
+							generate4xx5xxErrorReponseChildProcess(requestData, 500, false, "Internal Error::Unknown Error Occurred");
 						}
 						catch (HttpThrowStatus &e)
 						{
-							HttpResponse& target = _httpResponseList.back();
+							HttpResponse& target = *httpRequest.responseTargetPtr;
 						
 							target.forcePrintAllResponse();
+							close(STDOUT_FILENO);
+							httpRequest.clear();
 						}
 					}
 
@@ -3162,6 +3411,7 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 
 					if (fcntl(pipe_out[0], F_SETFL, O_NONBLOCK) != 0)
 					{
+						tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 						kill(pid, SIGTERM);
 						waitpid(pid, NULL, 0);
 						close(pipe_out[0]);
@@ -3171,6 +3421,7 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 
 					if (fcntl(pipe_in[1], F_SETFL, O_NONBLOCK) != 0)
 					{
+						tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 						kill(pid, SIGTERM);
 						waitpid(pid, NULL, 0);
 						close(pipe_out[0]);
@@ -3182,23 +3433,8 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 					{
 						HttpResponse& targetResponse = *requestData.responseTargetPtr;
 
-						Shared<CgiProcess>	tempCgiData;
 
-						tempCgiData->isCgiOutSocketAlive = true;
-						tempCgiData->cgiPid = pid;
-						tempCgiData->status = CGI_PROCESS_RUNNING;
-						tempCgiData->cgiOutSocketFd = pipe_out[0];
-						tempCgiData->isCgiProcessOpen = true;
-						tempCgiData->cgiInSocketFd = pipe_in[1];
-						tempCgiData->isCgiInSocketAlive = true;
-						tempCgiData->isCgiFinished = false;
-
-						Shared<HttpCgi> tempShareHttpCgi(HttpCgi(&_httpResponseList,
-							httpRequest.responseTargetPtr,
-							clientSocket.getSocketFD(),
-							&(socketMap[pipe_out[0]]),
-							&(socketMap[pipe_in[1]]),
-							fd, tempCgiData));
+						Shared<HttpCgi> tempShareHttpCgi;
 
 						socketMap.insert(std::make_pair(pipe_out[0], Socket(pipe_out[0])));
 						socketMap[pipe_out[0]].setupCGIOUTSocket(clientSocket.getServersConfigPtr(),
@@ -3206,22 +3442,44 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 						tempShareHttpCgi);
 
 						socketMap.insert(std::make_pair(pipe_in[1], Socket(pipe_in[1])));
-						socketMap[pipe_out[0]].setupCGIINSocket(clientSocket.getServersConfigPtr(),
+						socketMap[pipe_in[1]].setupCGIINSocket(clientSocket.getServersConfigPtr(),
 						clientSocket.getEventContoller(), &socketMap,
 						tempShareHttpCgi);
+
+						Shared<CgiProcess>	tempCgiData;
+
+						tempCgiData->cgiPid = pid;
+						tempCgiData->status = CGI_PROCESS_RUNNING;
+						//tempCgiData->cgiOutSocketPtr = &socketMap[pipe_out[0]];
+						//tempCgiData->cgiInSocketPtr = &socketMap[pipe_in[1]];
+						tempCgiData->socketMapPtr = &socketMap;
+						tempCgiData->clientSocketPtr = _clientSocketPtr;
+
+						s_http_cgi_temp_file_data tempFileData;
+
+						tempFileData.tempReadFileFd = fdFile;
+						tempFileData.tempFileNum = requestData.bodyData.tempRequestBodyFileNum;
+						tempFileData.isReachEOF = false;
+						
+						tempShareHttpCgi->setHttpCgiHasCgiIn(&_httpResponseList,
+							httpRequest.responseTargetPtr,
+							&(socketMap[pipe_out[0]]),
+							&(socketMap[pipe_in[1]]),
+							tempFileData, tempCgiData);
+
 
 						targetResponse.cgiProcessData = tempCgiData;
 						targetResponse.socketMapPtr = &socketMap;
 						targetResponse.targetServer = requestData.serverData.targetServerPtr;
 						targetResponse.targetLocationBlock = requestData.serverData.targetLocationBlockPtr;
 
-						targetResponse.httpRequestData.push_back(requestData);
+						targetResponse.httpRequestData = requestData;
 					}
 					catch (...)
 					{
+						tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 						close(pipe_in[1]);
 						close(pipe_out[0]);
-						close(fd);
 						
 						throw;
 					}
@@ -3303,7 +3561,7 @@ void Http::directRequestProcess(HttpRequest requestData)
 	}
 	catch (HttpThrowStatus &status)
 	{
-		Logger::log(LC_INFO, "Http::socket#%d::reponse with status code %d::%s", _clientSocketPtr->getSocketFD().getFd(), status.statusCode(), status.message().c_str());
+		Logger::log(LC_INFO, "%d::reponse with status code %d::%s", _clientSocketPtr->getSocketFD().getFd(), status.statusCode(), status.message().c_str());
 	}
 	catch (std::exception &e)
 	{
@@ -3345,6 +3603,7 @@ void Http::readFromClient()
 		catch (HttpThrowStatus &status)
 		{
 			Logger::log(LC_INFO, "Http::socket#%d::reponse with status code %d::%s", _clientSocketPtr->getSocketFD().getFd(), status.statusCode(), status.message().c_str());
+			httpRequest.clear();
 		}
 		catch (std::exception &e)
 		{
@@ -3365,7 +3624,7 @@ void Http::readFromClient()
 
 		if (epoll_ctl(_clientSocketPtr->getEpollFD().getFd(), EPOLL_CTL_MOD, _clientSocketPtr->getSocketFD().getFd(), &event) == -1)
 		{
-			std::string msg = "epoll_ctl()::error::";
+			std::string msg = "Http::readFromClient()::epoll_ctl()::error::";
 			msg += std::strerror(errno);
 			throw WebservException(msg);
 		}
@@ -3377,6 +3636,8 @@ void Http::readFromClient()
 void	Http::writeToClient()
 {
 	HttpResponse *response_block = NULL;
+
+	_isEpollout = true;
 
 	// check if it is empty or what
 	if (_httpResponseList.empty() || _httpResponseList.front().isComplete())
@@ -3414,7 +3675,7 @@ void	Http::writeToClient()
 
 		if (epoll_ctl(_clientSocketPtr->getEpollFD().getFd(), EPOLL_CTL_MOD, _clientSocketPtr->getSocketFD().getFd(), &event) == -1)
 		{
-			std::string msg = "epoll_ctl()::error::";
+			std::string msg = "Http::writeToClient::epoll_ctl()::error::";
 			msg += std::strerror(errno);
 			throw WebservException(msg);
 		}
@@ -3715,8 +3976,6 @@ bool Http::extractHttpFieldValueString(const std::string& toExtract, std::deque<
 
 	size_t i = 0;
 	size_t j = 0;
-	size_t pos;
-	char c;
 	std::string tempStr;
 	while (i < toExtract.size())
 	{

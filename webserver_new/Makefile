@@ -30,7 +30,9 @@ CLASS_HEADER_FILE =	ConfigData.hpp \
 					CharTable.hpp
 
 MAIN_HEADER_FILE =	defined_value.hpp \
-					utility_function.hpp
+					utility_function.hpp \
+					webserv_structs.hpp
+
 
 # ========== SOURCE  FILES ===========
 
@@ -92,7 +94,7 @@ OBJ_TEST = ${patsubst ${SRC_DIR}%.cpp, ${OBJ_DIR}%.o, ${SRC_TEST}}
 # ========== COMPILE DIRECTIVES ======
 CC = c++
 
-CFLAGS = -std=c++98 -pedantic-errors -I./${HEADERS_DIR} -DTEMP_FILE_DIR='"${TEMP_DIR}"'#-Wall -Wextra -Werror
+CFLAGS = -std=c++98 -pedantic-errors -I./${HEADERS_DIR} -DTEMP_FILE_DIR='"${TEMP_DIR}"' #-Wall -Wextra -Werror
 
 NAME = Webserv
 TEST_NAME = ${NAME}_unittest

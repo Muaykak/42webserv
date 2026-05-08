@@ -75,6 +75,8 @@ bool string_to_size_t(const std::string& toConvert, size_t& returnValue);
 std::string size_t_to_hex(size_t toConvert);
 bool hex_to_size_t(const std::string& hexStr, size_t& returnValue);
 
+volatile sig_atomic_t& closeWebservSignal();
 void 	serverStopHandler(int signum);
+
 
 #endif

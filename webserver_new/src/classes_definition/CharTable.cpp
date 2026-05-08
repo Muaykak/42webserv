@@ -188,7 +188,7 @@ size_t CharTable::findLastCharset(const std::string& strToFind) const{
 	if (strToFind.empty())
 		return (strToFind.npos);
 	size_t	strSize = strToFind.size();
-	for (size_t i = strToFind.size() - 1; i > 0; i--){
+	for (size_t i = strSize - 1; i > 0; i--){
 		if ((*this)[static_cast<unsigned char>(strToFind[i])] == true)
 			return (i);
 	}
@@ -242,7 +242,7 @@ size_t CharTable::findLastNotCharset(const std::string& strToFind) const{
 	if (strToFind.empty())
 		return (strToFind.npos);
 	size_t	strSize = strToFind.size();
-	for (size_t i = strToFind.size() - 1; i > 0; i--){
+	for (size_t i = strSize - 1; i > 0; i--){
 		if ((*this)[static_cast<unsigned char>(strToFind[i])] == false)
 			return (i);
 	}

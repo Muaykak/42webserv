@@ -1,70 +1,73 @@
 #include "../../include/classes/HttpCgi.hpp"
 #include "../../include/classes/Socket.hpp"
 #include "../../include/classes/WebServ.hpp"
+#include "../../include/classes/TempFileManager.hpp"
 
 HttpCgi::HttpCgi()
-:_clientResponseList(NULL),
+:
+_clientResponseList(NULL),
 _cgiTargetResponse(NULL),
 _cgiOutSocket(NULL),
+httpCgiStatus(HTTPCGI_NO_STATUS),
 _isFinishedRead(false),
-_keepConnection(true),
-httpCgiStatus(HTTPCGI_NO_STATUS)
+_keepConnection(true)
 {
+	_writeCgiBuffer.reserve(HTTP_WRITE_TO_CGI_BUFFER_SIZE);
 	_readCgiBuffer.reserve(HTTP_READ_FROM_CGI_BUFFER_SIZE);
 }
 
-HttpCgi::HttpCgi(std::list<HttpResponse>* clientResponseList,
-HttpResponse* cgiTargetResponse,
-const FileDescriptor& mainHttpSocket,
-Socket *cgiOutSocket, Shared<CgiProcess>& cgiProcessData)
-: _clientResponseList(clientResponseList),
-_cgiTargetResponse(cgiTargetResponse),
-_cgiOutSocket(cgiOutSocket),
-_mainHttpSocketFd(mainHttpSocket),
-_isFinishedRead(false),
-_keepConnection(true),
-httpCgiStatus(HTTPCGI_READING_RESPONSE_HEADER)
+void HttpCgi::setHttpCgiNoCgiIn(std::list<HttpResponse>* clientResponseList,
+	HttpResponse* cgiTargetResponse,
+	Socket *cgiOutSocket, Shared<CgiProcess>& cgiProcessData)
 {
-	_readCgiBuffer.reserve(HTTP_READ_FROM_CGI_BUFFER_SIZE);
+	_clientResponseList = clientResponseList;
+	_cgiTargetResponse = cgiTargetResponse;
+	_cgiOutSocket = cgiOutSocket;
+	this->cgiProcessData = cgiProcessData;
+	_isFinishedRead = false;
+	httpCgiStatus = HTTPCGI_READING_RESPONSE_HEADER;
 }
 
-HttpCgi::HttpCgi(std::list<HttpResponse>* clientResponseList,
-HttpResponse* cgiTargetResponse,
-const FileDescriptor& mainHttpSocket,
-Socket *cgiOutSocket,
-Socket *cgiInSocket,
-const FileDescriptor& tempReadFileFd,
-Shared<CgiProcess>& cgiProcessData)
-: _clientResponseList(clientResponseList),
-_cgiTargetResponse(cgiTargetResponse),
-_cgiOutSocket(cgiOutSocket),
-_cgiInSocket(cgiInSocket),
-_mainHttpSocketFd(mainHttpSocket),
-_tempReadFileFd(tempReadFileFd),
-_isFinishedRead(false),
-_keepConnection(true),
-httpCgiStatus(HTTPCGI_SENDING_TO_CGI)
+void HttpCgi::setHttpCgiHasCgiIn(std::list<HttpResponse>* clientResponseList,
+	HttpResponse* cgiTargetResponse,
+	Socket *cgiOutSocket, Socket* cgiInSocket,
+	const s_http_cgi_temp_file_data& tempFileData,
+	Shared<CgiProcess>& cgiProcessData)
 {
-	_readCgiBuffer.reserve(HTTP_READ_FROM_CGI_BUFFER_SIZE);
+	_clientResponseList = clientResponseList;
+	_cgiTargetResponse = cgiTargetResponse;
+	_cgiOutSocket = cgiOutSocket;
+	_cgiInSocket = cgiInSocket;
+	_tempFileData = tempFileData;
+	this->cgiProcessData = cgiProcessData;
+	_isFinishedRead = false;
+	_keepConnection = true;
+	httpCgiStatus = HTTPCGI_SENDING_TO_CGI;
 }
 
 HttpCgi::HttpCgi(const HttpCgi& obj)
-: _clientResponseList(obj._clientResponseList),
+:
+_clientResponseList(obj._clientResponseList),
 _cgiTargetResponse(obj._cgiTargetResponse),
 _cgiOutSocket(obj._cgiOutSocket),
 _cgiInSocket(obj._cgiInSocket),
-_mainHttpSocketFd(obj._mainHttpSocketFd),
+httpCgiStatus(obj.httpCgiStatus),
+_tempFileData(obj._tempFileData),
 _isFinishedRead(obj._isFinishedRead),
-_keepConnection(obj._keepConnection),
-httpCgiStatus(obj.httpCgiStatus)
+_keepConnection(obj._keepConnection)
 {
-	if (obj._tempReadFileFd->getFd() >= 0)
-		_tempReadFileFd = obj._tempReadFileFd;
+	_writeCgiBuffer.reserve(HTTP_WRITE_TO_CGI_BUFFER_SIZE);
 	_readCgiBuffer.reserve(HTTP_READ_FROM_CGI_BUFFER_SIZE);
 }
 
 HttpCgi::~HttpCgi()
 {
+	if (_tempFileData.hasData())
+	{
+		tempFileManager().removeTempFile(_tempFileData->tempFileNum);
+		_tempFileData.clear();
+	}
+
 	/* heereree */
 	if (httpCgiStatus == HTTPCGI_SENDING_TO_CGI || httpCgiStatus == HTTPCGI_READING_RESPONSE_HEADER)
 	{
@@ -77,7 +80,7 @@ HttpCgi::~HttpCgi()
 		}
 		catch (HttpThrowStatus &e)
 		{
-			Logger::log(LC_INFO, "Http::CgiSocket#%d::response with status code %d::%s", _cgiOutSocket->getSocketFD().getFd(), e.statusCode(), e.message());
+			Logger::log(LC_INFO, "Http::CgiSocket#%d::response with status code %d::%s", _cgiOutSocket->getSocketFD().getFd(), e.statusCode(), e.message().c_str());
 		}
 		catch (std::exception &e)
 		{
@@ -173,19 +176,19 @@ void HttpCgi::generate5xxCGIOUTresponseError(unsigned int errorCode, const std::
 	}
 
 	_cgiTargetResponse->keepAfterResponse = false;
-	_cgiTargetResponse->statusCode = errorCode;
+	_cgiTargetResponse->statusLine->first = errorCode;
 	_cgiTargetResponse->contentType = "text/html";
 
 	switch (errorCode)
 	{
 		case (500):
 		{
-			_cgiTargetResponse->statusMessage = "Internal Error";
+			_cgiTargetResponse->statusLine->second = "Internal Error";
 			break;
 		}
 		default:
 		{
-			_cgiTargetResponse->statusMessage = "";
+			_cgiTargetResponse->statusLine->second = "";
 			break;
 		}
 	}
@@ -200,7 +203,7 @@ void HttpCgi::generate5xxCGIOUTresponseError(unsigned int errorCode, const std::
 	{
 		_cgiTargetResponse->responseBodyType = HTTP_RESPONSE_BODY_FIXED_STR;
 
-		std::string htmlMsg = toString(errorCode) + " " + _cgiTargetResponse->statusMessage;
+		std::string htmlMsg = toString(errorCode) + " " + _cgiTargetResponse->statusLine->second;
 
 		std::string bodyStr =
 		"<html>\r\n"
@@ -234,7 +237,7 @@ void HttpCgi::generate5xxCGIOUTresponseError(unsigned int errorCode, const std::
 
 void HttpCgi::parsingCGIOUTresponseHeader()
 {
-	if (httpCgiStatus= HTTPCGI_READING_RESPONSE_HEADER)
+	if (httpCgiStatus != HTTPCGI_READING_RESPONSE_HEADER)
 		return ;
 
 	size_t	responseBuffSize = _responseBuffer.size();
@@ -244,7 +247,6 @@ void HttpCgi::parsingCGIOUTresponseHeader()
 	std::string tempFieldName;
 	std::string tempFieldValue;
 	std::string tempSep;
-	size_t temp;
 
 	size_t endlinePos;
 	while (httpCgiStatus == HTTPCGI_READING_RESPONSE_HEADER)
@@ -303,11 +305,16 @@ void HttpCgi::parsingCGIOUTresponseHeader()
 			/* maybe we can still use generate response, just need to
 			add the appropriate response header */
 
+			std::cout << std::endl << "######### PRINT WHOLE RESPONSE BUFFER ######" << std::endl;
+			std::cout << _responseBuffer;
+			std::cout << std::endl << "############################################" << std::endl;
+
 			generate5xxCGIOUTresponseError(500, "Internal Error::CGIOUT::parsing Response Header::"
 			"name and value the header field must separated by \':\'");
 		}
 
 		tempFieldName = _responseBuffer.substr(currIndex, colonPos - currIndex);
+		
 		if (tempFieldName.empty())
 			generate5xxCGIOUTresponseError(500, "Internal Error::CGIOUT::parsing Response Header::"
 			"name in header field must not empty string");
@@ -315,7 +322,7 @@ void HttpCgi::parsingCGIOUTresponseHeader()
 		if (httpFieldNameChar().isMatch(tempFieldName) == false)
 		{
 			generate5xxCGIOUTresponseError(500, "Internal Error::CGIOUT::parsing Response Header::"
-			"name in header field must not contain any forbiddin char");
+			"name in header field must not contain any forbiddin char:: " + tempFieldName);
 		}
 		if (allAlphaChar()[tempFieldName[0]] == false)
 			generate5xxCGIOUTresponseError(500, "Internal Error::CGIOUT::parsing Response Header::"
@@ -336,7 +343,7 @@ void HttpCgi::parsingCGIOUTresponseHeader()
 		else
 		/* A NULL field value is equivalent to a field not being sent.*/
 		{
-			currIndex = isCRLF == false ? endlinePos + 1 : endlinePos + 2;
+			currIndex = endlinePos + 1;
 			continue;
 		}
 
@@ -349,7 +356,7 @@ void HttpCgi::parsingCGIOUTresponseHeader()
 		if ((tempFieldName == "content-type"
 			|| tempFieldName == "location"
 			|| tempFieldName == "status")
-		&& _responseHeaderCGIOUT.find(tempFieldName) == _responseHeaderCGIOUT.end())
+		&& _responseHeaderCGIOUT.find(tempFieldName) != _responseHeaderCGIOUT.end())
 		{
 			generate5xxCGIOUTresponseError(400, "CGIOUT::Bad request:: Each CGI field MUST NOT appear more than once in the response");
 		}
@@ -361,7 +368,7 @@ void HttpCgi::parsingCGIOUTresponseHeader()
 
 		headerValueTarget += tempSep;
 
-		currIndex = isCRLF == false ? endlinePos + 1 : endlinePos + 2;
+		currIndex = endlinePos + 1;
 		
 	}
 
@@ -374,15 +381,35 @@ void HttpCgi::validateCGIOUTresponse()
 
 	if (httpCgiStatus != HTTPCGI_VALIDATING_RESPONSE)
 		return ;
+
+	{
+		std::cout << " =========== PRINT CGI HEADER ==========" << std::endl;
+
+		std::map<std::string, std::string>::const_iterator it = _responseHeaderCGIOUT.begin();
+
+		while (it != _responseHeaderCGIOUT.end())
+		{
+			std::cout << it->first << ": " << it->second << std::endl;
+			++it;
+		}
+	}
 	/* would not tolerate if the response has no header */
 	if (_responseHeaderCGIOUT.empty())
-		generate5xxCGIOUTresponseError(500, "Internal Error::CGIOUT::the response must have header field");
+		generate5xxCGIOUTresponseError(500, "Internal Error::CGIOUT::Test If CGI REACH HERE");
 
 	/* From the CGI documentation, there are 4 main response types so we can
 	separate that here */
 
 	/* If found the location header we need to check if it is local redirect or
 	client redirect*/
+
+	/* does not accept trailer header */
+	{
+		std::map<std::string, std::string>::const_iterator foundTrailerHeader = _responseHeaderCGIOUT.find("trailer");
+
+		if (foundTrailerHeader != _responseHeaderCGIOUT.end())
+			generate5xxCGIOUTresponseError(500, "Internal Error::Cgi Out::Trailer Header Not Allowed");
+	}
 
 	std::map<std::string, std::string>::const_iterator foundLocation = _responseHeaderCGIOUT.find("location");
 	std::map<std::string, std::string>::const_iterator foundContentType = _responseHeaderCGIOUT.find("content-type");
@@ -423,45 +450,386 @@ void HttpCgi::validateCGIOUTresponse()
 
 			/* we need to reprocess the whole request again but change the requestTarget */
 			
-			/* get the old request data and remodify it*/
-			HttpRequest& newRequestData = _cgiTargetResponse->httpRequestData[0];
 
-			/* what i need to change here */
-			newRequestData.processStatus = VALIDATING_REQUEST;
+			if (cgiProcessData->clientSocketPtr.hasData() == true)
+			{
+				/* get the old request data and remodify it*/
+				HttpRequest& newRequestData = *_cgiTargetResponse->httpRequestData;
 
-			/* change the request target to new ?*/
-			newRequestData.requestData.requestTarget = string;
+				/* what i need to change here */
+				newRequestData.processStatus = VALIDATING_REQUEST;
 
-			std::map<int, s_webserv_custom_event>& customEventMap = *_cgiOutSocket->getEventContoller().customEventMap;
+				/* change the request target to new ?*/
+				newRequestData.requestData.requestTarget = string;
 
-			s_webserv_custom_event& targetCustomEvent = customEventMap[_cgiOutSocket->getSocketFD().getFd()];
+				std::map<int, s_webserv_custom_event>& customEventMap = *_cgiOutSocket->getEventContoller().customEventMap;
 
-			targetCustomEvent.httpRequestData = newRequestData;
+				s_webserv_custom_event& targetCustomEvent = customEventMap[cgiProcessData->clientSocketPtr->getSocketFD().getFd()];
 
-			/* now i think we should finish this CGI socket so we can reprocess all over again */
-			_keepConnection = false;
-			_isFinishedRead = true;
-			httpCgiStatus = HTTPCGI_FINISHED;
+				targetCustomEvent.httpRequestData = newRequestData;
+
+				/* now i think we should finish this CGI socket so we can reprocess all over again */
+				_keepConnection = false;
+				_isFinishedRead = true;
+				httpCgiStatus = HTTPCGI_FINISHED;
+
+			}
 			return ;
 		}
 		else
 		{
+			/* if not start with '/' then it is client redirection 
+			
+			according to RFC3875 i can set the return status to 302 found */
 
+			/* if the status header is omitted then assumed that it is 302*/
+			{
+				std::map<std::string, std::string>::const_iterator foundIt = _responseHeaderCGIOUT.find("status");
+
+				if (foundIt != _responseHeaderCGIOUT.end())
+				{
+					std::string statusCodeTempStr;
+
+					if (Http::httpFieldNormalSingletonTrim(foundIt->second, statusCodeTempStr) == false)
+					{
+						generate5xxCGIOUTresponseError(500, "Internal Error::CGI Response::Status Value Invalid");
+					}
+
+					size_t statusCodeNum = 0;
+					if (string_to_size_t(statusCodeTempStr, statusCodeNum) == false || (statusCodeNum < 100 || statusCodeNum > 599))
+					{
+						generate5xxCGIOUTresponseError(500, "Internal Error::CGI Response::Status Value Invalid");
+					}
+
+					_cgiTargetResponse->statusLine->first = statusCodeNum;
+				}
+				else
+				{
+					_cgiTargetResponse->statusLine->first = 302;
+					_cgiTargetResponse->statusLine->second = "Found";
+				}
+			}
+		}
+	}
+	else
+	{
+		std::map<std::string, std::string>::const_iterator foundIt = _responseHeaderCGIOUT.find("status");
+
+		if (foundIt != _responseHeaderCGIOUT.end())
+		{
+
+			std::string statusCodeTempStr;
+
+			if (Http::httpFieldNormalSingletonTrim(foundIt->second, statusCodeTempStr) == false)
+			{
+				generate5xxCGIOUTresponseError(500, "Internal Error::CGI Response::Status Value Invalid:: failed trim");
+			}
+
+			size_t statusCodeNum = 0;
+			if (string_to_size_t(statusCodeTempStr, statusCodeNum) == false || (statusCodeNum < 100 || statusCodeNum > 599))
+			{
+				generate5xxCGIOUTresponseError(500, "Internal Error::CGI Response::Status Value Invalid::" + statusCodeTempStr + std::string("::") + toString(statusCodeNum));
+			}
+
+			_cgiTargetResponse->statusLine->first = statusCodeNum;
+		}
+		else
+		{
+			_cgiTargetResponse->statusLine->first = 200;
+			_cgiTargetResponse->statusLine->second = "OK";
+		}
+	}
+	
+
+	if (foundContentType != _responseHeaderCGIOUT.end())
+	{
+		/* if content type is found i need to check if it has Content-length or Transfer-Encoding */
+
+		std::map<std::string, std::string>::const_iterator	foundContentLength = _responseHeaderCGIOUT.find("content-length");
+		std::map<std::string, std::string>::const_iterator	foundTransferEncoding = _responseHeaderCGIOUT.find("transfer-encoding");
+
+		if (foundContentLength != _responseHeaderCGIOUT.end() && foundTransferEncoding != _responseHeaderCGIOUT.end())
+		{
+			/* should not found both of these header*/
+			generate5xxCGIOUTresponseError(500, "Internal Error::CGI response::Both Content-Length and Transfer-Encoding found");
+		}
+		else if (foundContentLength != _responseHeaderCGIOUT.end())
+		{
+			std::string tempExtractString;
+			/* check the value must be chunked*/
+			if (Http::httpFieldNormalSingletonTrim(foundContentLength->second, tempExtractString) == false)
+			{
+				generate5xxCGIOUTresponseError(500, "Internal Error::CGI response::Content-Length invalid value");
+			}
+
+			if (string_to_size_t(tempExtractString, _bodyData->bodySize) == false || _bodyData->bodySize == 0)
+			{
+				generate5xxCGIOUTresponseError(500, "Internal Error::CGI response::Content-Length invalid value");
+			}
+
+			_bodyData->isChunkBody = false;
+			_cgiTargetResponse->addHeader("Content-Length", toString(_bodyData->bodySize));
+		}
+		else if (foundTransferEncoding != _responseHeaderCGIOUT.end())
+		{
+			std::string tempExtractString;
+			/* check the value must be chunked*/
+			if (Http::httpFieldNormalSingletonTrim(foundTransferEncoding->second, tempExtractString) == false)
+			{
+				generate5xxCGIOUTresponseError(500, "Internal Error::CGI response::Transfed-Encoding invalid value");
+			}
+
+			if (tempExtractString != "chunked")
+			{
+				generate5xxCGIOUTresponseError(500, "Internal Error::CGI response::Transfed-Encoding invalid value");
+
+			}
+
+			_bodyData->isChunkBody = true;
+			_bodyData->isManualChunk = false;
+			_bodyData->bodySize = 0;
+			_bodyData->chunkBodyIsFinished = false;
+			_cgiTargetResponse->addHeader("Transfer-Encoding", "chunked");
+		}
+		else
+		{
+			/* if the content-length or transfer-encoding does not found at all 
+			treat body as chunked body*/
+
+			_bodyData->isManualChunk = true;
+			_bodyData->isChunkBody = true;
+			_bodyData->bodySize = 0;
+			_bodyData->chunkBodyIsFinished = false;
+			_cgiTargetResponse->addHeader("Transfer-Encoding", "chunked");
 		}
 
+		_bodyData->curr_body_read = 0;
+		_cgiTargetResponse->responseBodyType = HTTP_RESPONSE_CGI_BODY;
 	}
-	else if (foundContentType != _responseHeaderCGIOUT.end())
+	else
 	{
-
-
+		_cgiTargetResponse->responseBodyType = HTTP_RESPONSE_NOBODY;
+		/* */
 	}
-	/* Don't know what type*/
-	else 
+
+	/* complete checking the response header, now preparing to next process */
+	_cgiTargetResponse->generateResponse();
+
+	if (_cgiTargetResponse->responseBodyType == HTTP_RESPONSE_NOBODY)
 	{
-		generate5xxCGIOUTresponseError(500, "Internal Error::CGIOUT::the response type doens't match with any");
+		httpCgiStatus = HTTPCGI_FINISHED;
+		return ;
+	}
+	else
+	{
+		httpCgiStatus = HTTPCGI_SENDING_RESPONSE_BUFFER;
+		return ;
 	}
 
-	
+
+	///* Don't know what type*/
+	//{
+	//	generate5xxCGIOUTresponseError(500, "Internal Error::CGIOUT::the response type doens't match with any");
+	//}
+
+}
+
+void HttpCgi::sendToResponseBuffer()
+{
+	if (httpCgiStatus != HTTPCGI_SENDING_RESPONSE_BUFFER)
+		return ;
+
+
+	/* if the buffer is empty then wait for next read event*/
+	if (_responseBuffer.size() == 0)
+		return ;
+
+	/* separate ways to put into buffer by*/
+	if (_bodyData->isChunkBody == false)
+	{
+		/* here is normal Content-Length with specified Length */
+
+		size_t& bodySize = _bodyData->bodySize;
+
+		if (_responseBuffer.size() < bodySize)
+		{
+			/* deduct the body size */
+			bodySize = bodySize - _responseBuffer.size();
+
+			s_response_buff tempBuff;
+
+			tempBuff.buffer.insert(tempBuff.buffer.end(), _responseBuffer.begin(), _responseBuffer.end());
+			tempBuff.currentIndex = 0;
+
+			_cgiTargetResponse->pushNewResponseBuff(tempBuff);
+			/* body size still not 0 then wait for next read event*/
+
+			return ;
+		}
+		else
+		{
+			s_response_buff tempBuff;
+
+			std::string tempStr = _responseBuffer.substr(0, bodySize);
+
+			tempBuff.buffer.insert(tempBuff.buffer.end(), tempStr.begin(), tempStr.end());
+			tempBuff.currentIndex = 0;
+
+			_cgiTargetResponse->pushNewResponseBuff(tempBuff);
+
+			httpCgiStatus = HTTPCGI_FINISHED;
+			return ;
+		}
+	}
+	else
+	{
+		/* transfer encoding*/
+
+		/* if it is not manual chunk then do nothing*/
+		if (_bodyData->isManualChunk == false)
+		{
+			size_t endLinePos;
+
+			while (true)
+			{
+				if (_bodyData->chunkBodyIsFinished == true)
+				{
+					/* true means that waiting for last bit of chunk */
+					if (_responseBuffer.size() < 2)
+						return ;
+
+					std::string tempStr = "0\r\n\r\n";
+
+					s_response_buff tempBuff;
+
+					tempBuff.buffer.insert(tempBuff.buffer.end(), tempStr.begin(), tempStr.end());
+					tempBuff.currentIndex = 0;
+
+					_cgiTargetResponse->pushNewResponseBuff(tempBuff);
+
+
+					if (_responseBuffer.size() == 2)
+					{
+						httpCgiStatus = HTTPCGI_FINISHED;
+						_isFinishedRead = true;
+						return ;
+					}
+
+					std::map<int, s_webserv_custom_event>& customEventMap = *_cgiOutSocket->getEventContoller().customEventMap;
+					s_webserv_custom_event& targetCustomEvent = customEventMap[cgiProcessData->clientSocketPtr->getSocketFD().getFd()];
+					targetCustomEvent.clientSocketManualDisconnect = true;
+					_keepConnection = false;
+					_isFinishedRead = true;
+					httpCgiStatus = HTTPCGI_FINISHED;
+					return ;
+					/* else would consider wrong format and would trigger manual event to close
+					client connection */
+
+				}
+
+				if (_bodyData->curr_body_read >= _bodyData->bodySize)
+				{
+					endLinePos = _responseBuffer.find("\r\n");
+
+					if (endLinePos == std::string::npos)
+					{
+						/* maybe next read */
+
+						return ;
+					}
+
+					std::string hexString = _responseBuffer.substr(0, endLinePos);
+
+					size_t hexNum = 0;
+
+					if (hex_to_size_t(hexString, hexNum) == false)
+					{
+						/* if conversion failed then it might be wrong value,
+						thus what we can only do is just quits everything and
+						disconnect the client */
+
+						std::map<int, s_webserv_custom_event>& customEventMap = *_cgiOutSocket->getEventContoller().customEventMap;
+						s_webserv_custom_event& targetCustomEvent = customEventMap[cgiProcessData->clientSocketPtr->getSocketFD().getFd()];
+						targetCustomEvent.clientSocketManualDisconnect = true;
+						_keepConnection = false;
+						_isFinishedRead = true;
+						httpCgiStatus = HTTPCGI_FINISHED;
+						return ;
+					}
+
+					/* hexNum converted */
+
+					if (hexNum == 0)
+					{
+						_responseBuffer.erase(0, endLinePos + 2);
+
+						_bodyData->chunkBodyIsFinished = true;
+						/* if less than 2 then wait for next read */
+						if (_responseBuffer.size() < 2)
+							return ;
+						else
+							continue;
+					}
+					else
+					{
+						_bodyData->chunkBodyIsFinished = false;
+						_bodyData->bodySize += hexNum;
+					}
+
+					_responseBuffer.erase(0, endLinePos + 2);
+				}
+
+
+				size_t readBodyAmount = _bodyData->bodySize - _bodyData->curr_body_read;
+
+				if (readBodyAmount > _responseBuffer.size())
+					readBodyAmount = _responseBuffer.size();
+				
+				_bodyData->curr_body_read += readBodyAmount;
+
+				std::string tempCutResBuff = _responseBuffer.substr(0, readBodyAmount);
+
+				std::string startChunkHex = size_t_to_hex(readBodyAmount);
+
+				startChunkHex += "\r\n";
+
+				s_response_buff tempBuff;
+				tempBuff.buffer.insert(tempBuff.buffer.end(), startChunkHex.begin(), startChunkHex.end());
+				tempBuff.buffer.insert(tempBuff.buffer.end(), tempCutResBuff.begin(), tempCutResBuff.end());
+
+				std::string endLine = "\r\n";
+
+				tempBuff.buffer.insert(tempBuff.buffer.end(), endLine.begin(), endLine.end());
+				tempBuff.currentIndex = 0;
+
+				_cgiTargetResponse->pushNewResponseBuff(tempBuff);
+			}
+
+			return ;
+		}
+		else
+		{
+			std::string startChunkHex = size_t_to_hex(_responseBuffer.size());
+
+			startChunkHex += "\r\n";
+
+			s_response_buff tempBuff;
+			tempBuff.buffer.insert(tempBuff.buffer.end(), startChunkHex.begin(), startChunkHex.end());
+			tempBuff.buffer.insert(tempBuff.buffer.end(), _responseBuffer.begin(), _responseBuffer.end());
+
+
+			std::string endLine = "\r\n";
+
+			tempBuff.buffer.insert(tempBuff.buffer.end(), endLine.begin(), endLine.end());
+			tempBuff.currentIndex = 0;
+
+			_cgiTargetResponse->pushNewResponseBuff(tempBuff);
+
+			return ;
+		}
+	}
+
+	return ;
 }
 
 void HttpCgi::processCGIOUTresponseBuffer()
@@ -486,68 +854,274 @@ void HttpCgi::processCGIOUTresponseBuffer()
 		only LF <\n> or CRLF <\r\n> only (i little bit different from
 		HTTP1.1 that i built. That one accepts only CRLF)
 	*/
+	std::cout << "     HTTPCGI::processCGIOUTresponseBuffer()" << std::endl;
+
 	parsingCGIOUTresponseHeader();
 
+	validateCGIOUTresponse();
+
+	sendToResponseBuffer();
 }
 
 
-void HttpCgi::readFromCGI(Socket* currentSocket)
+void HttpCgi::readFromCGI(Socket* currentSocket, const epoll_event& epollEvent)
 {
 	if (cgiProcessData->status != CGI_PROCESS_RUNNING)
 		return ;
 	// use read() right?
-	ssize_t	readAmount;
 
-	readAmount = read(_cgiOutSocket->getSocketFD().getFd(), &_readCgiBuffer[0], HTTP_READ_FROM_CGI_BUFFER_SIZE);
 	// this mean done
-	if (readAmount == 0)
+	try
 	{
-		Logger::log(LC_CONN_LOG, "CGI socket out (has nothing to read).#%d:: Disconnecting..", _cgiOutSocket->getSocketFD().getFd());
-		_isFinishedRead = true;
+		if (epollEvent.events & EPOLLIN)
+		{
+			ssize_t	readAmount;
+			readAmount = read(_cgiOutSocket->getSocketFD().getFd(), &_readCgiBuffer[0], HTTP_READ_FROM_CGI_BUFFER_SIZE);
+			if (readAmount == 0)
+			{
+				Logger::log(LC_CONN_LOG, "CGI socket out (has nothing to read).#%d:: Disconnecting..", _cgiOutSocket->getSocketFD().getFd());
+				_isFinishedRead = true;
 
-		// something here that would remove this socket cleanly
+				/* need to handle in case of still reading body of cgi*/
+				if (httpCgiStatus == HTTPCGI_SENDING_RESPONSE_BUFFER)
+				{
+					/* problem may occur if the body type is content length*/
+					if (_bodyData->isChunkBody == false)
+					{
+						/* what i could quickfix here is just append with '\n'*/
+						std::string tempStr(_bodyData->bodySize, '\n');
+
+						s_response_buff tempBuff;
+						tempBuff.buffer.insert(tempBuff.buffer.end(), tempStr.begin(), tempStr.end());
+						tempBuff.currentIndex = 0;
+
+						_cgiTargetResponse->pushNewResponseBuff(tempBuff);
+					}
+					else
+					{
+						if (_bodyData->isManualChunk == true)
+						{
+							std::string tempChunkStr = "0\r\n\r\n";
+
+							s_response_buff tempBuff;
+
+							tempBuff.buffer.insert(tempBuff.buffer.end(), tempChunkStr.begin(), tempChunkStr.end());
+							tempBuff.currentIndex = 0;
+							_cgiTargetResponse->pushNewResponseBuff(tempBuff);
+						}
+
+					}
+
+					/* would trigger as a finished*/
+					httpCgiStatus = HTTPCGI_FINISHED;
+				}
+
+
+				std::string currentStatusString  = "           CURRENT STATUS: ";
+				if (httpCgiStatus == HTTPCGI_NO_STATUS)
+					currentStatusString += "HTTPCGI_NO_STATUS";
+				else if (httpCgiStatus == HTTPCGI_SENDING_TO_CGI)
+					currentStatusString += "HTTPCGI_SENDING_TO_CGI";
+				else if (httpCgiStatus == HTTPCGI_READING_RESPONSE_HEADER)
+					currentStatusString += "HTTPCGI_READING_RESPONSE_HEADER";
+				else if (httpCgiStatus == HTTPCGI_VALIDATING_RESPONSE)
+					currentStatusString += "HTTPCGI_VALIDATING_RESPONSE";
+				else if (httpCgiStatus == HTTPCGI_SENDING_RESPONSE_BUFFER)
+					currentStatusString += "HTTPCGI_SENDING_RESPONSE_BUFFER";
+				else if (httpCgiStatus == HTTPCGI_FINISHED)
+					currentStatusString += "HTTPCGI_FINISHED";
+				else
+					currentStatusString += "HTTPCGI_CLOSED_CGI";
+
+				std::cout << currentStatusString << std::endl;
+
+				if (httpCgiStatus == HTTPCGI_READING_RESPONSE_HEADER || httpCgiStatus == HTTPCGI_SENDING_TO_CGI)
+				{
+					httpCgiStatus = HTTPCGI_FINISHED;
+					generate5xxCGIOUTresponseError(500, "Internal Error::CGI doesn\'t complete the response");
+				}
+				// something here that would remove this socket cleanly
+			}
+			else if (readAmount < 0)
+			{
+				//if (errno == EAGAIN || errno == EWOULDBLOCK)
+				//	return ;
+
+				//_keepConnection = false;
+				//// something here that would remove this socket cleanly
+				//return ;
+			}
+			else
+			{
+				_responseBuffer.append(&_readCgiBuffer[0], readAmount);
+				/* we can try the same method from http here. but the implementation
+				is a bit different from Http class so it would be kinda the same but it's not
+				*/
+					processCGIOUTresponseBuffer();
+			}
+		}
+
+		if ((epollEvent.events & EPOLLERR) || ((epollEvent.events & ~EPOLLIN) & EPOLLHUP))
+		{
+			if (httpCgiStatus == HTTPCGI_READING_RESPONSE_HEADER || httpCgiStatus == HTTPCGI_VALIDATING_RESPONSE)
+			{
+				/* here we can still throw 5xx response back to client */
+				generate5xxCGIOUTresponseError(500, "Internal Error::Cgi Out::Doesn't complete the response");
+			}
+
+			else if (httpCgiStatus == HTTPCGI_SENDING_RESPONSE_BUFFER)
+			{
+				/* if it is content length then fatal error, but if manual transfer encoding then just 0\r\n\r\n */
+				if (_bodyData->isChunkBody == false || (_bodyData->isChunkBody == true && _bodyData->isManualChunk == false))
+				{
+					/* tells to close client socket by using manual custom event */
+
+					std::map<int, s_webserv_custom_event>& customEventMap = *_cgiOutSocket->getEventContoller().customEventMap;
+
+					s_webserv_custom_event& targetCustomEvent = customEventMap[cgiProcessData->clientSocketPtr->getSocketFD().getFd()];
+
+					targetCustomEvent.clientSocketManualDisconnect = true;
+				}
+
+				else if (_bodyData->isChunkBody == true && _bodyData->isManualChunk == true)
+				{
+					std::string tempChunkStr = "0\r\n\r\n";
+
+					s_response_buff tempBuff;
+
+					tempBuff.buffer.insert(tempBuff.buffer.end(), tempChunkStr.begin(), tempChunkStr.end());
+					tempBuff.currentIndex = 0;
+					_cgiTargetResponse->pushNewResponseBuff(tempBuff);
+				}
+
+				httpCgiStatus = HTTPCGI_FINISHED;
+			}
+
+		}
 	}
-	else if (readAmount < 0)
+	catch (HttpThrowStatus &e)
 	{
-		if (errno == EAGAIN || errno == EWOULDBLOCK)
-			return ;
-
-		_keepConnection = false;
-		// something here that would remove this socket cleanly
-		return ;
+		httpCgiStatus = HTTPCGI_FINISHED;
+		Logger::log(LC_INFO, "Http::CgiSocket#%d::response with status code %d::%s", currentSocket->getSocketFD().getFd(), e.statusCode(), e.message().c_str());
 	}
-	else
+	catch (std::exception &e)
 	{
-		_responseBuffer.append(&_readCgiBuffer[0], readAmount);
-		/* we can try the same method from http here. but the implementation
-		is a bit different from Http class so it would be kinda the same but it's not
-		*/
-		try
-		{
-			processCGIOUTresponseBuffer();
-		}
-		catch (HttpThrowStatus &e)
-		{
-			Logger::log(LC_INFO, "Http::CgiSocket#%d::response with status code %d::%s", currentSocket->getSocketFD().getFd(), e.statusCode(), e.message());
-		}
-		catch (std::exception &e)
-		{
 
-		}
-		catch (...)
-		{
-
-		}
 	}
+	catch (...)
+	{
+
+	}
+
+
 	return ;
 }
 
-void HttpCgi::sendToCGI(Socket* currentSocket)
+void HttpCgi::sendToCGI(Socket* currentSocket, const epoll_event& epollEvent)
 {
-	if (cgiProcessData->status != CGI_PROCESS_RUNNING)
-		return ;
+	try
+	{
+		if (cgiProcessData->status != CGI_PROCESS_RUNNING)
+			return ;
 
-	ssize_t	writeAmount;
+		if (httpCgiStatus != HTTPCGI_SENDING_TO_CGI)
+			return ;
+		
+		if ( (epollEvent.events & ~EPOLLOUT) && ((epollEvent.events & EPOLLHUP) || (epollEvent.events & EPOLLERR)))
+		{
+			/* no EPOLLOUT, and some EPOLL event that we should end immediately*/
+
+			if (epollEvent.events & EPOLLHUP)
+				std::cout << "              CGIIN::EPOLLHUP" << std::endl;
+			if (epollEvent.events & EPOLLERR)
+				std::cout << "              CGIIN::EPOLLERR" << std::endl;
+			if (epollEvent.events & EPOLLOUT)
+				std::cout << "              CGIIN::EPOLLOUT" << std::endl;
+			/**/
+			generate5xxCGIOUTresponseError(500, "Internal Error::CGI IN:: epollEvent::failed");
+		}
+
+		/* append the buffer first */
+		if (_writeCgiBuffer.size() < HTTP_WRITE_TO_CGI_BUFFER_SIZE && _tempFileData->isReachEOF == false)
+		{
+			size_t needToAppendSize = HTTP_WRITE_TO_CGI_BUFFER_SIZE - _writeCgiBuffer.size();
+
+			std::vector<char> temp(HTTP_WRITE_TO_CGI_BUFFER_SIZE);
+
+			while (needToAppendSize > 0)
+			{
+				ssize_t readAmount = read(_tempFileData->tempReadFileFd.getFd(), &temp[0], HTTP_WRITE_TO_CGI_BUFFER_SIZE);
+
+				if (readAmount < 0)
+				{
+					if (errno == EINTR)
+						continue;
+
+					/* fatal error here */
+					generate5xxCGIOUTresponseError(500, "Internal Error::CGI_IN::sendToCgi()::read from TempFile failed::" + std::string(std::strerror(errno)));
+					break ;
+				}
+				else if (readAmount == 0)
+				{
+					_tempFileData->isReachEOF = true;
+					break ;
+				}
+				else
+				{
+					/* */
+					_writeCgiBuffer.insert(_writeCgiBuffer.end(), temp.begin(), temp.end());
+
+					/* deduct the needToAppenSize */
+					if (needToAppendSize <= static_cast<size_t>(readAmount))
+						needToAppendSize = 0;
+					else
+					{
+						needToAppendSize = needToAppendSize - readAmount;
+					}
+				}
+			}
+		}
+
+
+		/* here we read from the tempFd that we used */
+		ssize_t	writeAmount = write(_cgiInSocket->getSocketFD().getFd(), &_writeCgiBuffer[0], HTTP_WRITE_TO_CGI_BUFFER_SIZE);
+
+		if (writeAmount < 0)
+		{
+			/* we've already handled through epoll event */
+			return ;
+		}
+
+		/* erase the buffer by the amount of read */
+		_writeCgiBuffer.erase(_writeCgiBuffer.begin(), _writeCgiBuffer.begin() + writeAmount);
+
+		if (_writeCgiBuffer.size() == 0 || _tempFileData->isReachEOF == true)
+		{
+			/* if both buffer and tempFileData is empty, then it is finished and
+			we can move to the next process */
+			httpCgiStatus = HTTPCGI_READING_RESPONSE_HEADER;
+
+			tempFileManager().removeTempFile(_tempFileData->tempFileNum);
+
+			/* i think we can safely remove */
+			_tempFileData.clear();
+		}
+
+	}
+	catch (HttpThrowStatus &e)
+	{
+		httpCgiStatus = HTTPCGI_FINISHED;
+		Logger::log(LC_INFO, "Http::CgiSocket#%d::response with status code %d::%s", currentSocket->getSocketFD().getFd(), e.statusCode(), e.message().c_str());
+	}
+	catch (std::exception &e)
+	{
+
+	}
+	catch (...)
+	{
+
+	}
+
 }
 
 bool HttpCgi::isKeepConnection(const Socket* currentCgiSocket) const
@@ -556,7 +1130,7 @@ bool HttpCgi::isKeepConnection(const Socket* currentCgiSocket) const
 		throw WebservException("HttpCgi::isKeepConnection::cannot be NULL in argument");
 
 	/* for cgi in socket */
-	if (_cgiInSocket.hasData() == true && &(*_cgiInSocket) == currentCgiSocket)
+	if (_cgiInSocket.hasData() == true && (*_cgiInSocket) == currentCgiSocket)
 	{
 		if (httpCgiStatus != HTTPCGI_SENDING_TO_CGI)
 			return (false);
@@ -567,10 +1141,17 @@ bool HttpCgi::isKeepConnection(const Socket* currentCgiSocket) const
 	/* this is for cgi out */
 	if (currentCgiSocket == _cgiOutSocket)
 	{
-		if (httpCgiStatus == HTTPCGI_CLOSED_CGI)
+		if (_keepConnection == false)
 			return (false);
+
+		if (httpCgiStatus == HTTPCGI_CLOSED_CGI)
+		{
+			return (false);
+		}
 		else
+		{
 			return (true);
+		}
 	}
 
 	return (false);
@@ -581,14 +1162,17 @@ e_httpcgi_process_status& HttpCgi::status()
 	return (httpCgiStatus);
 }
 
-void HttpCgi::processCGI(Socket* currentSocket)
+void HttpCgi::processCGI(Socket* currentSocket, const epoll_event& epollEvent)
 {
+	if (cgiProcessData->clientSocketPtr.hasData() == false)
+		httpCgiStatus = HTTPCGI_FINISHED;
+
 	if (currentSocket == NULL)
 		throw WebservException("HttpCgi::processCgi::don't accept NULL pointer");
 
 	if (cgiProcessData->status != CGI_PROCESS_RUNNING)
 	{
-		if (cgiProcessData->status == NO_STATUS)
+		if (cgiProcessData->status == CGI_PROCESS_NO_PROCESS)
 			throw WebservException("HttpCgi::processCgi::CgiProcessData->status cannot be NO_STATUS");
 
 		if (cgiProcessData->status == CGI_PROCESS_WAITING)
@@ -601,20 +1185,46 @@ void HttpCgi::processCGI(Socket* currentSocket)
 	{
 		if (currentSocket == _cgiOutSocket)
 		{
-			readFromCGI(currentSocket);
+			std::cout << "    HTTPCGI::readFromCgi()  " << std::endl;
+			readFromCGI(currentSocket, epollEvent);
 		}
-		else if (_cgiInSocket.hasData() == true && currentSocket == &(*_cgiInSocket))
+		else if (_cgiInSocket.hasData() == true && currentSocket == (*_cgiInSocket))
 		{
-			sendToCGI(currentSocket);
+			/* check with epoll_event first before write() */
+
+			sendToCGI(currentSocket, epollEvent);
+		}
+
+		if (_clientResponseList->empty() == false && _clientResponseList->front().hasSomethingtoSend() == true)
+		{
+			epoll_event	event;
+			std::memset(&event, 0, sizeof(event));
+			event.events = EPOLLIN | EPOLLOUT;
+			event.data.fd = cgiProcessData->clientSocketPtr->getSocketFD().getFd();
+
+			if (epoll_ctl(_cgiOutSocket->getEpollFD().getFd(), EPOLL_CTL_MOD, cgiProcessData->clientSocketPtr->getSocketFD().getFd(), &event) == -1)
+			{
+				std::string msg = "HttpCgi::epoll_ctl()::error::";
+				msg += std::strerror(errno);
+				throw WebservException(msg);
+			}
 		}
 	}
 
 	if (httpCgiStatus == HTTPCGI_FINISHED)
 	{
-		if (_cgiInSocket.hasData() == true && &(*_cgiInSocket) == currentSocket)
+		if (_cgiInSocket.hasData() == true && (*_cgiInSocket) == currentSocket)
 		{
 			/* should announce to close socket in here */
+			forceSigTerm();
 			return ;
+		}
+
+		std::cout << "      HTTPCGI_FINISHED   " << std::endl;
+		/* remove the cgiout socket from epoll list entirely*/
+		if (epoll_ctl(_cgiOutSocket->getEpollFD().getFd(), EPOLL_CTL_DEL, _cgiOutSocket->getSocketFD().getFd(), NULL) == -1)
+		{
+			_keepConnection = false;
 		}
 
 		/* here is for cgi out */
@@ -642,15 +1252,19 @@ void HttpCgi::processCGI(Socket* currentSocket)
 
 void HttpCgi::forceSigTerm()
 {
+	if (cgiProcessData->status == CGI_PROCESS_RUNNING)
+		cgiProcessData->sigProcess(SIGTERM);
+
 	if (httpCgiStatus != HTTPCGI_FINISHED && httpCgiStatus != HTTPCGI_CLOSED_CGI)
 	{
 		try
 		{
-			generate5xxCGIOUTresponseError(500, "Internal Error::CGI closed Timeout");
+			if (httpCgiStatus != HTTPCGI_SENDING_RESPONSE_BUFFER)
+				generate5xxCGIOUTresponseError(500, "Internal Error::CGI closed Timeout");
 		}
 		catch (HttpThrowStatus &e)
 		{
-			Logger::log(LC_INFO, "Http::CgiSocket#%d::response with status code %d::%s", _cgiOutSocket->getSocketFD().getFd(), e.statusCode(), e.message());
+			Logger::log(LC_INFO, "Http::CgiSocket#%d::response with status code %d::%s", _cgiOutSocket->getSocketFD().getFd(), e.statusCode(), e.message().c_str());
 		}
 		catch (std::exception &e)
 		{
@@ -661,8 +1275,6 @@ void HttpCgi::forceSigTerm()
 			Logger::log(LC_INFO, "CgiSocket#%d::unknown error", _cgiOutSocket->getSocketFD().getFd());
 		}
 
-		if (cgiProcessData->status == CGI_PROCESS_RUNNING)
-			cgiProcessData->sigProcess(SIGTERM);
 			
 		httpCgiStatus = HTTPCGI_FINISHED;
 
