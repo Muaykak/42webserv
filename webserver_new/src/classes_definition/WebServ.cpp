@@ -105,25 +105,15 @@ void WebServ::run(){
 			eventIt = returnEvents.begin();
 			while (eventIt != returnEvents.end())
 			{
-				//std::cout << "EVENT FD = " << eventIt->first << std::endl;
-
-				if (sockets[eventIt->first].handleEvent(returnEvents[eventIt->first]) == false)
-				{
-					//std::cout << "        REMOVING ";
-					//if (sockets[eventIt->first].getServerSockerType() == SERVER_SOCKET)
-					//	std::cout << "SERVER_SOCKET" << std::endl;
-					//else if (sockets[eventIt->first].getServerSockerType() == CLIENT_SOCKET)
-					//	std::cout << "CLIENT_SOCKET" << std::endl;
-					//else if (sockets[eventIt->first].getServerSockerType() == CGI_FD_STDOUT)
-					//	std::cout << "CGI OUT SOCKET" << std::endl;
-					//else if (sockets[eventIt->first].getServerSockerType() == CGI_FD_STDIN)
-					//	std::cout << "CGI IN SOCKET" << std::endl;
-					//else
-					//	std::cout << "NO_STATUS" << std::endl;
-
-					sockets.erase(eventIt->first);
-				}
-				++eventIt;
+			    std::map<int, Socket>::iterator sockIt = sockets.find(eventIt->first);
+			    if (sockIt != sockets.end())
+			    {
+			        if (sockIt->second.handleEvent(returnEvents[eventIt->first]) == false)
+			        {
+			            sockets.erase(sockIt);
+			        }
+			    }
+			    ++eventIt;
 			}
 
 			// check socket timeout

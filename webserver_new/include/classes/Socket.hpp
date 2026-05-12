@@ -38,6 +38,8 @@ enum e_socket_type
 class Socket
 {
 private:
+	OptionalData<Http> http;
+	OptionalData<Shared<HttpCgi> > httpCgi;
 	time_t	_lastEventTime;
 
 
@@ -49,8 +51,6 @@ private:
 	int _server_listen_port;
 	std::set<in_addr_t>	_server_ip_host;
 	
-	OptionalData<Http> http;
-	OptionalData<Shared<HttpCgi> > httpCgi;
 	//std::vector<Http>	http;
 	//std::vector<HttpCgi> httpCgi;			
 

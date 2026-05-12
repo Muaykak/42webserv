@@ -1087,7 +1087,8 @@ void HttpCgi::readFromCGI(Socket* currentSocket, const epoll_event& epollEvent)
 	}
 	catch (std::exception &e)
 	{
-
+		httpCgiStatus = HTTPCGI_FINISHED;
+		Logger::log(LC_ERROR, "HttpCgi::Exception: %s", e.what());
 	}
 	catch (...)
 	{
@@ -1196,7 +1197,8 @@ void HttpCgi::sendToCGI(Socket* currentSocket, const epoll_event& epollEvent)
 	}
 	catch (std::exception &e)
 	{
-
+		httpCgiStatus = HTTPCGI_FINISHED;
+		Logger::log(LC_ERROR, "HttpCgi::Exception: %s", e.what());
 	}
 	catch (...)
 	{

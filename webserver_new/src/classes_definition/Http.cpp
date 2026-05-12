@@ -4522,12 +4522,9 @@ void Http::readFromClient()
 		}
 		catch (std::exception &e)
 		{
-
+			Logger::log(LC_ERROR, "Http::socket#%d::Exception: %s", _clientSocketPtr->getSocketFD().getFd(), e.what());
+			_keepConnection = false;
 		}
-		//catch (...)
-		//{
-		//	// what 
-		//}
 	}
 	
 	if (_isEpollout == false && _httpResponseList.empty() == false && _httpResponseList.front().hasSomethingtoSend() == true)
