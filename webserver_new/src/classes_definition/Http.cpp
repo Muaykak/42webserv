@@ -3,10 +3,12 @@
 #include "../../include/utility_function.hpp"
 #include "../../include/classes/EnvpWrapper.hpp"
 #include "../../include/classes/TempFileManager.hpp"
+
 #include <cctype>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <dirent.h>
 
 Http::Http()
 :
@@ -1996,6 +1998,102 @@ void	Http::handleGetRequest(HttpRequest& requestData, bool isEndWithSlash, const
 
 			if ((*foundAutoIndex)[0] == "on")
 			{
+				{
+
+					DIR *dirPtr = opendir(requestData.targetData.combinedPath.c_str());
+
+					if (dirPtr == NULL)
+					{
+						if (errno == EACCES)
+							generate4xx5xxErrorReponse(requestData, 403, true, "Http::autoindex::opendir()::" + std::string(std::strerror(errno)));
+						if (errno == ENOENT)
+							generate4xx5xxErrorReponse(requestData, 404, true, "Http::autoindex::opendir()::" + std::string(std::strerror(errno)));
+						else
+							generate4xx5xxErrorReponse(requestData, 500, true, "Http::autoindex::opendir()::" + std::string(std::strerror(errno)));
+					}
+
+					/* bool is that it is a directory or not, second is the path */
+					std::list<std::string> directoryNameList;
+					dirent *tempDirStructPtr = readdir(dirPtr);
+					while (tempDirStructPtr != NULL)
+					{
+						std::string tempFileName(tempDirStructPtr->d_name);
+
+						if (tempFileName != ".")
+						{
+							struct stat fileStat;
+							std::memset(&fileStat, 0, sizeof(fileStat));
+							if (stat(tempFileName.c_str(), &fileStat) == 0)
+							{
+								if (S_ISDIR(fileStat.st_mode))
+									tempFileName += '/';
+							}
+
+							directoryNameList.push_back(tempFileName);
+						}
+						tempDirStructPtr = readdir(dirPtr);
+					}
+
+					/* we finish doing with directory */
+					closedir(dirPtr);
+
+
+					/* now we create the html file */
+					std::string tempBodyString;
+					{
+						tempBodyString = "<!DOCTYPE html>\r\n"
+						"<html>\r\n"
+						"<head>\r\n"
+						"	<title>Index of ";
+						tempBodyString += requestData.targetData.targetPath;
+						tempBodyString += "</title>\r\n"
+						"</head>\r\n"
+						"<body>\r\n"
+						"	<h1>Index of ";
+						tempBodyString += requestData.targetData.targetPath;
+						tempBodyString += "</h1>\r\n";
+
+						if (directoryNameList.empty())
+						{
+							tempBodyString += "<h2>No file in this directory</h2>\r\n";
+						}
+						else
+						{
+							tempBodyString += "<hr>\r\n"
+							"<ul>\r\n";
+
+							std::list<std::string>::const_iterator listIt = directoryNameList.begin();
+							while (listIt != directoryNameList.end())
+							{
+								tempBodyString += "<li><a href=\"";
+								tempBodyString += *listIt;
+								tempBodyString += "\">";
+								tempBodyString += *listIt;
+								tempBodyString += "</a></li>\r\n";
+
+								++listIt;
+							}
+
+							tempBodyString += "</ul>\r\n"
+							"</hr>\r\n";
+						}
+
+						tempBodyString += "</body>\r\n</html>\r\n";
+					}
+
+					HttpResponse& targetResponse = *requestData.responseTargetPtr;
+
+					targetResponse.statusLine->first = 200;
+					targetResponse.statusLine->second = "OK";
+					targetResponse.contentType = "text/html";
+					targetResponse.responseBodyType = HTTP_RESPONSE_BODY_FIXED_STR;
+					targetResponse.fixedBodyStr = tempBodyString;
+
+					requestData.processStatus = FINISHED_READ_BODY;
+					targetResponse.generateResponse();
+					return ;
+				}
+
 				// generate auto indexing 
 				generate4xx5xxErrorReponse(requestData, 500, true, "Http::autoindex is allowed but Not implemented yet");
 			}
