@@ -9,6 +9,7 @@
 # include <netinet/in.h>
 # include <list>
 # include "classes/ContentTypeTable.hpp"
+# include "./webserv_structs.hpp"
 
 class TempFileManager;
 class EnvpWrapper;
@@ -44,6 +45,9 @@ std::string in_addr_t_to_string(in_addr_t toConvert);
 bool	string_to_in_addr_t(const std::string& toConvert, in_addr_t& returnValue);
 
 std::string	my_ft_trim(const std::string& toTrim, const std::string& trimCharSet);
+int my_find(const std::string& toSearch, const std::string& key, size_t& foundPos);
+
+void stringCapital(std::string& toConvert);
 
 void	splitString(const std::string& toSplit,
 		const std::string& delimitter,
@@ -77,6 +81,5 @@ bool hex_to_size_t(const std::string& hexStr, size_t& returnValue);
 
 volatile sig_atomic_t& closeWebservSignal();
 void 	serverStopHandler(int signum);
-
 
 #endif

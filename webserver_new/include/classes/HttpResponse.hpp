@@ -12,6 +12,7 @@
 # include "CgiProcess.hpp"
 # include "Shared.hpp"
 # include "../webserv_structs.hpp"
+# include <fstream>
 
 class Socket;
 class HttpRequest;
@@ -64,7 +65,7 @@ class HttpResponse {
 		OptionalData<std::pair<unsigned int, std::string> > statusLine;
 
 		std::string contentType;
-		OptionalData<FileDescriptor> fileFd;
+		OptionalData<Shared<std::ifstream> > fileBody;
 		//FileDescriptor cgiOutFd;
 		size_t	fileSize;
 

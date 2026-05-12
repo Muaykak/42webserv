@@ -78,6 +78,9 @@ SRC_FUNC_FILE = chartables.cpp \
 				contentTypeTable.cpp \
 				envData.cpp \
 				tempFileManager.cpp \
+				stringCapital.cpp \
+				my_find.cpp
+
 				
 
 SOURCE_MAIN_FILE = main.cpp

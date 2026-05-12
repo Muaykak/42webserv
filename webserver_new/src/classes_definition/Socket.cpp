@@ -370,15 +370,15 @@ bool Socket::handleEvent(const s_webserv_event &event)
 {
 	_lastEventTime = std::time(NULL);
 
-	std::cout << "   HANDLING ";
-	if (_socketType == SERVER_SOCKET)
-		std::cout << "SERVER_SOCKET" << std::endl;
-	else if (_socketType == CLIENT_SOCKET)
-		std::cout << "CLIENT_SOCKET" << std::endl;
-	else if (_socketType == CGI_FD_STDOUT)
-		std::cout << "CGI OUT SOCKET" << std::endl;
-	else
-		std::cout << "NO_TYPE" << std::endl;
+	//std::cout << "   HANDLING ";
+	//if (_socketType == SERVER_SOCKET)
+	//	std::cout << "SERVER_SOCKET" << std::endl;
+	//else if (_socketType == CLIENT_SOCKET)
+	//	std::cout << "CLIENT_SOCKET" << std::endl;
+	//else if (_socketType == CGI_FD_STDOUT)
+	//	std::cout << "CGI OUT SOCKET" << std::endl;
+	//else
+	//	std::cout << "NO_TYPE" << std::endl;
 
 
 	switch (_socketType)

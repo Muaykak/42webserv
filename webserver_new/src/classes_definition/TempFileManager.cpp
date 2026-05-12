@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <errno.h>
 #include <cstring>
+#include <fstream>
 
 
 TempFileManager::TempFileManager()
@@ -50,21 +51,39 @@ unsigned int TempFileManager::generateNewTempFile()
 
 		std::string tempPath = TEMP_FILE_DIR + toString(thisgennum);
 
-		int fd;
+		//int fd;
+
+		std::fstream targetFile;
+
 		while (true)
 		{
-			fd = open(tempPath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
-			if (fd < 0)
+			//fd = open(tempPath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+			targetFile.open(tempPath.c_str(), std::ios::in | std::ios::out | std::ios::trunc);
+
+			if (targetFile.is_open())
+				break ;
+			
+			if (errno == EINTR)
 			{
-				if (errno == EINTR)
-					continue;
-				else
-					throw WebservException("TempFileManager::fatal error:: cannot generate temporary file in specific directory::" + std::string(std::strerror(errno)));
+				targetFile.clear();
+				continue;
 			}
-			break ;
+			else
+				throw WebservException("TempFileManager::fatal error:: cannot generate temporary file in specific directory::" + std::string(std::strerror(errno)));
+			
+
+			//if (fd < 0)
+			//{
+			//	if (errno == EINTR)
+			//		continue;
+			//	else
+			//		throw WebservException("TempFileManager::fatal error:: cannot generate temporary file in specific directory::" + std::string(std::strerror(errno)));
+			//}
+			//break ;
 		}
 
-		close(fd);
+		//close(fd);
+		targetFile.close();
 	}
 
 	_tempFileSet.insert(thisgennum);

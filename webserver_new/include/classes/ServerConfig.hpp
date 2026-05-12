@@ -42,6 +42,7 @@ public:
 	const t_config_map *findLocationBlock(std::string locationPath) const;
 	// ##############################################################
 	const std::vector<std::string>* getLocationData(const t_config_map* targetLocationBlock, const std::string &keytoFind) const;
+	const std::vector<std::string>* getLocationDataNoRollBack(const t_config_map* targetLocationBlock, const std::string &keytoFind) const;
 	int	getPort() const;
 	const std::vector<std::string> &getServerNameVec() const;
 	const std::set<in_addr_t>&	getHostIp() const;

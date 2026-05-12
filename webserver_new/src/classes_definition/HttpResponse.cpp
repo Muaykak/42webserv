@@ -61,12 +61,12 @@ void	HttpResponse::generateResponse()
 		throw WebservException("HttpResponse:: can only generate response 1 time only");
 
 	// tell the browser to not caching
-	if (responseHeader.find("Cache-Control") == responseHeader.end())
-	{
-		this->addHeader("Cache-Control", "no-store");
-		this->addHeader("Cache-Control", "no-cache");
-		this->addHeader("Cache-Control", "must-revalidate");
-	}
+	//if (responseHeader.find("Cache-Control") == responseHeader.end())
+	//{
+	//	this->addHeader("Cache-Control", "no-store");
+	//	this->addHeader("Cache-Control", "no-cache");
+	//	this->addHeader("Cache-Control", "must-revalidate");
+	//}
 	
 	canModify = false;
 
@@ -225,38 +225,70 @@ ssize_t	HttpResponse::sendHttpResponse(const Socket& clientSocket)
 
 					std::vector<char> temp(HTTP_SEND_BUFFER);
 
-					// read to buffer
-					ssize_t	readAmount = read(fileFd->getFd(), &temp[0], HTTP_SEND_BUFFER);
+					std::streamsize readCount = 0;
 
-					if (readAmount < 0)
+					if ((*fileBody)->good())
 					{
-						// fatal error
-						if (errno != EINTR)
+						(*fileBody)->read(temp.data(), HTTP_SEND_BUFFER);
+					}
+
+					readCount = (*fileBody)->gcount();
+					if (readCount > 0)
+					{
+						targetResBuff.buffer.insert(targetResBuff.buffer.end(), temp.begin(), temp.begin() + readCount);
+					}
+
+					if ((*fileBody)->fail())
+					{
+						/* if eof() then just normal end file */
+						if ((*fileBody)->eof())
 						{
+							isReachEOF = true;
+						}
+						else if ((*fileBody)->bad() || errno != EINTR)
+						{
+							/* here would mean fatal error */
 							return (-1);
 						}
-						continue;
+						else
+						{
+							(*fileBody)->clear();
+							continue;
+						}
 					}
-					else if (readAmount == 0)
-					{
-						// reach EOF
-						isReachEOF = true;
-						//std::string tempchunkStr = "0\r\n\r\n";
-						//targetResBuff.buffer.insert(targetResBuff.buffer.end(), tempchunkStr.begin(), tempchunkStr.end());
-					}
-					else
-					{
-						//std::string startchunkhex = size_t_to_hex(readAmount);
 
-						//startchunkhex += "\r\n";
+					//// read to buffer
+					//ssize_t	readAmount = read(fileFd->getFd(), &temp[0], HTTP_SEND_BUFFER);
 
-						//targetResBuff.buffer.insert(targetResBuff.buffer.end(), startchunkhex.begin(), startchunkhex.end());
-						targetResBuff.buffer.insert(targetResBuff.buffer.end(), temp.begin(), temp.begin() + readAmount);
+					//if (readAmount < 0)
+					//{
+					//	// fatal error
+					//	if (errno != EINTR)
+					//	{
+					//		return (-1);
+					//	}
+					//	continue;
+					//}
+					//else if (readAmount == 0)
+					//{
+					//	// reach EOF
+					//	isReachEOF = true;
+					//	//std::string tempchunkStr = "0\r\n\r\n";
+					//	//targetResBuff.buffer.insert(targetResBuff.buffer.end(), tempchunkStr.begin(), tempchunkStr.end());
+					//}
+					//else
+					//{
+					//	//std::string startchunkhex = size_t_to_hex(readAmount);
 
-						//std::string endlind = "\r\n";
+					//	//startchunkhex += "\r\n";
 
-						//targetResBuff.buffer.insert(targetResBuff.buffer.end(), endlind.begin(), endlind.end());
-					}
+					//	//targetResBuff.buffer.insert(targetResBuff.buffer.end(), startchunkhex.begin(), startchunkhex.end());
+					//	targetResBuff.buffer.insert(targetResBuff.buffer.end(), temp.begin(), temp.begin() + readAmount);
+
+					//	//std::string endlind = "\r\n";
+
+					//	//targetResBuff.buffer.insert(targetResBuff.buffer.end(), endlind.begin(), endlind.end());
+					//}
 
 				}
 				else
@@ -332,40 +364,96 @@ void HttpResponse::forcePrintAllResponse()
 		std::vector<char>	writeBuff;
 		writeBuff.reserve(HTTP_SEND_BUFFER);
 		ssize_t	amountToRead;
-		ssize_t readAmount;
+		std::streamsize readAmount;
 		ssize_t	writeAmount = 0;
 		ssize_t	writeRet;
 
 		while (true)
 		{
 			amountToRead = HTTP_SEND_BUFFER - writeBuff.size();
-			readAmount = read(fileFd->getFd(), &writeBuff[writeBuff.size() - 1], amountToRead);
-			if (readAmount < 0 && writeBuff.size() == 0)
+			readAmount = 0;
+			if (amountToRead > 0 && (*fileBody)->good() == true)
 			{
-				if (errno == EINTR)
-					continue ;
-				else
-					break ;
-			}
-			else if (readAmount == 0 && writeBuff.size() == 0)
-			{
-				break ;
+				(*fileBody)->read(&writeBuff[writeBuff.size() == 0 ? 0 : writeBuff.size() - 1], amountToRead);
+				readAmount = (*fileBody)->gcount();
+				if (readAmount > 0)
+					writeBuff.resize(writeBuff.size() + readAmount);
 			}
 
-			writeRet = write(STDOUT_FILENO, &writeBuff[0], writeBuff.size());
-			if (writeRet < 0)
+			if (writeBuff.size() > 0)
 			{
-				if (errno == EINTR)
-					continue ;
-				else
+				writeRet = write(STDOUT_FILENO, &writeBuff[0], writeBuff.size());
+
+				if (writeRet < 0)
+				{
+					if (errno == EINTR)
+						continue;
+					else
+					{
+						keepAfterResponse = false;
+						break ;
+					}
+				}
+
+				writeBuff.resize(writeBuff.size() - writeRet);
+			}
+
+			if ((*fileBody)->fail() == true)
+			{
+				/* if it failed because reach the eof then it is clean*/
+				if ((*fileBody)->eof())
 					break ;
+				
+				/* bad() indicate the fatal error */
+				if ((*fileBody)->bad())
+				{
+					keepAfterResponse = false;
+					break ;
+				}
+
+				/* then check errno here */
+				if (errno == EINTR)
+				{
+					/* EINTR we can allow it to work on */
+					(*fileBody)->clear();
+					continue ;
+				}
+				else
+				{
+					/* else here are all unhandled errors */
+					keepAfterResponse = false;
+					break ;
+				}
 			}
-			writeAmount += writeRet;
-			if (writeAmount >= HTTP_SEND_BUFFER)
-			{
-				writeBuff.clear();
-				writeAmount = 0;
-			}
+
+
+			//readAmount = read(fileFd->getFd(), &writeBuff[writeBuff.size() - 1], amountToRead);
+			//if (readAmount < 0 && writeBuff.size() == 0)
+			//{
+			//	if (errno == EINTR)
+			//		continue ;
+			//	else
+			//		break ;
+			//}
+			//else if (readAmount == 0 && writeBuff.size() == 0)
+			//{
+			//	break ;
+			//}
+
+			//writeRet = write(STDOUT_FILENO, &writeBuff[0], writeBuff.size());
+			//if (writeRet < 0)
+			//{
+			//	if (errno == EINTR)
+			//		continue ;
+			//	else
+			//		break ;
+			//}
+			//writeAmount += writeRet;
+			//if (writeAmount >= HTTP_SEND_BUFFER)
+			//{
+			//	writeBuff.clear();
+			//	writeAmount = 0;
+			//}
 		}
 	}
 }
@@ -382,4 +470,8 @@ bool HttpResponse::hasSomethingtoSend() const
 }
 
 
+t_config_map& HttpResponse::getHeader()
+{
+	return (responseHeader);
+}
 

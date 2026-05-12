@@ -22,6 +22,7 @@ enum e_http_field_value_token_type
 	OPTIONAL_CHAR
 };
 
+
 struct s_http_field_value_token {
 	e_http_field_value_token_type tokenType;
 	std::string str;
@@ -38,7 +39,6 @@ class Http {
 		bool	_keepConnection;
 		bool	_isEpollout;
 
-		std::string	_sendBuffer;
 		std::list<HttpResponse>	_httpResponseList;
 
 		HttpRequest httpRequest;
@@ -87,6 +87,12 @@ class Http {
 
 		void	readingRequestBody(HttpRequest& requestData);
 		void	processingRequestBody(HttpRequest& requestData, const Socket& clientSocket, std::map<int, Socket>& socketMap);
+		void		processMultiFormData(HttpRequest& requestData);
+		void			multiformDataProcessBuffer(HttpRequest& requestData, std::string& multipartBufferString);
+		void				multiformDataFindingBoundary(HttpRequest& requestData, std::string& multipartBufferString, size_t& currBufpos);
+		void				multiformDataReadingHeader(HttpRequest& requestData, std::string& multipartBufferString, size_t& currBufpos);
+		void				multiformDataValidating(HttpRequest& requestData);
+		void				multiformDataReadBody(HttpRequest& requestData, std::string& multipartBufferString);
 
 		void	cgiChildProcessNoRequestBody(HttpRequest& requestData, int pipeForCgiStdOut[2]);
 

@@ -35,6 +35,21 @@ int main(int argc, char **argv, char** envp){
 	return (ret);
 }
 
+//int main(int ac, char** av)
+//{
+//	if (ac != 2)
+//		return (0);
+
+//	std::string testStr = av[1];
+
+//	std::pair<std::string, std::vector<std::pair<std::string, std::string> > > outPair;
+
+//	if (Http::httpFieldContentTypeExtract(testStr, outPair) == false)
+//	{
+//		std::cout << "Failed" << std::endl;
+//	}
+//	std::cout << "Extract complete" << std::endl;
+//}
 
 //int main(){
 //	std::cout << "TESTING CONFIG FILE" << std::endl;

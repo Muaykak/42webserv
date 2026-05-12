@@ -12,33 +12,30 @@ Http::Http()
 :
 _clientSocketPtr(NULL),
 _socketMapPtr(NULL),
+_recvBuffer(HTTP_RECV_BUFFER),
 _keepConnection(true),
 _isEpollout(false)
 {
-	_recvBuffer.reserve(HTTP_RECV_BUFFER);
-	_sendBuffer.reserve(HTTP_SEND_BUFFER);
 }
 
 Http::Http(Socket *clientSocketPtr, std::map<int, Socket>* socketMapPtr)
 :
 _clientSocketPtr(clientSocketPtr),
 _socketMapPtr(socketMapPtr),
+_recvBuffer(HTTP_RECV_BUFFER),
 _keepConnection(true),
 _isEpollout(false)
 {
-	_recvBuffer.reserve(HTTP_RECV_BUFFER);
-	_sendBuffer.reserve(HTTP_SEND_BUFFER);
 }
 
 Http::Http(const Http& obj)
 :
 _clientSocketPtr(obj._clientSocketPtr),
 _socketMapPtr(obj._socketMapPtr),
+_recvBuffer(HTTP_RECV_BUFFER),
 _keepConnection(true),
 _isEpollout(false)
 {
-	_recvBuffer.reserve(HTTP_RECV_BUFFER);
-	_sendBuffer.reserve(HTTP_SEND_BUFFER);
 }
 
 Http::~Http()
@@ -336,7 +333,7 @@ void	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 		
 		// I need the whole request line first
 		// before process anything
-		size_t	endLinePos = _requestBuffer.find("\r\n");
+		size_t	endLinePos = _requestBuffer.find("\r\n", currIndex);
 
 		// doesn't find any endline delimiter
 		// will process later
@@ -480,7 +477,7 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 		std::string &headerValueTarget = httpRequest.requestData.headerField[tempFieldName];
 
 		// separated by the ", "
-		if (headerValueTarget.empty() == false)
+		if (!headerValueTarget.empty() && !tempSep.empty())
 			headerValueTarget += ", ";
 		
 		headerValueTarget += tempSep;
@@ -680,8 +677,9 @@ void	Http::generate4xx5xxErrorReponseChildProcess(HttpRequest& requestData, unsi
 	}
 
 	// testing if the file is open and readable
-	FileDescriptor errorFileFD;
+	//FileDescriptor errorFileFD;
 	size_t			fileSize = 0;
+	Shared<std::ifstream> targetErrorFile;
 
 	if (!errorPageFilePath.empty())
 	{
@@ -692,11 +690,26 @@ void	Http::generate4xx5xxErrorReponseChildProcess(HttpRequest& requestData, unsi
 		{
 			if (S_ISREG(fileStat.st_mode))
 			{
-				int fd = open(errorPageFilePath.c_str(), O_RDONLY);
-				if (fd > -1)
+				//int fd = open(errorPageFilePath.c_str(), O_RDONLY);
+				while (true)
+				{
+					targetErrorFile->open(errorPageFilePath.c_str());
+
+					if (targetErrorFile->is_open())
+						break ;
+					
+					if (errno == EINTR)
+					{
+						targetErrorFile->clear();
+						continue;
+					}
+					else
+						break;
+				}
+				if (targetErrorFile->is_open() == true)
 				{
 					fileSize = fileStat.st_size;
-					errorFileFD = fd;
+					//errorFileFD = fd;
 					hasDefaultErrorPageFile = true;
 				}
 			}
@@ -780,7 +793,7 @@ void	Http::generate4xx5xxErrorReponseChildProcess(HttpRequest& requestData, unsi
 	{
 		targetResponse.responseBodyType = HTTP_RESPONSE_BODY_FILE;
 
-		targetResponse.fileFd = errorFileFD;
+		targetResponse.fileBody = targetErrorFile;
 
 		targetResponse.fileSize = fileSize;
 	}
@@ -872,7 +885,8 @@ void	Http::generate4xx5xxErrorReponse(HttpRequest& requestData, unsigned int err
 	}
 
 	// testing if the file is open and readable
-	FileDescriptor errorFileFD;
+	//FileDescriptor errorFileFD;
+	Shared<std::ifstream> targetErrorFile;
 	size_t			fileSize = 0;
 
 	if (!errorPageFilePath.empty())
@@ -884,11 +898,26 @@ void	Http::generate4xx5xxErrorReponse(HttpRequest& requestData, unsigned int err
 		{
 			if (S_ISREG(fileStat.st_mode))
 			{
-				int fd = open(errorPageFilePath.c_str(), O_RDONLY);
-				if (fd > -1)
+				while (true)
+				{
+					targetErrorFile->open(errorPageFilePath.c_str());
+
+					if (targetErrorFile->is_open())
+						break ;
+					
+					if (errno == EINTR)
+					{
+						targetErrorFile->clear();
+						continue;
+					}
+					else
+						break;
+				}
+				//int fd = open(errorPageFilePath.c_str(), O_RDONLY);
+				if (targetErrorFile->is_open() == true)
 				{
 					fileSize = fileStat.st_size;
-					errorFileFD = fd;
+					//errorFileFD = fd;
 					hasDefaultErrorPageFile = true;
 				}
 			}
@@ -960,7 +989,7 @@ void	Http::generate4xx5xxErrorReponse(HttpRequest& requestData, unsigned int err
 	{
 		targetResponse.responseBodyType = HTTP_RESPONSE_BODY_FILE;
 
-		targetResponse.fileFd = errorFileFD;
+		targetResponse.fileBody = targetErrorFile;
 
 		targetResponse.fileSize = fileSize;
 	}
@@ -1995,10 +2024,29 @@ void	Http::handleGetRequest(HttpRequest& requestData, bool isEndWithSlash, const
 		{
 
 			// try to open the targeted file
-			int fd = open(requestData.targetData.combinedPath.c_str(), O_RDONLY);
+			//int fd = open(requestData.targetData.combinedPath.c_str(), O_RDONLY);
+
+			Shared<std::ifstream> targetFile;
+
+			while (true)
+			{
+				targetFile->open(requestData.targetData.combinedPath.c_str());
+
+				if (targetFile->is_open())
+					break ;
+				
+				if (errno == EINTR)
+				{
+					targetFile->clear();
+					continue;
+				}
+				else
+					break;
+			}
+
 
 			// if failed should response accordingly
-			if (fd < 0)
+			if (targetFile->is_open() == false)
 			{
 				if (errno == EACCES)
 					generate4xx5xxErrorReponse(requestData, 403, false, "Http::GET to regular file failed::open() failed");
@@ -2016,7 +2064,7 @@ void	Http::handleGetRequest(HttpRequest& requestData, bool isEndWithSlash, const
 					generate4xx5xxErrorReponse(requestData, 500, false, "Http:: Get to regular file::Internal Unknown Error");
 			}
 
-			FileDescriptor tempFd = fd;
+			//FileDescriptor tempFd = fd;
 
 			HttpResponse& targetResponse = *requestData.responseTargetPtr;
 
@@ -2030,14 +2078,14 @@ void	Http::handleGetRequest(HttpRequest& requestData, bool isEndWithSlash, const
 
 				std::strftime(&tempTimeBuffer[0], tempTimeBuffer.size(), "%a, %d %b %Y %H:%M:%S GMT", timeGmt);
 
-				std::string tempModTime = &tempTimeBuffer[0];
+				std::string tempModTime(tempTimeBuffer.data());
 
 				targetResponse.addHeader("Last-Modified", tempModTime);
 			}
 
 			targetResponse.contentType = contentTypeTable().extensionToContentType(requestData.targetData.combinedPath);
 			targetResponse.responseBodyType = HTTP_RESPONSE_BODY_FILE;
-			targetResponse.fileFd = tempFd;
+			targetResponse.fileBody = targetFile;
 			targetResponse.fileSize = fileStat.st_size;
 			targetResponse.keepAfterResponse = true;
 			targetResponse.statusLine->first = 200;
@@ -2172,6 +2220,31 @@ void	Http::validateRequestData(HttpRequest& requestData, const Socket& clientSoc
 	if (checkRedirection(requestData) == true)
 		return ;
 
+	/* check Connection: header */
+	{
+		/* if omitted, assume to keep alive*/
+		std::map<std::string, std::string>::const_iterator foundConnection = requestData.requestData.headerField.find("connection");
+		if (foundConnection != requestData.requestData.headerField.end())
+		{
+			/* check the string */
+			std::string tempString;
+
+			if (httpFieldNormalSingletonTrim(foundConnection->second, tempString) == false)
+				generate4xx5xxErrorReponse(requestData, 400, false, "Bad Request::Invalid Connection Header");
+			
+			if (tempString == "close")
+				httpRequest.responseTargetPtr->keepAfterResponse = false;
+			else if (tempString == "keep-alive")
+				httpRequest.responseTargetPtr->keepAfterResponse = true;
+			else
+				generate4xx5xxErrorReponse(requestData, 400, false, "Bad Request::Invalid Connection Header");
+
+		}
+		else
+		{
+			httpRequest.responseTargetPtr->keepAfterResponse = true;
+		}
+	}
 
 	// check the method
 	// return 405 if method is not allowed
@@ -2228,16 +2301,29 @@ void	Http::validateRequestData(HttpRequest& requestData, const Socket& clientSoc
 
 		// we need to combine root of location block
 		// with the URI that we resolved
-		if (!requestData.cgiData.cgiPath.empty())
 		{
-			if (!requestData.cgiData.cgiVirtualPath.empty())
-				requestData.cgiData.cgiPathTranslated = systemPath + requestData.cgiData.cgiVirtualPath;
-			requestData.targetData.combinedPath = systemPath + requestData.cgiData.cgiScriptPath;
+			const std::vector<std::string>* foundLocationName = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "location_name");
+
+
+
+			if (!requestData.cgiData.cgiPath.empty())
+			{
+				if (!requestData.cgiData.cgiVirtualPath.empty())
+					requestData.cgiData.cgiPathTranslated = systemPath + requestData.cgiData.cgiVirtualPath;
+				requestData.targetData.combinedPath = systemPath + requestData.cgiData.cgiScriptPath;
+			}
+			else
+			{
+				requestData.targetData.cutPath = requestData.targetData.targetPath.substr((*foundLocationName)[0].size());
+				if (requestData.targetData.cutPath.empty() || requestData.targetData.cutPath[0] != '/')
+					requestData.targetData.cutPath.insert(requestData.targetData.cutPath.begin(), '/');
+
+				requestData.targetData.combinedPath = systemPath + requestData.targetData.cutPath;
+			}
+
 		}
-		else
-		{
-			requestData.targetData.combinedPath = systemPath + requestData.targetData.targetPath;
-		}
+
+		std::cout << "combined path: \"" << requestData.targetData.combinedPath << '\"' << std::endl;
 
 
 		//struct stat fileStat;
@@ -2276,16 +2362,16 @@ void	Http::validateRequestData(HttpRequest& requestData, const Socket& clientSoc
 		else
 		{
 
-			struct stat fileStat;
-			std::memset(&fileStat, 0, sizeof(fileStat));
-			if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) != 0)
-			{
-				std::string ErrMsg = "Http::stat()::target_path " + requestData.targetData.targetPath + "::";
-				ErrMsg += strerror(errno);
-				if (errno == EACCES)
-					generate4xx5xxErrorReponse(requestData, 403, true, ErrMsg);
-				generate4xx5xxErrorReponse(requestData, 404, true, ErrMsg);
-			}
+			//struct stat fileStat;
+			//std::memset(&fileStat, 0, sizeof(fileStat));
+			//if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) != 0)
+			//{
+			//	std::string ErrMsg = "Http::stat()::target_path " + requestData.targetData.targetPath + "::";
+			//	ErrMsg += strerror(errno);
+			//	if (errno == EACCES)
+			//		generate4xx5xxErrorReponse(requestData, 403, true, ErrMsg);
+			//	generate4xx5xxErrorReponse(requestData, 404, true, ErrMsg);
+			//}
 
 			if (requestData.cgiData.cgiPath.empty())
 			{
@@ -2331,7 +2417,18 @@ void	Http::validateRequestData(HttpRequest& requestData, const Socket& clientSoc
 							generate4xx5xxErrorReponse(requestData, 400, false, "Content-Type:: boundary string size invalid");
 
 						requestData.bodyData.bodyContentType = outPair.first;
-						requestData.bodyData.boundaryString = foundBoundary->second;
+						requestData.bodyData.multiformData->boundaryString = foundBoundary->second;
+
+						struct stat fileStat;
+						std::memset(&fileStat, 0, sizeof(fileStat));
+						if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) != 0)
+						{
+							std::string ErrMsg = "Http::stat()::target_path " + requestData.targetData.targetPath + "::";
+							ErrMsg += strerror(errno);
+							if (errno == EACCES)
+								generate4xx5xxErrorReponse(requestData, 403, true, ErrMsg);
+							generate4xx5xxErrorReponse(requestData, 404, true, ErrMsg);
+						}
 
 						if (S_ISDIR(fileStat.st_mode) != true)
 						{
@@ -2352,28 +2449,38 @@ void	Http::validateRequestData(HttpRequest& requestData, const Socket& clientSoc
 						{
 							std::string tempFilePath = TEMP_FILE_DIR + toString(requestData.bodyData.tempRequestBodyFileNum);
 
-							int fd = open(tempFilePath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+							int fd;
+							while (true)
+							{
+								fd = open(tempFilePath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+
+								if (fd >= 0)
+									break ;
+								if (errno == EINTR)
+									continue ;
+								break;
+							}
+
 
 							if (fd < 0)
 							{
 								generate4xx5xxErrorReponse(requestData, 500, false, "POST method to non-cgi with Content-Type: multipart/form-data::open() error");
 							}
 
-							requestData.bodyData.bodyFd.push_back(fd);
+							FileDescriptor tempFd(fd);
+							//requestData.bodyData.bodyFd.push_back(fd);
+							requestData.bodyData.writeBodyFile = tempFd;
 						}
 
 
 						// some how here you need to determine how to read the body part of this specific content type
-						requestData.bodyData.isMultiForm = true;
 						requestData.bodyData.isUseTempFile = true;
 						requestData.bodyData.readBody = true;
 						requestData.bodyData.discardBody = false;
 
 						if (requestData.bodyData.checkExpectBody == true)
 						{
-							_httpResponseList.push_back(HttpResponse());
-
-							HttpResponse& target = _httpResponseList.back();
+							HttpResponse& target = *requestData.responseTargetPtr;
 
 							s_response_buff	tempBuff;
 
@@ -2394,7 +2501,19 @@ void	Http::validateRequestData(HttpRequest& requestData, const Socket& clientSoc
 							open() with the target path
 						*/
 
-						int fd = open(requestData.targetData.combinedPath.c_str(), O_TRUNC | O_CREAT | O_RDWR);
+						//int fd = open(requestData.targetData.combinedPath.c_str(), O_TRUNC | O_CREAT | O_RDWR);
+						int fd;
+						while (true)
+						{
+							fd = open(requestData.targetData.combinedPath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+
+							if (fd >= 0)
+								break ;
+							if (errno == EINTR)
+								continue ;
+							break;
+						}
+
 
 						if (fd < 0)
 						{
@@ -2402,18 +2521,18 @@ void	Http::validateRequestData(HttpRequest& requestData, const Socket& clientSoc
 							generate4xx5xxErrorReponse(requestData, 500, false, "POST method to non-cgi with Content-Type: application/octet-stream::open() error");
 						}
 
-						requestData.bodyData.bodyFd.push_back(fd);
+						FileDescriptor tempFd(fd);
 
-						requestData.bodyData.isMultiForm = false;
+						//requestData.bodyData.bodyFd.push_back(fd);
+						requestData.bodyData.writeBodyFile = tempFd;
+
 						requestData.bodyData.isUseTempFile = false;
 						requestData.bodyData.readBody = true;
 						requestData.bodyData.discardBody = false;
 
 						if (requestData.bodyData.checkExpectBody == true)
 						{
-							_httpResponseList.push_back(HttpResponse());
-
-							HttpResponse& target = _httpResponseList.back();
+							HttpResponse& target = *requestData.responseTargetPtr;
 
 							s_response_buff	tempBuff;
 
@@ -2451,34 +2570,57 @@ void	Http::validateRequestData(HttpRequest& requestData, const Socket& clientSoc
 
 							if (foundExtensionTable.find(routeExtension) != foundExtensionTable.end())
 							{
-								int fd = open(requestData.targetData.combinedPath.c_str(), O_TRUNC | O_CREAT | O_RDWR);
+								//int fd = open(requestData.targetData.combinedPath.c_str(), O_TRUNC | O_CREAT | O_RDWR);
+
+								//struct stat fileStat;
+								//std::memset(&fileStat, 0, sizeof(fileStat));
+								//if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) != 0)
+								//{
+								//	std::string ErrMsg = "Http::stat()::target_path " + requestData.targetData.targetPath + "::";
+								//	ErrMsg += strerror(errno);
+								//	if (errno == EACCES)
+								//		generate4xx5xxErrorReponse(requestData, 403, true, ErrMsg);
+								//	generate4xx5xxErrorReponse(requestData, 404, true, ErrMsg);
+								//}
+
+								int fd;
+								while (true)
+								{
+									fd = open(requestData.targetData.combinedPath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+
+									if (fd >= 0)
+										break ;
+									if (errno == EINTR)
+										continue ;
+									break;
+								}
 
 								if (fd < 0)
 								{
 									// i would insider this as internal error ?
 									generate4xx5xxErrorReponse(requestData, 500, false, "POST method to non-cgi with Content-Type: " + outPair.first + "::open() failed");
 								}
-							
-								requestData.bodyData.bodyFd.push_back(fd);
 
-								requestData.bodyData.isMultiForm = false;
+								FileDescriptor tempFd(fd);
+							
+								//requestData.bodyData.bodyFd.push_back(fd);
+								requestData.bodyData.writeBodyFile = tempFd;
+
 								requestData.bodyData.isUseTempFile = false;
 								requestData.bodyData.readBody = true;
 								requestData.bodyData.discardBody = false;
 							
 								if (requestData.bodyData.checkExpectBody == true)
 								{
-									_httpResponseList.push_back(HttpResponse());
-								
-									HttpResponse& target = _httpResponseList.back();
-								
+									HttpResponse& target = *requestData.responseTargetPtr;
+
 									s_response_buff	tempBuff;
-								
+
 									std::string expectResponse = "HTTP/1.1 100 Continue\r\n\r\n";
-								
+
 									tempBuff.currentIndex = 0;
 									tempBuff.buffer.insert(tempBuff.buffer.end(), expectResponse.begin(), expectResponse.end());
-								
+
 									target.pushNewResponseBuff(tempBuff);
 								}
 
@@ -2524,6 +2666,17 @@ void	Http::validateRequestData(HttpRequest& requestData, const Socket& clientSoc
 			}
 			else
 			{
+
+				struct stat fileStat;
+				std::memset(&fileStat, 0, sizeof(fileStat));
+				if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) != 0)
+				{
+					std::string ErrMsg = "Http::stat()::target_path " + requestData.targetData.targetPath + "::";
+					ErrMsg += strerror(errno);
+					if (errno == EACCES)
+						generate4xx5xxErrorReponse(requestData, 403, true, ErrMsg);
+					generate4xx5xxErrorReponse(requestData, 404, true, ErrMsg);
+				}
 				/* need to read the body first before starting the CGI */
 
 				/* access() is a good practice before doing anything big because
@@ -2553,26 +2706,37 @@ void	Http::validateRequestData(HttpRequest& requestData, const Socket& clientSoc
 				{
 					std::string tempFilePath = TEMP_FILE_DIR + toString(requestData.bodyData.tempRequestBodyFileNum);
 
-					int fd = open(tempFilePath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+					//int fd = open(tempFilePath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+					int fd;
+					while (true)
+					{
+						fd = open(tempFilePath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+
+						if (fd >= 0)
+							break ;
+						if (errno == EINTR)
+							continue ;
+						break;
+					}
 
 					if (fd < 0)
 					{
 						generate4xx5xxErrorReponse(requestData, 500, false, "HTTP::validating::POST method to non-cgi with Content-Type: multipart/form-data::open() error::" + std::string(std::strerror(errno)));
 					}
 
-					requestData.bodyData.bodyFd.push_back(fd);
+					FileDescriptor tempFd(fd);
+
+					//requestData.bodyData.bodyFd.push_back(fd);
+					requestData.bodyData.writeBodyFile = tempFd;
 				}
 
-				requestData.bodyData.isMultiForm = false;
 				requestData.bodyData.isUseTempFile = true;
 				requestData.bodyData.readBody = true;
 				requestData.bodyData.discardBody = false;
 
 				if (requestData.bodyData.checkExpectBody == true)
 				{
-					_httpResponseList.push_back(HttpResponse());
-
-					HttpResponse& target = _httpResponseList.back();
+					HttpResponse& target = *requestData.responseTargetPtr;
 
 					s_response_buff	tempBuff;
 
@@ -2727,7 +2891,7 @@ void Http::readingRequestBody(HttpRequest& requestData)
 			// here we need to perform the write() operation
 			while (true)
 			{
-				ssize_t	writeAmount = write(requestData.bodyData.bodyFd[0].getFd(), &_requestBuffer[0], readBodyAmount);
+				ssize_t	writeAmount = write(requestData.bodyData.writeBodyFile->getFd(), &_requestBuffer[0], readBodyAmount);
 				if (writeAmount < 0)
 				{
 					if (errno == EINTR)
@@ -2735,7 +2899,7 @@ void Http::readingRequestBody(HttpRequest& requestData)
 					else
 					{
 						// try to correctly remove file if write operation is failed 
-						requestData.bodyData.bodyFd.clear();
+						requestData.bodyData.writeBodyFile.clear();
 						if (requestData.bodyData.isUseTempFile)
 							tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 						else
@@ -2788,7 +2952,7 @@ void Http::readingRequestBody(HttpRequest& requestData)
 						*/
 						if (_requestBuffer.size() > MAX_HTTP_HEADER_LINE_LENGTH + 1)
 						{
-							requestData.bodyData.bodyFd.clear();
+							requestData.bodyData.writeBodyFile.clear();
 							if (requestData.bodyData.isUseTempFile)
 								tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 							else
@@ -2814,7 +2978,7 @@ void Http::readingRequestBody(HttpRequest& requestData)
 
 						if (_requestBuffer.size() >= 2)
 						{
-							requestData.bodyData.bodyFd.clear();
+							requestData.bodyData.writeBodyFile.clear();
 							if (requestData.bodyData.isUseTempFile)
 								tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 							else
@@ -2850,7 +3014,7 @@ void Http::readingRequestBody(HttpRequest& requestData)
 							// check the limit
 							if (headerLineStr.empty() || headerLineStr.size() > MAX_HTTP_HEADER_LINE_LENGTH)
 							{
-								requestData.bodyData.bodyFd.clear();
+								requestData.bodyData.writeBodyFile.clear();
 								if (requestData.bodyData.isUseTempFile)
 									tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 								else
@@ -2862,7 +3026,7 @@ void Http::readingRequestBody(HttpRequest& requestData)
 							size_t colonPos = headerLineStr.find_first_of(':');
 							if (colonPos == std::string::npos)
 							{
-								requestData.bodyData.bodyFd.clear();
+								requestData.bodyData.writeBodyFile.clear();
 								if (requestData.bodyData.isUseTempFile)
 									tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 								else
@@ -2875,7 +3039,7 @@ void Http::readingRequestBody(HttpRequest& requestData)
 
 							if (tempFieldName.empty())
 							{
-								requestData.bodyData.bodyFd.clear();
+								requestData.bodyData.writeBodyFile.clear();
 								if (requestData.bodyData.isUseTempFile)
 									tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 								else
@@ -2893,7 +3057,7 @@ void Http::readingRequestBody(HttpRequest& requestData)
 								if (foundHeader == requestData.bodyData.trailerHeader.end())
 								{
 									// if not match then would error
-									requestData.bodyData.bodyFd.clear();
+									requestData.bodyData.writeBodyFile.clear();
 									if (requestData.bodyData.isUseTempFile)
 										tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 									else
@@ -2939,7 +3103,7 @@ void Http::readingRequestBody(HttpRequest& requestData)
 						}
 						else
 						{
-							requestData.bodyData.bodyFd.clear();
+							requestData.bodyData.writeBodyFile.clear();
 							if (requestData.bodyData.isUseTempFile)
 								tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 							else
@@ -2970,7 +3134,7 @@ void Http::readingRequestBody(HttpRequest& requestData)
 					{
 						// wrong chunked format, blame the client with 4xx error
 					
-						requestData.bodyData.bodyFd.clear();
+						requestData.bodyData.writeBodyFile.clear();
 						if (requestData.bodyData.isUseTempFile)
 							tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 						else
@@ -2987,7 +3151,7 @@ void Http::readingRequestBody(HttpRequest& requestData)
 						// both number must not exceed the _client_max_body_size
 						if (requestData.bodyData.body_size > requestData.bodyData.client_max_body_size || hexNum > requestData.bodyData.client_max_body_size)
 						{
-							requestData.bodyData.bodyFd.clear();
+							requestData.bodyData.writeBodyFile.clear();
 							if (requestData.bodyData.isUseTempFile)
 								tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 							else
@@ -3004,7 +3168,7 @@ void Http::readingRequestBody(HttpRequest& requestData)
 						*/
 						if (hexNum > requestData.bodyData.client_max_body_size - requestData.bodyData.body_size)
 						{
-							requestData.bodyData.bodyFd.clear();
+							requestData.bodyData.writeBodyFile.clear();
 							if (requestData.bodyData.isUseTempFile)
 								tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 							else
@@ -3061,7 +3225,7 @@ void Http::readingRequestBody(HttpRequest& requestData)
 					// here we need to perform the write() operation
 					while (true)
 					{
-						ssize_t	writeAmount = write(requestData.bodyData.bodyFd[0].getFd(), &_requestBuffer[0], readBodyAmount);
+						ssize_t	writeAmount = write(requestData.bodyData.writeBodyFile->getFd(), &_requestBuffer[0], readBodyAmount);
 						if (writeAmount < 0)
 						{
 							if (errno == EINTR)
@@ -3069,7 +3233,7 @@ void Http::readingRequestBody(HttpRequest& requestData)
 							else
 							{
 								// try to correctly remove file if write operation is failed 
-								requestData.bodyData.bodyFd.clear();
+								requestData.bodyData.writeBodyFile.clear();
 								if (requestData.bodyData.isUseTempFile)
 									tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 								else
@@ -3094,7 +3258,7 @@ void Http::readingRequestBody(HttpRequest& requestData)
 	}
 	else
 	{
-		requestData.bodyData.bodyFd.clear();
+		requestData.bodyData.writeBodyFile.clear();
 		if (requestData.bodyData.isUseTempFile)
 			tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 		else
@@ -3125,13 +3289,31 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 			{
 				// no cgi means to upload normally
 				// but we need to handle the multipart form data here
-				if (requestData.bodyData.isMultiForm)
+				if (requestData.bodyData.multiformData.hasData())
 				{
 					// i don't know how to deal with multipart / form-data yet so,
-					requestData.bodyData.bodyFd.clear();
+					requestData.bodyData.writeBodyFile.clear();
+
+					processMultiFormData(requestData);
+
 					tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 
-					generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::I don't know what to do with multipart-formdata");
+					HttpResponse& targetResponse = *requestData.responseTargetPtr;
+
+					targetResponse.keepAfterResponse = true;
+					targetResponse.statusLine->first = 201;
+					targetResponse.statusLine->second = "Created";
+					targetResponse.contentType = "text/plain";
+					targetResponse.responseBodyType = HTTP_RESPONSE_BODY_FIXED_STR;
+
+					targetResponse.fixedBodyStr = "Files successfully uploaded and created.";
+					targetResponse.addHeader("Location", requestData.targetData.targetPath);
+
+					targetResponse.generateResponse();
+
+					requestData.clear();
+
+					//generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::I don't know what to do with multipart-formdata");
 				}
 				else
 				{
@@ -3159,7 +3341,7 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 
 				/* we need to re open this temporary file so we can send it so cgi*/			
 				{
-					requestData.bodyData.bodyFd.clear();
+					requestData.bodyData.writeBodyFile.clear();
 					std::string tempFilePath = TEMP_FILE_DIR + toString(requestData.bodyData.tempRequestBodyFileNum);
 
 					fd = open(tempFilePath.c_str(), O_RDONLY);
@@ -3494,6 +3676,639 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 }
 
 
+void Http::processMultiFormData(HttpRequest& requestData)
+{
+	try
+	{
+		/* the boundary string should add with "--" at the front */
+		requestData.bodyData.multiformData->boundaryString = "--" + requestData.bodyData.multiformData->boundaryString;
+		
+
+		std::string tempFilePath = TEMP_FILE_DIR + toString(requestData.bodyData.tempRequestBodyFileNum);
+		std::ifstream multipartFile;
+		while (true)
+		{
+			multipartFile.open(tempFilePath.c_str());
+			if (multipartFile.is_open())
+				break ;
+			if (errno == EINTR)
+			{
+				multipartFile.clear();
+				continue ;
+			}
+			break ;
+		}
+		if (multipartFile.is_open() == false)
+		{
+			tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+			generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::Multipart/form-data::can\'t open temp file");
+		}
+
+		std::vector<char> multipartReadBuffer(HTTP_RECV_BUFFER);
+		std::streamsize readCount;
+		std::string multipartBufferString;
+		requestData.bodyData.multiformData->state = FORMDATA_STATUS_FINDING_BOUNDARY;
+
+		while (true)
+		{
+			readCount = 0;
+			multipartFile.read(multipartReadBuffer.data(), HTTP_RECV_BUFFER);
+			readCount = multipartFile.gcount();
+			if (readCount > 0)
+			{
+				/* do some operation here */
+				multipartBufferString.append(multipartReadBuffer.data(), readCount);
+				multiformDataProcessBuffer(requestData, multipartBufferString);
+			}
+
+			if (multipartFile.fail())
+			{
+				if (multipartFile.eof())
+				{
+					/* end of file, may be we should check if it all correctly configured */
+					/* but now treated as complete*/
+
+					/* here if eof() and the state is READING HEADER */
+					if (requestData.bodyData.multiformData->state != FORMDATA_STATUS_FINISHED)
+					{
+						generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::multipart/form-data::wrong-format");
+					}
+
+					break ;
+				}
+				else if (multipartFile.bad() || errno != EINTR)
+				{
+					/* here is fatal errors happen, we must response and clean properly */
+					generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::multipart/form-data::read()::fatal Error::" + std::string(std::strerror(errno)));
+					break ;
+				}
+
+				multipartFile.clear();
+				continue ;
+			}
+		}
+
+	}
+	catch (HttpThrowStatus &e)
+	{
+		/* would try to clean the file when error occur here */
+		//std::cout << "remove temp file : " <<  requestData.bodyData.tempRequestBodyFileNum << std::endl;
+		tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+
+		requestData.bodyData.multiformData->combinedPathFileName.clear();
+		requestData.bodyData.multiformData->fileFd.clear();
+		requestData.bodyData.multiformData->allCreatedFileList.clear();
+
+		std::list<std::string>& targetFilenameList = requestData.bodyData.multiformData->allCreatedFileList;
+		std::list<std::string>::iterator listIt = targetFilenameList.begin();
+		while (listIt != targetFilenameList.end())
+		{
+			std::remove((*(listIt++)).c_str());
+		}
+
+		throw ;
+	}
+	catch (std::exception &e)
+	{
+		tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+		/* would try to clean the file when error occur here */
+		requestData.bodyData.multiformData->combinedPathFileName.clear();
+		requestData.bodyData.multiformData->fileFd.clear();
+		requestData.bodyData.multiformData->allCreatedFileList.clear();
+
+		std::list<std::string>& targetFilenameList = requestData.bodyData.multiformData->allCreatedFileList;
+		std::list<std::string>::iterator listIt = targetFilenameList.begin();
+		while (listIt != targetFilenameList.end())
+		{
+			std::remove((*(listIt++)).c_str());
+		}
+
+		generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::multipart/form-data::fatal Error::" + std::string(e.what()));
+	}
+	catch (...)
+	{
+		tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+		requestData.bodyData.multiformData->combinedPathFileName.clear();
+		requestData.bodyData.multiformData->fileFd.clear();
+		requestData.bodyData.multiformData->allCreatedFileList.clear();
+
+		std::list<std::string>& targetFilenameList = requestData.bodyData.multiformData->allCreatedFileList;
+		std::list<std::string>::iterator listIt = targetFilenameList.begin();
+		while (listIt != targetFilenameList.end())
+		{
+			std::remove((*(listIt++)).c_str());
+		}
+
+		generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::multipart/form-data::Unknown Error");
+	}
+
+}
+
+void Http::multiformDataFindingBoundary(HttpRequest& requestData, std::string& multipartBufferString, size_t& currBufPos)
+{
+	if (requestData.bodyData.multiformData->state == FORMDATA_STATUS_FINDING_BOUNDARY)
+	{
+		/* can be any amount of preceding CRLF */
+
+
+		while (currBufPos + 1 < multipartBufferString.size())
+		{
+			if (multipartBufferString[currBufPos] == '\r')
+			{
+				if (multipartBufferString[currBufPos + 1] != '\n')
+					generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::multipart/form-data::does not precede the body with CRLF");
+				
+				currBufPos += 2;
+				continue ;
+			}
+			else
+				break ;
+		}
+
+		if (currBufPos >= multipartBufferString.size())
+		{
+			multipartBufferString.clear();
+			return ;
+		}
+
+		/* now it should sits on the first charactor of boundary line */
+
+		/* need whole boundary line */
+
+		size_t endLinePos = multipartBufferString.find("\r\n", currBufPos);
+
+		if (endLinePos == std::string::npos)
+		{
+			if (currBufPos != 0)
+				multipartBufferString = multipartBufferString.substr(currBufPos);
+			return ;
+		}
+
+		std::string foundBoundaryString = multipartBufferString.substr(currBufPos, endLinePos - currBufPos);
+
+		/* then we can compare with our boundary string if not matched then should error */
+		if (foundBoundaryString != requestData.bodyData.multiformData->boundaryString)
+			generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::multipart/form-data::boundary string doesn't match");
+
+		/* if boundary string is found and matched, then we move cursor and move to the next process */
+
+		/* because endLinePos is the "\r\n" then we skip 2 characters */
+		currBufPos = endLinePos + 2;
+
+		requestData.bodyData.multiformData->state = FORMDATA_STATUS_READING_HEADER;
+		/* if currPos exceeds the buffer then clear() and wait for next read() */
+		if (currBufPos >= multipartBufferString.size())
+		{
+			multipartBufferString.clear();
+			return ;
+		}
+	}
+}
+
+void Http::multiformDataReadingHeader(HttpRequest& requestData, std::string& multipartBufferString, size_t& currBufPos)
+{
+	if (requestData.bodyData.multiformData->state == FORMDATA_STATUS_READING_HEADER)
+	{
+		size_t endLinePos;
+		size_t colonPos;
+		std::string tempFieldName;
+		std::string tempSep;
+
+		while (requestData.bodyData.multiformData->state == FORMDATA_STATUS_READING_HEADER)
+		{
+			endLinePos = multipartBufferString.find("\r\n", currBufPos);
+
+			/* need to read line by line, if not found the endlinepos yet 
+			we should wait for another round of read() */
+			if (endLinePos == std::string::npos)
+			{
+				if (currBufPos != 0)
+					multipartBufferString.erase(0, currBufPos);
+				return ;
+			}
+
+			/* if endLindPos matches with currBufpos it is \r\n indicating end of header*/
+			if (endLinePos == currBufPos)
+			{
+				requestData.bodyData.multiformData->state = FORMDATA_STATUS_VALIDATING_HEADER;
+				if (currBufPos + 2 >= multipartBufferString.size())
+					multipartBufferString.clear();
+				else
+					multipartBufferString.erase(0, currBufPos + 2);
+				
+				break ;
+			}
+
+			/* here endline doesn't match with currPos meaning this is header line */
+			colonPos = multipartBufferString.find_first_of(':', currBufPos);
+			/*header must separated by ':' if not must reject */
+			if (colonPos == std::string::npos || colonPos > endLinePos)
+				generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::multipart/form-data::Header::name and value must separated by the \':\'");
+
+			tempFieldName = multipartBufferString.substr(currBufPos, colonPos - currBufPos);
+
+			/* must not empty */
+			if (tempFieldName.empty())
+				generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::multipart/form-data::name in header field cannot be empty");
+
+			/* check if not contain any forbidden char ? */
+			{
+				if (httpFieldNameChar().isMatch(tempFieldName) == false)
+					generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::multipart/form-data::name in header field must not contain any forbidden chars");
+
+				/* first letter of field name must be an alpha */
+				if (allAlphaChar()[tempFieldName[0]] == false)
+					generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::multipart/form-data::name in header field must start with a letter");
+			}
+
+			/* now the field value */
+			currBufPos = colonPos + 1;
+			tempSep = multipartBufferString.substr(currBufPos, endLinePos - currBufPos);
+			tempSep = my_ft_trim(tempSep, " \t");
+
+			if (!tempSep.empty())
+			{
+				if (forbiddenFieldValueChar().isNotMatch(tempSep) == false)
+					generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::multipart/form-data::value in header field must not contain any forbidden char");
+
+			}
+
+			tempFieldName = stringToLower(tempFieldName);
+
+			std::string& headerValueTarget = requestData.bodyData.multiformData->headerField[tempFieldName];
+
+			if (!headerValueTarget.empty() && !tempSep.empty())
+				headerValueTarget += ", ";
+
+			headerValueTarget += tempSep;
+
+			currBufPos = endLinePos + 2;
+		}
+	}
+}
+
+void Http::multiformDataValidating(HttpRequest& requestData)
+{
+	if (requestData.bodyData.multiformData->state == FORMDATA_STATUS_VALIDATING_HEADER)
+	{
+		/* would not except if no header at all*/
+		std::map<std::string, std::string>& targetHeader = requestData.bodyData.multiformData->headerField;
+
+		if (targetHeader.size() < 1)
+			generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::multipart/form-data::must have atleast 1 header");
+
+		/* print header */
+		{
+			std::cout << "##################################################" << std::endl;
+
+			std::map<std::string, std::string>::const_iterator headIt = targetHeader.begin();
+			while (headIt != targetHeader.end())
+			{
+				std::cout << headIt->first << ": " << headIt->second << std::endl;
+				++headIt;
+			}
+
+			std::cout << "##################################################" << std::endl;
+		}
+
+		/* then i must assume that it has Content-Disposition to be able to upload on where */
+		{
+			std::map<std::string, std::string>::const_iterator foundContentDisposition = targetHeader.find("content-disposition");
+
+			if (foundContentDisposition == targetHeader.end())
+			{
+				/* i think that this header is must have */
+
+				generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::multipart/form-data::cannot handle part that doesn't have Content-Disposition");
+			}
+
+			/* this field kinda have similar parsing as Content-Type */
+
+			std::pair<std::string, std::vector<std::pair<std::string, std::string> > > extractOut;
+			if (httpFieldContentTypeExtract(foundContentDisposition->second, extractOut) == false)
+			{
+				generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::multipart/form-data::extract Content-Disposition::failed");
+			}
+
+			/* it must be form-data or else i dont know what to do */
+			if (extractOut.first.empty() || extractOut.first != "form-data")
+			{
+				generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::multipart/form-data::Content-Disposition::must be form-data only");
+			}
+
+			/* i will based from RFC7578 for multipart/form-data */
+
+			if (extractOut.second.empty())
+			{
+				generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::multipart/form-data::Content-Disposition:: must have attributes");
+			}
+
+			/* must have 'name' */
+			std::vector<std::pair<std::string, std::string> >::const_iterator foundNameAttrib = extractOut.second.end();
+			std::vector<std::pair<std::string, std::string> >::const_iterator foundFilenameAttrib = extractOut.second.end();
+			std::vector<std::pair<std::string, std::string> >::const_iterator vecIt = extractOut.second.begin();
+
+			while (vecIt != extractOut.second.end())
+			{
+				if (vecIt->first == "name" && foundNameAttrib == extractOut.second.end())
+					foundNameAttrib = vecIt;
+				else if (vecIt->first == "filename" && foundFilenameAttrib == extractOut.second.end())
+					foundFilenameAttrib = vecIt;
+				++vecIt;
+			}
+
+			if (foundNameAttrib == extractOut.second.end() || foundNameAttrib->second.empty())
+			{
+				generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::multipart/form-data::Content-Disposition::name attribute not found or empty");
+			}
+
+			/* dont know how to deal with this one */
+			//if (foundNameAttrib->second == "_charset_")
+
+			if (foundFilenameAttrib != extractOut.second.end())
+			{
+				/* now we are dealing with filename 
+				the RFC said that we should strip any path identifier out at all
+				like thos '/' or '\\'. as i'm working on linux */
+				std::string strippedFilename;
+				if (foundFilenameAttrib->second.empty() == false)
+				{
+					strippedFilename = foundFilenameAttrib->second;
+
+					size_t lastSlashPos = strippedFilename.find_last_of('/');
+					if (lastSlashPos != std::string::npos)
+					{
+						strippedFilename = strippedFilename.substr(lastSlashPos + 1);
+					}
+				}
+
+				if (!strippedFilename.empty())
+				/* combine with the combined path */
+				{
+					if (requestData.targetData.combinedPath[requestData.targetData.combinedPath.size() - 1] == '/')
+					{
+						/* if its last char is already the '/' */
+						requestData.bodyData.multiformData->combinedPathFileName = requestData.targetData.combinedPath + strippedFilename;
+					}
+					else
+						requestData.bodyData.multiformData->combinedPathFileName = requestData.targetData.combinedPath + '/' + strippedFilename;
+				}
+			}
+
+		}
+
+		/* the RFC said that Content-Type is optional even if it is a file to upload
+		or not so right now i think i should not handle yet */
+
+		/* the Content-Transfer-Encoding is already deprecated, so it should not exist*/
+		{
+			std::map<std::string, std::string>::const_iterator foundContentTransferEncoding = targetHeader.find("content-transfer-encoding");
+
+			if (foundContentTransferEncoding != targetHeader.end())
+				generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::multipart/form-data::Content-Transfer-Encoding must not exist in any part of the form");
+		}
+
+
+		/* IF the combinedPathFilename exist then we must do some check */
+
+		/* first is to check that this file must not exist before upload*/
+		/* we can do with stat */
+
+		s_http_request_body_multiform_data& multiFormData = *requestData.bodyData.multiformData;
+
+		if (multiFormData.combinedPathFileName.hasData())
+		{
+			struct stat fileStat;
+			std::memset(&fileStat, 0, sizeof(fileStat));
+			if (stat(multiFormData.combinedPathFileName->c_str(), &fileStat) == 0)
+			{
+				/* if == 0 meaning that stat() can open this part, which it should not*/
+				generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::multipart/form-data::file already exists!");
+			}
+			/* after checking with stat() proved that the target path is not exist then we open the file
+			to write the data*/
+
+
+			int fd;
+			while (true)
+			{
+				fd = open(multiFormData.combinedPathFileName->c_str(), O_CREAT | O_TRUNC | O_RDWR);
+				if (fd >= 0)
+					break ;
+				if (errno == EINTR)
+					continue ;
+				else
+					break ;
+			}
+
+			if (fd < 0)
+			{
+				generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::multipart/form-data::open() failed::" + std::string(std::strerror(errno)));
+			}
+
+			FileDescriptor t(fd);
+
+			multiFormData.fileFd = t;
+			/* put it to the list that should be delete in case of error */
+			multiFormData.allCreatedFileList.push_back(*multiFormData.combinedPathFileName);
+		}
+
+		multiFormData.state = FORMDATA_STATUS_READING_BODY;
+	}
+}
+
+void Http::multiformDataReadBody(HttpRequest& requestData, std::string& multipartBufferString)
+{
+	if (requestData.bodyData.multiformData->state == FORMDATA_STATUS_READING_BODY)
+	{
+		/* because i deal nothing with the data, and will discard all the content
+		if 'filename' does not exist in Content-Disposition header */
+		OptionalData<FileDescriptor>& targetFileFd = requestData.bodyData.multiformData->fileFd;
+
+		std::string normalBoundaryString = "\r\n" + requestData.bodyData.multiformData->boundaryString + "\r\n";
+		std::string finalBoundaryString = "\r\n" + requestData.bodyData.multiformData->boundaryString + "--";
+
+
+		std::vector<char> writeBuffer;
+		writeBuffer.reserve(HTTP_SEND_BUFFER);
+
+		ssize_t writeAmount;
+		bool isFoundBoundary = false;
+		bool isFinalBoundaty = false;
+		int findRet = 0;
+		size_t nextBlockPos = std::string::npos;
+
+		while (true)
+		{
+			if (multipartBufferString.empty() == false)
+			{
+				size_t normalPos = 0;
+				size_t finalPos = 0;
+				int normalRet = my_find(multipartBufferString, normalBoundaryString, normalPos);
+				int finalRet = my_find(multipartBufferString, finalBoundaryString, finalPos);
+
+				if (normalRet == 2 || finalRet == 2)
+				{
+					findRet = 2;
+					if (normalRet == 2 && finalRet != 2)
+					{
+						nextBlockPos = normalPos;
+						isFinalBoundaty = false;
+					}
+					else if (finalRet == 2 && normalRet != 2)
+					{
+						nextBlockPos = finalPos;
+						isFinalBoundaty = true;
+					}
+					else
+					{
+						if (normalPos <= finalPos)
+						{
+							nextBlockPos = normalPos;
+							isFinalBoundaty = false;
+						}
+						else
+						{
+							nextBlockPos = finalPos;
+							isFinalBoundaty = true;
+						}
+					}
+				}
+				else if (normalRet == 1 || finalRet == 1)
+				{
+					findRet = 1;
+					if (normalRet == 1 && finalRet != 1)
+						nextBlockPos = normalPos;
+					else if (finalRet == 1 && normalRet != 1)
+						nextBlockPos = finalPos;
+					else
+						nextBlockPos = normalPos <= finalPos ? normalPos : finalPos;
+				}
+				else
+				{
+					findRet = 0;
+				}
+
+				if (findRet == 0)
+				/* if not found yet we take the whole buffer */
+				{
+					if (targetFileFd.hasData() == false)
+					{
+						multipartBufferString.clear();
+						break ;
+					}
+
+					writeBuffer.insert(writeBuffer.end(), multipartBufferString.begin(), multipartBufferString.end());
+					multipartBufferString.clear();
+				}
+				else
+				{
+					if (targetFileFd.hasData() == false)
+					{
+						multipartBufferString.erase(0, nextBlockPos);
+						isFoundBoundary = true;
+						break ;
+					}
+					writeBuffer.insert(writeBuffer.end(), multipartBufferString.begin(), multipartBufferString.begin() + nextBlockPos);
+					multipartBufferString.erase(0, nextBlockPos);
+					isFoundBoundary = true;
+				}
+			}
+
+			if (writeBuffer.empty() == false)
+			{
+				/* write operation */
+				while (true)
+				{
+					writeAmount = write(targetFileFd->getFd(), writeBuffer.data(), writeBuffer.size());
+					if (writeAmount < 0)
+					{
+						if (errno == EINTR)
+							continue ;
+						else
+						{
+							/* fatal error */
+							generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::multipart/form-data::write() failed::" + std::string(std::strerror(errno)));
+						}
+					}
+					break ;
+				}
+
+				if (writeAmount >= writeBuffer.size())
+				{
+					writeBuffer.clear();
+				}
+				else
+				{
+					writeBuffer.erase(writeBuffer.begin(), writeBuffer.begin() + writeAmount);
+				}
+			}
+
+			/**/
+
+			if ((isFoundBoundary == true || multipartBufferString.empty()) && writeBuffer.empty())
+				break ;
+		}
+
+		/* if already found isFoundBoundary then*/
+		if (isFoundBoundary == true)
+		{
+			/* found only partial part and need to wait for next found*/
+			if (findRet == 1)
+			{
+
+			}
+			else if (findRet == 2)
+			{
+				if (isFinalBoundaty)
+				{
+					multipartBufferString.erase(0, finalBoundaryString.size());
+
+					requestData.bodyData.multiformData->state = FORMDATA_STATUS_FINISHED;
+				}
+				else
+				{
+					multipartBufferString.erase(0, normalBoundaryString.size());
+
+					requestData.bodyData.multiformData->state = FORMDATA_STATUS_NEXT_BLOCK;
+				}
+				/* found whole we erase and ready for next block */
+				requestData.bodyData.multiformData->fileFd.clear();
+				requestData.bodyData.multiformData->combinedPathFileName.clear();
+				requestData.bodyData.multiformData->headerField.clear();
+				return ;
+			}
+			else
+			{
+				generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::multipart/form-data::my_find() Fatal Error!");
+			}
+		}
+	}
+
+}
+
+void Http::multiformDataProcessBuffer(HttpRequest& requestData, std::string& multipartBufferString)
+{
+	while (true)
+	{
+		size_t currBufPos = 0;
+
+		multiformDataFindingBoundary(requestData, multipartBufferString, currBufPos);
+
+		if (requestData.bodyData.multiformData->state == FORMDATA_STATUS_NEXT_BLOCK)
+			requestData.bodyData.multiformData->state = FORMDATA_STATUS_READING_HEADER;
+
+		multiformDataReadingHeader(requestData, multipartBufferString, currBufPos);
+
+		multiformDataValidating(requestData);
+
+		multiformDataReadBody(requestData, multipartBufferString);
+
+		if (requestData.bodyData.multiformData->state != FORMDATA_STATUS_NEXT_BLOCK)
+			break ;
+	}
+}
+
 // use the _requestBuffer
 void	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Socket>& socketMap)
 {
@@ -3536,6 +4351,7 @@ void	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Soc
 	return ;
 }
 
+
 void Http::directRequestProcess(HttpRequest requestData)
 {
 	try 
@@ -3576,9 +4392,10 @@ void Http::directRequestProcess(HttpRequest requestData)
 
 void Http::readFromClient()
 {
+	//std::cout << "READ FROM CLIENT" << std::endl;
 	ssize_t	readAmount;
 
-	readAmount = recv(_clientSocketPtr->getSocketFD().getFd(), &_recvBuffer[0], HTTP_RECV_BUFFER, 0);
+	readAmount = recv(_clientSocketPtr->getSocketFD().getFd(), _recvBuffer.data(), HTTP_RECV_BUFFER, 0);
 	if (readAmount == 0)
 	{
 		Logger::log(LC_CONN_LOG, "Disconnecting client Socket#%d", _clientSocketPtr->getSocketFD().getFd());
@@ -3595,7 +4412,7 @@ void Http::readFromClient()
 	}
 	else 
 	{
-		_requestBuffer.append(&(_recvBuffer[0]), readAmount);
+		_requestBuffer.append(_recvBuffer.data(), readAmount);
 		try
 		{
 			processingRequestBuffer(*_clientSocketPtr, *_socketMapPtr);
@@ -3635,6 +4452,7 @@ void Http::readFromClient()
 
 void	Http::writeToClient()
 {
+	//std::cout << "WRITE TO CLIENT" << std::endl;
 	HttpResponse *response_block = NULL;
 
 	_isEpollout = true;
@@ -3709,6 +4527,8 @@ bool Http::httpFieldContentTypeExtract(const std::string& toExtract, std::pair<s
 	std::vector<std::pair<std::string, std::string> > tempAttribVec;
 	std::pair<std::string, std::string> tempAttrib;
 
+	bool hasEqual = false;
+
 	while (listIt != tempTokenList.end())
 	{
 		// here you would need to skip any of the first
@@ -3746,14 +4566,15 @@ bool Http::httpFieldContentTypeExtract(const std::string& toExtract, std::pair<s
 				if (outPair.first.empty())
 					return (false);
 
-				if (!tempAttrib.first.empty() && tempAttrib.second.empty())
+				if (!tempAttrib.first.empty() && !hasEqual)
 					return (false);
-				
+
 				if (!tempAttrib.first.empty())
 				{
 					tempAttribVec.push_back(tempAttrib);
 					tempAttrib.first.clear();
 					tempAttrib.second.clear();
+					hasEqual = false;
 				}
 				++listIt;
 				continue;
@@ -3764,6 +4585,7 @@ bool Http::httpFieldContentTypeExtract(const std::string& toExtract, std::pair<s
 				|| (listIt + 1) == tempTokenList.end()
 				|| tempListPos == tempTokenList.end()
 				|| listIt == tempTokenList.begin()
+				|| hasEqual == true
 				|| !tempAttrib.second.empty()
 				|| (listIt - 1) != tempListPos
 				|| ((listIt + 1)->tokenType == DELIMITER && (listIt + 1)->str[0] != '\"')
@@ -3772,6 +4594,7 @@ bool Http::httpFieldContentTypeExtract(const std::string& toExtract, std::pair<s
 					return (false);
 				}
 				
+				hasEqual = true;
 				tempListPos = tempTokenList.end();
 				if ((++listIt)->tokenType == WORD)
 				{
@@ -3781,7 +4604,7 @@ bool Http::httpFieldContentTypeExtract(const std::string& toExtract, std::pair<s
 						return (false);
 					}
 					
-					listIt += 2;
+					++listIt;
 					continue;
 				}
 				else
@@ -3791,11 +4614,9 @@ bool Http::httpFieldContentTypeExtract(const std::string& toExtract, std::pair<s
 					// here deal with quoted
 
 					++listIt;
-					if (listIt == tempTokenList.end() || listIt->str[0] == '\"')
-					{
+					if (listIt == tempTokenList.end())
 						return (false);
-					}
-					while (listIt != tempTokenList.end() && listIt->str[0] != '\"' && listIt->tokenType != DELIMITER)
+					while (listIt != tempTokenList.end() && !(listIt->tokenType == DELIMITER && listIt->str[0] == '\"'))
 					{
 						if (listIt->tokenType == ESCAPE_CHAR)
 						{
@@ -3811,7 +4632,7 @@ bool Http::httpFieldContentTypeExtract(const std::string& toExtract, std::pair<s
 						}
 						++listIt;
 					}
-					if (listIt == tempTokenList.end() || listIt->str.size() >= 2 || tempAttrib.second.empty())
+					if (listIt == tempTokenList.end() || listIt->str.size() >= 2)
 						return (false);
 					
 					++listIt;
@@ -3825,7 +4646,7 @@ bool Http::httpFieldContentTypeExtract(const std::string& toExtract, std::pair<s
 			return (false);
 	}
 
-	if (outPair.first.empty() || (!tempAttrib.first.empty() && tempAttrib.second.empty()))
+	if (outPair.first.empty() || (!tempAttrib.first.empty() && !hasEqual))
 		return (false);
 
 	if (!tempAttrib.first.empty())
@@ -4015,10 +4836,12 @@ bool Http::extractHttpFieldValueString(const std::string& toExtract, std::deque<
 		}
 		else if (delimTable[toExtract[i]] == true)
 		{
-			j = toExtract.find_first_not_of(toExtract[i], i);
+			//j = toExtract.find_first_not_of(toExtract[i], i);
 
-			if (j == std::string::npos)
-				j = toExtract.size();
+			//if (j == std::string::npos)
+			//	j = toExtract.size();
+
+			j = i + 1;
 
 			tokenList.push_back(s_http_field_value_token());
 			s_http_field_value_token& targetToken = tokenList.back();

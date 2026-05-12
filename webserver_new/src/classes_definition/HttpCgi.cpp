@@ -2,6 +2,7 @@
 #include "../../include/classes/Socket.hpp"
 #include "../../include/classes/WebServ.hpp"
 #include "../../include/classes/TempFileManager.hpp"
+#include "../../include/utility_function.hpp"
 
 HttpCgi::HttpCgi()
 :
@@ -9,11 +10,11 @@ _clientResponseList(NULL),
 _cgiTargetResponse(NULL),
 _cgiOutSocket(NULL),
 httpCgiStatus(HTTPCGI_NO_STATUS),
+_readCgiBuffer(HTTP_READ_FROM_CGI_BUFFER_SIZE),
 _isFinishedRead(false),
 _keepConnection(true)
 {
 	_writeCgiBuffer.reserve(HTTP_WRITE_TO_CGI_BUFFER_SIZE);
-	_readCgiBuffer.reserve(HTTP_READ_FROM_CGI_BUFFER_SIZE);
 }
 
 void HttpCgi::setHttpCgiNoCgiIn(std::list<HttpResponse>* clientResponseList,
@@ -52,12 +53,12 @@ _cgiTargetResponse(obj._cgiTargetResponse),
 _cgiOutSocket(obj._cgiOutSocket),
 _cgiInSocket(obj._cgiInSocket),
 httpCgiStatus(obj.httpCgiStatus),
+_readCgiBuffer(HTTP_READ_FROM_CGI_BUFFER_SIZE),
 _tempFileData(obj._tempFileData),
 _isFinishedRead(obj._isFinishedRead),
 _keepConnection(obj._keepConnection)
 {
 	_writeCgiBuffer.reserve(HTTP_WRITE_TO_CGI_BUFFER_SIZE);
-	_readCgiBuffer.reserve(HTTP_READ_FROM_CGI_BUFFER_SIZE);
 }
 
 HttpCgi::~HttpCgi()
@@ -152,11 +153,14 @@ void HttpCgi::generate5xxCGIOUTresponseError(unsigned int errorCode, const std::
 
 
 	// testing if the file is open and readable
-	FileDescriptor errorFileFD;
+	//FileDescriptor errorFileFD;
+	Shared<std::ifstream> targetErrorFile;
 	size_t			fileSize = 0;
 
 	if (!errorPageFilePath.empty())
 	{
+
+
 		// check stat to get the file 
 		struct stat fileStat;
 		std::memset(&fileStat, 0, sizeof(fileStat));
@@ -164,11 +168,24 @@ void HttpCgi::generate5xxCGIOUTresponseError(unsigned int errorCode, const std::
 		{
 			if (S_ISREG(fileStat.st_mode))
 			{
-				int fd = open(errorPageFilePath.c_str(), O_RDONLY);
-				if (fd > -1)
+				//int fd = open(errorPageFilePath.c_str(), O_RDONLY);
+				while (true)
+				{
+					targetErrorFile->open(errorPageFilePath.c_str());
+					if (targetErrorFile->is_open())
+						break ;
+					if (errno == EINTR)
+					{
+						targetErrorFile->clear();
+						continue ;
+					}
+					break ;
+				}
+				
+				if (targetErrorFile->is_open() == false)
 				{
 					fileSize = fileStat.st_size;
-					errorFileFD = fd;
+					//errorFileFD = fd;
 					hasDefaultErrorPageFile = true;
 				}
 			}
@@ -196,7 +213,7 @@ void HttpCgi::generate5xxCGIOUTresponseError(unsigned int errorCode, const std::
 	if (hasDefaultErrorPageFile == true)
 	{
 		_cgiTargetResponse->responseBodyType = HTTP_RESPONSE_BODY_FILE;
-		_cgiTargetResponse->fileFd = errorFileFD;
+		_cgiTargetResponse->fileBody = targetErrorFile;
 		_cgiTargetResponse->fileSize = fileSize;
 	}
 	else
@@ -382,17 +399,6 @@ void HttpCgi::validateCGIOUTresponse()
 	if (httpCgiStatus != HTTPCGI_VALIDATING_RESPONSE)
 		return ;
 
-	{
-		std::cout << " =========== PRINT CGI HEADER ==========" << std::endl;
-
-		std::map<std::string, std::string>::const_iterator it = _responseHeaderCGIOUT.begin();
-
-		while (it != _responseHeaderCGIOUT.end())
-		{
-			std::cout << it->first << ": " << it->second << std::endl;
-			++it;
-		}
-	}
 	/* would not tolerate if the response has no header */
 	if (_responseHeaderCGIOUT.empty())
 		generate5xxCGIOUTresponseError(500, "Internal Error::CGIOUT::Test If CGI REACH HERE");
@@ -494,14 +500,26 @@ void HttpCgi::validateCGIOUTresponse()
 					{
 						generate5xxCGIOUTresponseError(500, "Internal Error::CGI Response::Status Value Invalid");
 					}
+					std::vector<std::string> splitVec;
+					splitString(statusCodeTempStr, "\t ", splitVec);
+
+					if (splitVec.size() == 0)
+						generate5xxCGIOUTresponseError(500, "Internal Error::CGI Response::Status Value Invalid:: failed split");
 
 					size_t statusCodeNum = 0;
-					if (string_to_size_t(statusCodeTempStr, statusCodeNum) == false || (statusCodeNum < 100 || statusCodeNum > 599))
+					if (string_to_size_t(splitVec[0], statusCodeNum) == false || (statusCodeNum < 100 || statusCodeNum > 599))
 					{
 						generate5xxCGIOUTresponseError(500, "Internal Error::CGI Response::Status Value Invalid");
 					}
 
 					_cgiTargetResponse->statusLine->first = statusCodeNum;
+
+					for (int i = 1; i < splitVec.size(); i++)
+					{
+						if (i > 1)
+							_cgiTargetResponse->statusLine->second += " ";
+						_cgiTargetResponse->statusLine->second += splitVec[i];
+					}
 				}
 				else
 				{
@@ -525,13 +543,25 @@ void HttpCgi::validateCGIOUTresponse()
 				generate5xxCGIOUTresponseError(500, "Internal Error::CGI Response::Status Value Invalid:: failed trim");
 			}
 
+			std::vector<std::string> splitVec;
+			splitString(statusCodeTempStr, "\t ", splitVec);
+
+			if (splitVec.size() == 0)
+				generate5xxCGIOUTresponseError(500, "Internal Error::CGI Response::Status Value Invalid:: failed split");
+
 			size_t statusCodeNum = 0;
-			if (string_to_size_t(statusCodeTempStr, statusCodeNum) == false || (statusCodeNum < 100 || statusCodeNum > 599))
+			if (string_to_size_t(splitVec[0], statusCodeNum) == false || (statusCodeNum < 100 || statusCodeNum > 599))
 			{
 				generate5xxCGIOUTresponseError(500, "Internal Error::CGI Response::Status Value Invalid::" + statusCodeTempStr + std::string("::") + toString(statusCodeNum));
 			}
 
 			_cgiTargetResponse->statusLine->first = statusCodeNum;
+			for (int i = 1; i < splitVec.size(); i++)
+			{
+				if (i > 1)
+					_cgiTargetResponse->statusLine->second += " ";
+				_cgiTargetResponse->statusLine->second += splitVec[i];
+			}
 		}
 		else
 		{
@@ -539,6 +569,9 @@ void HttpCgi::validateCGIOUTresponse()
 			_cgiTargetResponse->statusLine->second = "OK";
 		}
 	}
+
+	/* erase because i may create duplication when copy header to responsetarget*/
+	_responseHeaderCGIOUT.erase("status");
 	
 
 	if (foundContentType != _responseHeaderCGIOUT.end())
@@ -569,6 +602,7 @@ void HttpCgi::validateCGIOUTresponse()
 
 			_bodyData->isChunkBody = false;
 			_cgiTargetResponse->addHeader("Content-Length", toString(_bodyData->bodySize));
+			_responseHeaderCGIOUT.erase("content-length");
 		}
 		else if (foundTransferEncoding != _responseHeaderCGIOUT.end())
 		{
@@ -590,6 +624,7 @@ void HttpCgi::validateCGIOUTresponse()
 			_bodyData->bodySize = 0;
 			_bodyData->chunkBodyIsFinished = false;
 			_cgiTargetResponse->addHeader("Transfer-Encoding", "chunked");
+			_responseHeaderCGIOUT.erase("transfer-encoding");
 		}
 		else
 		{
@@ -605,11 +640,49 @@ void HttpCgi::validateCGIOUTresponse()
 
 		_bodyData->curr_body_read = 0;
 		_cgiTargetResponse->responseBodyType = HTTP_RESPONSE_CGI_BODY;
+		_cgiTargetResponse->contentType = foundContentType->second;
+		_responseHeaderCGIOUT.erase("content-type");
 	}
 	else
 	{
 		_cgiTargetResponse->responseBodyType = HTTP_RESPONSE_NOBODY;
 		/* */
+	}
+
+	/* copy all header to TargetResponse */
+	{
+		std::map<std::string, std::string>::const_iterator copyIt = _responseHeaderCGIOUT.begin();
+
+		std::string temp;
+		while (copyIt != _responseHeaderCGIOUT.end())
+		{
+			temp = copyIt->first;
+			stringCapital(temp);
+			_cgiTargetResponse->addHeader(temp, copyIt->second);
+			++copyIt;
+		}
+	}
+
+	{
+		std::cout << " =========== PRINT CGI HEADER ==========" << std::endl;
+
+		t_config_map::const_iterator it = _cgiTargetResponse->getHeader().begin();
+
+		std::vector<std::string>::const_iterator vecIt;
+		while (it != _cgiTargetResponse->getHeader().end())
+		{
+			std::cout << it->first << ": ";
+			vecIt = it->second.begin();
+			while (vecIt != it->second.end())
+			{
+				if (vecIt != it->second.begin())
+					std::cout << ", ";
+				std::cout << *vecIt;
+				++vecIt;
+			}
+			std::cout << std::endl;
+			++it;
+		}
 	}
 
 	/* complete checking the response header, now preparing to next process */
@@ -664,6 +737,8 @@ void HttpCgi::sendToResponseBuffer()
 			_cgiTargetResponse->pushNewResponseBuff(tempBuff);
 			/* body size still not 0 then wait for next read event*/
 
+			_responseBuffer.clear();
+
 			return ;
 		}
 		else
@@ -676,6 +751,8 @@ void HttpCgi::sendToResponseBuffer()
 			tempBuff.currentIndex = 0;
 
 			_cgiTargetResponse->pushNewResponseBuff(tempBuff);
+
+			_responseBuffer.erase(0, bodySize);
 
 			httpCgiStatus = HTTPCGI_FINISHED;
 			return ;
@@ -802,6 +879,8 @@ void HttpCgi::sendToResponseBuffer()
 				tempBuff.buffer.insert(tempBuff.buffer.end(), endLine.begin(), endLine.end());
 				tempBuff.currentIndex = 0;
 
+				_responseBuffer.erase(0, readBodyAmount);
+
 				_cgiTargetResponse->pushNewResponseBuff(tempBuff);
 			}
 
@@ -824,6 +903,8 @@ void HttpCgi::sendToResponseBuffer()
 			tempBuff.currentIndex = 0;
 
 			_cgiTargetResponse->pushNewResponseBuff(tempBuff);
+
+			_responseBuffer.clear();
 
 			return ;
 		}
@@ -854,7 +935,7 @@ void HttpCgi::processCGIOUTresponseBuffer()
 		only LF <\n> or CRLF <\r\n> only (i little bit different from
 		HTTP1.1 that i built. That one accepts only CRLF)
 	*/
-	std::cout << "     HTTPCGI::processCGIOUTresponseBuffer()" << std::endl;
+	//std::cout << "     HTTPCGI::processCGIOUTresponseBuffer()" << std::endl;
 
 	parsingCGIOUTresponseHeader();
 
@@ -876,7 +957,7 @@ void HttpCgi::readFromCGI(Socket* currentSocket, const epoll_event& epollEvent)
 		if (epollEvent.events & EPOLLIN)
 		{
 			ssize_t	readAmount;
-			readAmount = read(_cgiOutSocket->getSocketFD().getFd(), &_readCgiBuffer[0], HTTP_READ_FROM_CGI_BUFFER_SIZE);
+			readAmount = read(_cgiOutSocket->getSocketFD().getFd(), _readCgiBuffer.data(), HTTP_READ_FROM_CGI_BUFFER_SIZE);
 			if (readAmount == 0)
 			{
 				Logger::log(LC_CONN_LOG, "CGI socket out (has nothing to read).#%d:: Disconnecting..", _cgiOutSocket->getSocketFD().getFd());
@@ -953,7 +1034,7 @@ void HttpCgi::readFromCGI(Socket* currentSocket, const epoll_event& epollEvent)
 			}
 			else
 			{
-				_responseBuffer.append(&_readCgiBuffer[0], readAmount);
+				_responseBuffer.append(_readCgiBuffer.data(), readAmount);
 				/* we can try the same method from http here. but the implementation
 				is a bit different from Http class so it would be kinda the same but it's not
 				*/
@@ -1095,7 +1176,7 @@ void HttpCgi::sendToCGI(Socket* currentSocket, const epoll_event& epollEvent)
 		/* erase the buffer by the amount of read */
 		_writeCgiBuffer.erase(_writeCgiBuffer.begin(), _writeCgiBuffer.begin() + writeAmount);
 
-		if (_writeCgiBuffer.size() == 0 || _tempFileData->isReachEOF == true)
+		if (_writeCgiBuffer.size() == 0 && _tempFileData->isReachEOF == true)
 		{
 			/* if both buffer and tempFileData is empty, then it is finished and
 			we can move to the next process */
@@ -1185,7 +1266,7 @@ void HttpCgi::processCGI(Socket* currentSocket, const epoll_event& epollEvent)
 	{
 		if (currentSocket == _cgiOutSocket)
 		{
-			std::cout << "    HTTPCGI::readFromCgi()  " << std::endl;
+			//std::cout << "    HTTPCGI::readFromCgi()  " << std::endl;
 			readFromCGI(currentSocket, epollEvent);
 		}
 		else if (_cgiInSocket.hasData() == true && currentSocket == (*_cgiInSocket))
@@ -1220,7 +1301,7 @@ void HttpCgi::processCGI(Socket* currentSocket, const epoll_event& epollEvent)
 			return ;
 		}
 
-		std::cout << "      HTTPCGI_FINISHED   " << std::endl;
+		//std::cout << "      HTTPCGI_FINISHED   " << std::endl;
 		/* remove the cgiout socket from epoll list entirely*/
 		if (epoll_ctl(_cgiOutSocket->getEpollFD().getFd(), EPOLL_CTL_DEL, _cgiOutSocket->getSocketFD().getFd(), NULL) == -1)
 		{

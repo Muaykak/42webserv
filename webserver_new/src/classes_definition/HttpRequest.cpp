@@ -15,9 +15,8 @@ responseTargetPtr(NULL)
 	bodyData.client_max_body_size = 0;
 	bodyData.curr_body_read = 0;
 	bodyData.discardBody = false;
-	bodyData.isMultiForm = false;
-	bodyData.isUseTempFile = false;
 	bodyData.readBody = false;
+	bodyData.isUseTempFile = false;
 	bodyData.tempRequestBodyFileNum = 0;
 	localRedirectCount = 0;
 }
@@ -75,6 +74,7 @@ void HttpRequest::clear()
 	serverData.targetServerPtr = NULL;
 
 	targetData.authorityPart.clear();
+	targetData.cutPath.clear();
 	targetData.combinedPath.clear();
 	targetData.queryString.clear();
 	targetData.redirectPath.clear();
@@ -86,9 +86,9 @@ void HttpRequest::clear()
 	cgiData.cgiScriptPath.clear();
 	cgiData.cgiVirtualPath.clear();
 
+	bodyData.multiformData.clear();
 	bodyData.bodyContentType.clear();
-	bodyData.boundaryString.clear();
-	bodyData.bodyFd.clear();
+	bodyData.writeBodyFile.clear();
 	bodyData.trailerHeader.clear();
 	bodyData.body_size = 0;
 	bodyData.body_type = 0;
@@ -98,7 +98,6 @@ void HttpRequest::clear()
 	bodyData.client_max_body_size = 0;
 	bodyData.curr_body_read = 0;
 	bodyData.discardBody = false;
-	bodyData.isMultiForm = false;
 	bodyData.isUseTempFile = false;
 	bodyData.readBody = false;
 	bodyData.tempRequestBodyFileNum = 0;

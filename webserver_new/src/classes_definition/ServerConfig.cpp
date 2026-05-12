@@ -178,6 +178,21 @@ const std::vector<std::string>* ServerConfig::getServerData(const std::string &k
 		return (NULL);
 	return (&FoundKey->second);
 }
+
+const std::vector<std::string>* ServerConfig::getLocationDataNoRollBack(const t_config_map* targetLocationBlock, const std::string &keytoFind) const
+{
+	t_config_map::const_iterator foundKey;
+	if (targetLocationBlock)
+	{
+		foundKey = targetLocationBlock->find(keytoFind);
+		if (foundKey != targetLocationBlock->end())
+		{
+			return (&foundKey->second);
+		}
+	}
+	return (NULL);
+}
+
 const std::vector<std::string>* ServerConfig::getLocationData(const t_config_map* targetLocationBlock, const std::string &keytoFind) const
 {
 	t_config_map::const_iterator foundKey;

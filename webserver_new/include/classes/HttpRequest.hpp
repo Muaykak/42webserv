@@ -32,17 +32,40 @@ enum e_http_process_status {
 	FINISHED_READ_BODY
 };
 
+enum e_http_multipart_formdata_state
+{
+	FORMDATA_STATUS_FINDING_BOUNDARY,
+	FORMDATA_STATUS_READING_HEADER,
+	FORMDATA_STATUS_VALIDATING_HEADER,
+	FORMDATA_STATUS_READING_BODY,
+	FORMDATA_STATUS_NEXT_BLOCK,
+	FORMDATA_STATUS_FINISHED
+};
+
+struct s_http_request_body_multiform_data
+{
+	std::string boundaryString;
+	std::list<std::string> allCreatedFileList;
+
+	e_http_multipart_formdata_state state;
+	std::map<std::string, std::string> headerField;
+	OptionalData<std::string> combinedPathFileName;
+	OptionalData<FileDescriptor> fileFd;
+};
+
 struct s_http_request_body_data 
 {
-	bool			isMultiForm;
-	std::string		boundaryString;
+	//bool			isMultiForm;
+	//std::string		boundaryString;
+	OptionalData<s_http_request_body_multiform_data> multiformData;
+
 	std::string		bodyContentType;
 	bool			isUseTempFile;
 	unsigned int	tempRequestBodyFileNum;
 	bool			checkExpectBody;
 	bool			readBody;
 	bool			discardBody; // whether to drain down the body
-	std::vector<FileDescriptor> bodyFd; // convention to fd
+	OptionalData<FileDescriptor> writeBodyFile;
 
 	int				body_type;
 	size_t			body_size;
@@ -71,6 +94,7 @@ struct s_http_request_server_data
 
 struct s_http_request_target_data
 {
+		std::string cutPath;
 		std::string targetPath;
 		std::string combinedPath;
 		std::string queryString;
