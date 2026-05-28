@@ -93,7 +93,6 @@ OBJ_MAIN = ${patsubst ${SRC_DIR}%.cpp, ${OBJ_DIR}%.o, ${SRC_MAIN}}
 
 OBJ_TEST = ${patsubst ${SRC_DIR}%.cpp, ${OBJ_DIR}%.o, ${SRC_TEST}}
 
-
 # ========== COMPILE DIRECTIVES ======
 CC = c++
 
@@ -101,6 +100,7 @@ CFLAGS = -std=c++98 -pedantic-errors -I./${HEADERS_DIR} -DTEMP_FILE_DIR='"${TEMP
 
 NAME = Webserv
 TEST_NAME = ${NAME}_unittest
+TESTER_NAME = WebservTester
 
 TEMP_DIR = ./temp/
 
