@@ -210,4 +210,53 @@ You will see the main loop that use this signal variable in later parts.
 
 ### WebServ Class - and all the things
 
+Take a look at the main() you'll see
 
+```cpp
+try {
+	WebServ	webserv(argv[1]);
+
+	webserv.run();
+}
+```
+
+Everything all wrapped up inside Webserv class, I don't think this is a good design but i did it this way
+
+let's take a look at the **WebServ**'s constructor
+
+```cpp
+class WebServ
+{
+private:
+	// the .conf file that we passed to the program
+	const std::string _webservConfigPath;
+	ConfigData _configData;
+	FileDescriptor _epollFD;
+	std::map<int, Socket> sockets;
+
+	epoll_event _epollEvents[MAX_EPOLL_EVENT];
+	std::map<int, s_webserv_custom_event> _customEventMap;
+
+	int webservCheckEvent(std::map<int, s_webserv_event>& returnEvents);
+	
+public:
+	WebServ(const std::string &configPath);
+	void run();
+};
+
+WebServ::WebServ(const std::string &configPath) : _webservConfigPath(configPath), _configData(_webservConfigPath)
+{
+	/* epoll and server sockets initialize */
+}
+
+```
+
+If you look it the initializer lists in the constructor, you will see that it calls another object's constructor which we will take a look at that later. For the brief understanding this constructor takes the **configuration file's path** (.conf) file that stated in the subject and parse it to a proper data structure to make it easy to use. And also after reading the configuration file. This constructor also setups epoll, and server sockets to be ready for the main loop.
+
+#### Deep into WebServ's Constructor
+
+I will throw errors out with any error cases here, i consider them as fatal errors and should terminate program immediately.
+
+#### WHAT IS **EPOLL** ??
+
+Perhaps the most important question that might get asked during the evaluation. **Epoll** is an upgraded version of **poll**. It performs a similar task - to monitor multiple file descriptos to see if I/O operations is possible on any of them 
