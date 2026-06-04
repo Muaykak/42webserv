@@ -8,7 +8,8 @@ responseTargetPtr(NULL)
 	serverData.targetLocationBlockPtr = NULL;
 
 	bodyData.body_size = 0;
-	bodyData.body_type = 0;
+	bodyData.readingRequestBodyPtr = NULL;
+	// bodyData.body_type = 0;
 	bodyData.checkExpectBody = false;
 	bodyData.chunkedBodyHasTrailerHeader = false;
 	bodyData.chunkedBodyIsFinished = false;
@@ -91,7 +92,8 @@ void HttpRequest::clear()
 	bodyData.writeBodyFile.clear();
 	bodyData.trailerHeader.clear();
 	bodyData.body_size = 0;
-	bodyData.body_type = 0;
+	// bodyData.body_type = 0;
+	bodyData.readingRequestBodyPtr = NULL;
 	bodyData.checkExpectBody = false;
 	bodyData.chunkedBodyHasTrailerHeader = false;
 	bodyData.chunkedBodyIsFinished = false;

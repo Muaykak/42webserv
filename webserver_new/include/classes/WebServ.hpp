@@ -23,6 +23,9 @@ private:
 	std::map<int, s_webserv_custom_event> _customEventMap;
 
 	int webservCheckEvent(std::map<int, s_webserv_event>& returnEvents);
+	void handleSocketEvents(std::map<int, s_webserv_event>::const_iterator& eventIt, std::map<int, s_webserv_event>& returnEvents);
+	void checkSocketTimeOut();
+	bool	checkCGIOUTSocketTimeOut(std::map<int, Socket>::iterator &socketIt, const time_t& currentTime);
 	
 public:
 	WebServ(const std::string &configPath);

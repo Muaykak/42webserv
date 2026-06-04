@@ -25,8 +25,10 @@ int main(int argc, char **argv, char** envp){
 
 		catch (WebservException &e) {
 			std::cout << "WebservError::" << e.what() << std::endl;
+			ret = 1;
 		} catch (std::exception &e){
 			std::cout << "std::exception::" << e.what() << std::endl;
+			ret = 1;
 		}
 		//catch (...) {
 		//	std::cout << "Unknown Error" << std::endl;

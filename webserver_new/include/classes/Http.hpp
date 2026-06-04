@@ -44,7 +44,7 @@ class Http {
 		HttpRequest httpRequest;
 
 		/* small functions */
-
+		// void (Http::*readingRequestBodyPtr)(HttpRequest& requestData);
 
 		/*
 		return value:
@@ -79,20 +79,33 @@ class Http {
 		void			targetLocationBlockGet(HttpRequest& requestData);
 		void			checkRequestBodyType(HttpRequest& requestData);
 		bool			checkRedirection(HttpRequest& requestData);
+		void			checkConnectionHeader(HttpRequest& requestData);
 		void			checkMethod(HttpRequest& requestData);
+		void			appendTargetPath(HttpRequest& requestData, bool isEndWithSlash);
 		void			checkCgiPath(HttpRequest& requestData);
+		void			buildCombinedPath(HttpRequest& requestData);
 		void			createSystemPath(HttpRequest& requestData, std::string& systemPath);
 		void			handleDeleteRequest(HttpRequest& requestData);
 		void			handleGetRequest(HttpRequest& requestData, bool isEndWithSlash, const Socket& clientSocket, std::map<int, Socket>& socketMap);
+		void			handlePostRequest(HttpRequest& requestData);
+		void				handleUploadPostRequest(HttpRequest& requestData);
+		void					handleRequestMultipart(HttpRequest& requestData, std::pair<std::string, std::vector<std::pair<std::string, std::string> > >& outPair);
+		void					handleUploadOctetStream(HttpRequest& requestData);
+		void					handleUploadFoundType(HttpRequest& requestData, std::pair<std::string, std::vector<std::pair<std::string, std::string> > >& outPair);
+		void			handlePostCgiRequest(HttpRequest& requestData);
 
-		void	readingRequestBody(HttpRequest& requestData);
-		void	processingRequestBody(HttpRequest& requestData, const Socket& clientSocket, std::map<int, Socket>& socketMap);
-		void		processMultiFormData(HttpRequest& requestData);
-		void			multiformDataProcessBuffer(HttpRequest& requestData, std::string& multipartBufferString);
-		void				multiformDataFindingBoundary(HttpRequest& requestData, std::string& multipartBufferString, size_t& currBufpos);
-		void				multiformDataReadingHeader(HttpRequest& requestData, std::string& multipartBufferString, size_t& currBufpos);
-		void				multiformDataValidating(HttpRequest& requestData);
-		void				multiformDataReadBody(HttpRequest& requestData, std::string& multipartBufferString);
+		void		readingRequestBody(HttpRequest& requestData);
+		void			readingContentLengthBody(HttpRequest& requestData);
+		void			readingTranferEncodingBody(HttpRequest& requestData);
+		int				readTransferEncodingChunkFinished(HttpRequest& requestData, size_t& endLinePos);
+		int				readTransferEncodingChunk(HttpRequest& requestData, size_t& endLinePos);
+		void		processingRequestBody(HttpRequest& requestData, const Socket& clientSocket, std::map<int, Socket>& socketMap);
+		void			processMultiFormData(HttpRequest& requestData);
+		void				multiformDataProcessBuffer(HttpRequest& requestData, std::string& multipartBufferString);
+		void					multiformDataFindingBoundary(HttpRequest& requestData, std::string& multipartBufferString, size_t& currBufpos);
+		void					multiformDataReadingHeader(HttpRequest& requestData, std::string& multipartBufferString, size_t& currBufpos);
+		void					multiformDataValidating(HttpRequest& requestData);
+		void					multiformDataReadBody(HttpRequest& requestData, std::string& multipartBufferString);
 
 		void	cgiChildProcessNoRequestBody(HttpRequest& requestData, int pipeForCgiStdOut[2]);
 

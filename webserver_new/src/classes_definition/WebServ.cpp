@@ -71,6 +71,122 @@ int WebServ::webservCheckEvent(std::map<int , s_webserv_event>& returnEvents)
 	return (returnEvents.size());
 }
 
+void WebServ::handleSocketEvents(std::map<int, s_webserv_event>::const_iterator& eventIt, std::map<int, s_webserv_event>& returnEvents)
+{
+	eventIt = returnEvents.begin();
+	while (eventIt != returnEvents.end())
+	{
+	    std::map<int, Socket>::iterator sockIt = sockets.find(eventIt->first);
+	    if (sockIt != sockets.end())
+	    {
+	        if (sockIt->second.handleEvent(returnEvents[eventIt->first]) == false)
+	        {
+	            sockets.erase(sockIt);
+	        }
+	    }
+	    ++eventIt;
+	}
+}
+
+/* true mean continue in the main checking loop*/
+bool WebServ::checkCGIOUTSocketTimeOut(std::map<int, Socket>::iterator &socketIt, const time_t& currentTime)
+{
+	HttpCgi& httpCgi = **socketIt->second.getHttpCgi();
+
+	if (httpCgi.status() == HTTPCGI_SENDING_TO_CGI)
+	{
+		/* meaning that it would okay because we not finished sending the data to cgi yet
+		so the process doesn't have anything to send us yet*/
+		++socketIt;
+		return (true);
+	}
+
+	if (httpCgi.status() != HTTPCGI_FINISHED && httpCgi.status() != HTTPCGI_CLOSED_CGI)
+	{
+		if (std::difftime(currentTime, socketIt->second.getLastEventTime()) >= WEBSERV_CGI_SOCKET_TIMEOUT_SECOND)
+		{
+			httpCgi.forceSigTerm();
+		}
+	}
+
+	if (httpCgi.status() == HTTPCGI_FINISHED)
+	{
+		/* check if it close the proess in the given time or not*/
+
+		OptionalData<int> statusWait = httpCgi.getCgiProcess().waitProcess();
+
+		if(statusWait.hasData() == true)
+		{
+			/* here we can specify the status of waitpid furthermore*/
+
+			/* this mean the process is quit with sigterm and wait receives the return status
+			correctly*/
+			Logger::log(LC_INFO, "Closing Cgi Socket#%d::gracefully terminate the process", socketIt->first);
+			sockets.erase(socketIt++);
+			return (true);
+		}
+
+		/* if the statusWait has no data, meaning that the process is not terminated by
+		the signal yet, so we need to check if it takes too much time*/
+		if (std::difftime(currentTime, httpCgi.getCgiProcess().getTimeLastSigTimeStamp()) >= MAX_HTTP_CGI_PROCESS_WAIT_SIGTERM)
+		{
+			Logger::log(LC_INFO, "Closing Cgi Socket#%d::force terminate with SIGKILL to CGI process", socketIt->first);
+			sockets.erase(socketIt++);
+			return (true);
+		}
+	}
+	return (false);
+}
+
+void WebServ::checkSocketTimeOut()
+{
+	time_t	currentTime = std::time(NULL);
+	std::map<int, Socket>::iterator socketIt = sockets.begin();
+	while (socketIt != sockets.end())
+	{
+		if (socketIt->second.getServerSockerType() == CLIENT_SOCKET)
+		{
+			if (std::difftime(currentTime, socketIt->second.getLastEventTime()) >= WEBSERV_CLIENT_SOCKET_TIMEOUT_SECOND)
+			{
+				Logger::log(LC_INFO, "Closing Socket#%d due to timeout.", socketIt->first);
+				sockets.erase(socketIt++);
+				continue ;
+			}
+		}
+		else if (socketIt->second.getServerSockerType() == CGI_FD_STDOUT)
+		{
+			if (checkCGIOUTSocketTimeOut(socketIt, currentTime) == true)
+				continue;
+		}
+		else if (socketIt->second.getServerSockerType() == CGI_FD_STDIN)
+		{
+			/* here is that if it takes too much time to send data CGI, what that i can
+			imagine of is the body that we need to send to CGI is too large and but the main
+			point is the EPOLLIN takes too much time */
+			
+			HttpCgi& httpCgi = **socketIt->second.getHttpCgi();
+
+			if (httpCgi.status() == HTTPCGI_SENDING_TO_CGI)
+			{
+				if (std::difftime(currentTime, socketIt->second.getLastEventTime()) >= WEBSERV_CGI_SOCKET_TIMEOUT_SECOND)
+				{
+					Logger::log(LC_INFO, "Closing Cgi In Socket#%d::due to timeout", socketIt->first);
+					sockets.erase(socketIt++);
+					continue;
+				}
+			}
+			else
+			{
+				/* if the httpCgiStatus is already finished sending, then should delete the socket also */
+				Logger::log(LC_INFO, "Closing Cgi In Socket#%d::finished sending to CGI", socketIt->first);
+				sockets.erase(socketIt++);
+				continue;
+			}
+		}
+		++socketIt;
+	}
+}
+
 void WebServ::run(){
 	//epoll loop
 	{
@@ -102,114 +218,9 @@ void WebServ::run(){
 				throw WebservException("epoll_wait() failed::" + std::string(std::strerror(errno)));
 			}
 
-			eventIt = returnEvents.begin();
-			while (eventIt != returnEvents.end())
-			{
-			    std::map<int, Socket>::iterator sockIt = sockets.find(eventIt->first);
-			    if (sockIt != sockets.end())
-			    {
-			        if (sockIt->second.handleEvent(returnEvents[eventIt->first]) == false)
-			        {
-			            sockets.erase(sockIt);
-			        }
-			    }
-			    ++eventIt;
-			}
-
+			handleSocketEvents(eventIt, returnEvents);
 			// check socket timeout
-			{
-				time_t	currentTime = std::time(NULL);
-				std::map<int, Socket>::iterator socketIt = sockets.begin();
-				while (socketIt != sockets.end())
-				{
-					if (socketIt->second.getServerSockerType() == CLIENT_SOCKET)
-					{
-						if (std::difftime(currentTime, socketIt->second.getLastEventTime()) >= WEBSERV_CLIENT_SOCKET_TIMEOUT_SECOND)
-						{
-							Logger::log(LC_INFO, "Closing Socket#%d due to timeout.", socketIt->first);
-							sockets.erase(socketIt++);
-							continue ;
-						}
-					}
-					else if (socketIt->second.getServerSockerType() == CGI_FD_STDOUT)
-					{
-						/* check both the output time out and closing process timeout*/
-						
-						/* check normal timeout connection first*/
-						HttpCgi& httpCgi = **socketIt->second.getHttpCgi();
-
-						if (httpCgi.status() == HTTPCGI_SENDING_TO_CGI)
-						{
-							/* meaning that it would okay because we not finished sending the data to cgi yet
-							so the process doesn't have anything to send us yet*/
-							++socketIt;
-							continue;
-						}
-
-						if (httpCgi.status() != HTTPCGI_FINISHED && httpCgi.status() != HTTPCGI_CLOSED_CGI)
-						{
-							if (std::difftime(currentTime, socketIt->second.getLastEventTime()) >= WEBSERV_CGI_SOCKET_TIMEOUT_SECOND)
-							{
-								httpCgi.forceSigTerm();
-							}
-						}
-
-						if (httpCgi.status() == HTTPCGI_FINISHED)
-						{
-							/* check if it close the proess in the given time or not*/
-
-							OptionalData<int> statusWait = httpCgi.getCgiProcess().waitProcess();
-
-							if(statusWait.hasData() == true)
-							{
-								/* here we can specify the status of waitpid furthermore*/
-
-								/* this mean the process is quit with sigterm and wait receives the return status
-								correctly*/
-								Logger::log(LC_INFO, "Closing Cgi Socket#%d::gracefully terminate the process", socketIt->first);
-								sockets.erase(socketIt++);
-								continue;
-							}
-
-							/* if the statusWait has no data, meaning that the process is not terminated by
-							the signal yet, so we need to check if it takes too much time*/
-							if (std::difftime(currentTime, httpCgi.getCgiProcess().getTimeLastSigTimeStamp()) >= MAX_HTTP_CGI_PROCESS_WAIT_SIGTERM)
-							{
-								Logger::log(LC_INFO, "Closing Cgi Socket#%d::force terminate with SIGKILL to CGI process", socketIt->first);
-								sockets.erase(socketIt++);
-								continue;
-							}
-						}
-					}
-					else if (socketIt->second.getServerSockerType() == CGI_FD_STDIN)
-					{
-						/* here is that if it takes too much time to send data CGI, what that i can
-						imagine of is the body that we need to send to CGI is too large and but the main
-						point is the EPOLLIN takes too much time */
-						
-						HttpCgi& httpCgi = **socketIt->second.getHttpCgi();
-
-						if (httpCgi.status() == HTTPCGI_SENDING_TO_CGI)
-						{
-							if (std::difftime(currentTime, socketIt->second.getLastEventTime()) >= WEBSERV_CGI_SOCKET_TIMEOUT_SECOND)
-							{
-								Logger::log(LC_INFO, "Closing Cgi In Socket#%d::due to timeout", socketIt->first);
-								sockets.erase(socketIt++);
-								continue;
-							}
-						}
-						else
-						{
-							/* if the httpCgiStatus is already finished sending, then should delete the socket also */
-							Logger::log(LC_INFO, "Closing Cgi In Socket#%d::finished sending to CGI", socketIt->first);
-							sockets.erase(socketIt++);
-							continue;
-						}
-					}
-					++socketIt;
-
-				}
-			}
+			checkSocketTimeOut();
 		}
 	}
 }

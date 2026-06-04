@@ -22,6 +22,7 @@ std::string toString(const T &value)
 	return (ss.str());
 }
 
+const std::string& getStatusCodeMessage(unsigned int statusCode);
 const ContentTypeTable& contentTypeTable();
 TempFileManager& tempFileManager();
 EnvpWrapper& envData();

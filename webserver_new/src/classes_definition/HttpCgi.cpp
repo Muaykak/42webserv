@@ -196,19 +196,7 @@ void HttpCgi::generate5xxCGIOUTresponseError(unsigned int errorCode, const std::
 	_cgiTargetResponse->statusLine->first = errorCode;
 	_cgiTargetResponse->contentType = "text/html";
 
-	switch (errorCode)
-	{
-		case (500):
-		{
-			_cgiTargetResponse->statusLine->second = "Internal Error";
-			break;
-		}
-		default:
-		{
-			_cgiTargetResponse->statusLine->second = "";
-			break;
-		}
-	}
+	_cgiTargetResponse->statusLine->second = getStatusCodeMessage(errorCode);
 
 	if (hasDefaultErrorPageFile == true)
 	{
@@ -514,7 +502,7 @@ void HttpCgi::validateCGIOUTresponse()
 
 					_cgiTargetResponse->statusLine->first = statusCodeNum;
 
-					for (int i = 1; i < splitVec.size(); i++)
+					for (size_t i = 1; i < splitVec.size(); i++)
 					{
 						if (i > 1)
 							_cgiTargetResponse->statusLine->second += " ";
@@ -556,7 +544,7 @@ void HttpCgi::validateCGIOUTresponse()
 			}
 
 			_cgiTargetResponse->statusLine->first = statusCodeNum;
-			for (int i = 1; i < splitVec.size(); i++)
+			for (size_t i = 1; i < splitVec.size(); i++)
 			{
 				if (i > 1)
 					_cgiTargetResponse->statusLine->second += " ";

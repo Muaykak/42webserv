@@ -79,7 +79,8 @@ SRC_FUNC_FILE = chartables.cpp \
 				envData.cpp \
 				tempFileManager.cpp \
 				stringCapital.cpp \
-				my_find.cpp
+				my_find.cpp \
+				getStatusCodeMessage.cpp
 
 				
 
@@ -96,7 +97,7 @@ OBJ_TEST = ${patsubst ${SRC_DIR}%.cpp, ${OBJ_DIR}%.o, ${SRC_TEST}}
 # ========== COMPILE DIRECTIVES ======
 CC = c++
 
-CFLAGS = -std=c++98 -pedantic-errors -I./${HEADERS_DIR} -DTEMP_FILE_DIR='"${TEMP_DIR}"' #-Wall -Wextra -Werror
+CFLAGS = -O3 -std=c++98 -pedantic-errors -I./${HEADERS_DIR} -DTEMP_FILE_DIR='"${TEMP_DIR}"' #-Wall -Wextra -Werror
 
 NAME = Webserv
 TEST_NAME = ${NAME}_unittest

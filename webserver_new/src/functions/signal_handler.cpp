@@ -25,8 +25,9 @@ void serverStopHandler(int signum)
 
 		msg += signalstr;
 	}
-	msg +=  " Received. Terminating program....\n";
-	write(STDOUT_FILENO, msg.c_str(), msg.size());
+	msg +=  " Received. Terminating program....";
+	std::cout << msg << std::endl;
+	//write(STDOUT_FILENO, msg.c_str(), msg.size());
 
 	// 0 mean to terminate program
 	closeWebservSignal() = 1;

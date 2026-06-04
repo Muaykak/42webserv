@@ -5,7 +5,8 @@ Socket::Socket() :
 _socketType(NO_TYPE),
 _server_listen_port(-1),
 _socketMap(NULL),
-_serversConfig(NULL)
+_serversConfig(NULL),
+handleEventPtr(NULL)
 {
 	Logger::log(LC_DEBUG, "socket default construct called!;");
 	sleep(5);
@@ -18,7 +19,8 @@ _socketType(obj._socketType),
 _serversConfig(obj._serversConfig),
 _server_listen_port(obj._server_listen_port),
 _socketMap(obj._socketMap),
-_server_ip_host(obj._server_ip_host)
+_server_ip_host(obj._server_ip_host),
+handleEventPtr(obj.handleEventPtr)
 {
 	_lastEventTime = std::time(NULL);
 }
@@ -27,7 +29,8 @@ _socketFD(fd),
 _socketType(NO_TYPE),
 _server_listen_port(-1),
 _socketMap(NULL),
-_serversConfig(NULL)
+_serversConfig(NULL),
+handleEventPtr(NULL)
 {
 	_lastEventTime = std::time(NULL);
 
@@ -37,7 +40,8 @@ _socketFD(fd),
 _socketType(NO_TYPE),
 _server_listen_port(-1),
 _socketMap(NULL),
-_serversConfig(NULL)
+_serversConfig(NULL),
+handleEventPtr(NULL)
 {
 	_lastEventTime = std::time(NULL);
 }
@@ -53,6 +57,7 @@ Socket& Socket::operator=(const Socket &obj)
 		_serversConfig = obj._serversConfig;
 		_socketMap = obj._socketMap;
 		_server_ip_host = obj._server_ip_host;
+		handleEventPtr = obj.handleEventPtr;
 	}
 	return (*this);
 }
@@ -137,6 +142,8 @@ bool Socket::setupCGIOUTSocket(const std::vector<ServerConfig> *serversConfig,
 	}
 
 	_lastEventTime = std::time(NULL);
+
+	handleEventPtr = &Socket::handleCGISocketEvent;
 	return (true);
 }
 
@@ -178,6 +185,8 @@ bool Socket::setupCGIINSocket(const std::vector<ServerConfig> *serversConfig,
 	}
 
 	_lastEventTime = std::time(NULL);
+
+	handleEventPtr = &Socket::handleCGISocketEvent;
 	return (true);
 }
 
@@ -308,6 +317,8 @@ bool Socket::setupServerSocket(const std::vector<ServerConfig> *serversConfig,
 
 	_lastEventTime = std::time(NULL);
 
+	handleEventPtr = &Socket::handleServerSocketEvent;
+
 	return (true);
 }
 
@@ -362,7 +373,201 @@ bool Socket::setupClientSocket(const std::vector<ServerConfig> *serversConfig,
 	http = Http(this, socketMap);
 
 	_lastEventTime = std::time(NULL);
+
+	handleEventPtr = &Socket::handleClientSocketEvent;
+
 	return (true);
+}
+
+bool Socket::handleServerSocketEvent(const s_webserv_event &event)
+{
+	if (event.epollEventData.hasData() == true)
+	{
+		// Error Handling
+		if ((event.epollEventData->events & EPOLLRDHUP) || (event.epollEventData->events & EPOLLHUP) || (event.epollEventData->events & EPOLLERR))
+		{
+			int error_code;
+			socklen_t len = sizeof(error_code);
+			if (getsockopt(_socketFD.getFd(), SOL_SOCKET, SO_ERROR, &error_code, &len) != 0)
+			{
+				std::string errMsg = "Socket#" + toString(_socketFD.getFd()) + "Error::getsockopt()::";
+				errMsg += std::strerror(errno);
+				Logger::log(LC_CONN_LOG, errMsg);
+			}
+			else
+			{
+				std::string errMsg = "Socket#" + toString(_socketFD.getFd()) + "Error::";
+				errMsg += std::strerror(error_code);
+				Logger::log(LC_CONN_LOG, errMsg);
+			}
+			return true;
+		}
+		// Request new connection from client
+		else if (event.epollEventData->events & EPOLLIN)
+		{
+			sockaddr_in client_address;
+			std::memset(&client_address, 0, sizeof(sockaddr_in));
+			socklen_t len = sizeof(client_address);
+			int client_socket;
+			while (true)
+			{
+				client_socket = accept(event.epollEventData->data.fd, (sockaddr *)&client_address, &len);
+				if (client_socket > 0)
+				{
+					// need to check if cilent access to this server with the same ip that server recieves
+					if (_server_ip_host.size() != 0
+					&& _server_ip_host.find(client_address.sin_addr.s_addr) == _server_ip_host.end())
+					{
+						Logger::log(LC_CON_FAIL, "Incoming connection does not match any server %s", in_addr_t_to_string(client_address.sin_addr.s_addr).c_str());
+						close(client_socket);
+						continue;
+					}
+					Logger::log(LC_CONN_LOG, "Connection from %s", in_addr_t_to_string(client_address.sin_addr.s_addr).c_str());
+
+					Logger::log(LC_CONN_LOG, "Port %d Establishing connection from client#%d", _server_listen_port, client_socket);
+
+					// set up client Socket
+					_socketMap->insert(std::make_pair(client_socket, Socket(client_socket)));
+					(*_socketMap)[client_socket]._client_addr_in = client_address.sin_addr.s_addr;
+					(*_socketMap)[client_socket].setServerIpHost(_server_ip_host);
+					(*_socketMap)[client_socket].setupClientSocket(_serversConfig, _eventController, _socketMap);
+
+					continue;
+				}
+				if (errno == EAGAIN || errno == EWOULDBLOCK)
+				{
+					return (true);
+				}
+				else if (errno == EMFILE || errno == ENFILE)
+				{
+					Logger::log(LC_RED, "ERROR::ServerSocker#%d::fd limit reached!", static_cast<int>(_eventController.epollFD.getFd()));
+					return (true);
+				}
+				else if (errno == EINTR || errno == ECONNABORTED || errno == EPROTO 
+				|| errno == ENETDOWN || errno == EHOSTDOWN || errno == ENONET
+				|| errno == EHOSTUNREACH || errno == EOPNOTSUPP)
+				{
+					continue;
+				}
+				else
+				{
+					std::string errorMsg = "ServerSocket#" + toString(_socketFD.getFd()) + "::Fatal Error::";
+					errorMsg += std::strerror(errno);
+					throw(WebservException(errorMsg));
+				}
+			}
+		}
+		return (true);
+	}
+
+	if (event.customEventData.hasData() == true)
+	{
+		/* custom event for server socket?? don't know yet */
+		return (true);
+	}
+	return (true);
+
+}
+
+bool Socket::handleClientSocketEvent(const s_webserv_event &event)
+{
+	/* for custom event in client socket */
+	if (event.epollEventData.hasData() == true)
+	{
+		if ((event.epollEventData->events & EPOLLRDHUP) || (event.epollEventData->events & EPOLLHUP) || (event.epollEventData->events & EPOLLERR))
+		{
+			int error_code;
+			socklen_t len = sizeof(error_code);
+			if (getsockopt(_socketFD.getFd(), SOL_SOCKET, SO_ERROR, &error_code, &len) != 0)
+			{
+				std::string errMsg = "Closing ClientSocket#" + toString(_socketFD.getFd()) + "Error::getsockopt()::";
+				errMsg += std::strerror(errno);
+				Logger::log(LC_CONN_LOG, errMsg);
+			}
+			else
+			{
+				std::string errMsg = "Closing ClientSocket#" + toString(_socketFD.getFd()) + "Error::";
+				errMsg += std::strerror(error_code);
+				Logger::log(LC_CONN_LOG, errMsg);
+			}
+			// return false to signal to remove from socket map
+			return false;
+		}
+		try {
+
+			if (event.epollEventData->events & EPOLLOUT){
+				http->writeToClient();
+				// Handle http response
+			}
+			if (event.epollEventData->events & EPOLLIN){
+				http->readFromClient();
+				// Handle http request
+			}
+
+		}
+		// should not have any throw in normal circum stance
+		/*
+			though the error that got thrown here can be
+
+			epoll_ctl() error because we lose the control
+			and best way to handle is just to close this socket
+		*/
+		catch (std::exception &e)
+		{
+			Logger::log(LC_ERROR, "socket#%d unexpected error occured closing this connection::%s", _socketFD.getFd(), e.what());
+			return (false);
+		}
+		//catch (...)
+		//{
+		//	Logger::log(LC_ERROR, "socket#%d unexpected error occured closing this connection", _socketFD.getFd());
+		//	return (false);
+		//}
+
+		if (http->isKeepConnection() == false)
+			return (false);
+	}
+
+	if (event.customEventData.hasData() == true)
+	{
+		if (event.customEventData->clientSocketManualDisconnect.hasData() == true)
+		{
+			 /* here means we want to terminate the client immediately */
+			if (*event.customEventData->clientSocketManualDisconnect == true)
+				return (false);
+		}
+		// process local redirect here
+		if (event.customEventData->httpRequestData.hasData() == true)
+			http->directRequestProcess(event.customEventData->httpRequestData);
+	}
+
+	return http->isKeepConnection();
+}
+
+bool Socket::handleCGISocketEvent(const s_webserv_event& event)
+{
+	// EPOLLIN is coming here 
+	/*
+		we dont need to check what the event is
+		because we don't know if we fully read all from the buffer yet
+		whether what event is
+
+		it is different from Client Socket that we need the
+		connection so we can send back to the same socket
+
+		in this case we don't need to check what event came here
+
+		just read() only once and check the errno() would be more practical
+
+		no we cannot check errno according to the subject
+	*/
+
+	/*
+		EPOLLOUT will be here
+		and we need to send the temporay file body to the CGI process
+	*/
+	(*httpCgi)->processCGI(this, **event.epollEventData);
+
+	return (*httpCgi)->isKeepConnection(this);
 }
 
 // return false means this Socket should be DESTROYED after handleEVENT
@@ -380,211 +585,14 @@ bool Socket::handleEvent(const s_webserv_event &event)
 	//else
 	//	std::cout << "NO_TYPE" << std::endl;
 
-
-	switch (_socketType)
+	if (handleEventPtr)
+		return (this->*handleEventPtr)(event);
+	else
 	{
-		case SERVER_SOCKET:
-		{
-			if (event.epollEventData.hasData() == true)
-			{
-				// Error Handling
-				if ((event.epollEventData->events & EPOLLRDHUP) || (event.epollEventData->events & EPOLLHUP) || (event.epollEventData->events & EPOLLERR))
-				{
-					int error_code;
-					socklen_t len = sizeof(error_code);
-					if (getsockopt(_socketFD.getFd(), SOL_SOCKET, SO_ERROR, &error_code, &len) != 0)
-					{
-						std::string errMsg = "Socket#" + toString(_socketFD.getFd()) + "Error::getsockopt()::";
-						errMsg += std::strerror(errno);
-						Logger::log(LC_CONN_LOG, errMsg);
-					}
-					else
-					{
-						std::string errMsg = "Socket#" + toString(_socketFD.getFd()) + "Error::";
-						errMsg += std::strerror(error_code);
-						Logger::log(LC_CONN_LOG, errMsg);
-					}
-					return true;
-				}
-				// Request new connection from client
-				else if (event.epollEventData->events & EPOLLIN)
-				{
-					sockaddr_in client_address;
-					std::memset(&client_address, 0, sizeof(sockaddr_in));
-					socklen_t len = sizeof(client_address);
-					int client_socket;
-					while (true)
-					{
-						client_socket = accept(event.epollEventData->data.fd, (sockaddr *)&client_address, &len);
-						if (client_socket > 0)
-						{
-							// need to check if cilent access to this server with the same ip that server recieves
-							if (_server_ip_host.size() != 0
-							&& _server_ip_host.find(client_address.sin_addr.s_addr) == _server_ip_host.end())
-							{
-								Logger::log(LC_CON_FAIL, "Incoming connection does not match any server %s", in_addr_t_to_string(client_address.sin_addr.s_addr).c_str());
-								close(client_socket);
-								continue;
-							}
-							Logger::log(LC_CONN_LOG, "Connection from %s", in_addr_t_to_string(client_address.sin_addr.s_addr).c_str());
-
-							Logger::log(LC_CONN_LOG, "Port %d Establishing connection from client#%d", _server_listen_port, client_socket);
-
-							// set up client Socket
-							_socketMap->insert(std::make_pair(client_socket, Socket(client_socket)));
-							(*_socketMap)[client_socket]._client_addr_in = client_address.sin_addr.s_addr;
-							(*_socketMap)[client_socket].setServerIpHost(_server_ip_host);
-							(*_socketMap)[client_socket].setupClientSocket(_serversConfig, _eventController, _socketMap);
-
-							continue;
-						}
-						if (errno == EAGAIN || errno == EWOULDBLOCK)
-						{
-							return (true);
-						}
-						else if (errno == EMFILE || errno == ENFILE)
-						{
-							Logger::log(LC_RED, "ERROR::ServerSocker#%d::fd limit reached!", static_cast<int>(_eventController.epollFD.getFd()));
-							return (true);
-						}
-						else if (errno == EINTR || errno == ECONNABORTED || errno == EPROTO 
-						|| errno == ENETDOWN || errno == EHOSTDOWN || errno == ENONET
-						|| errno == EHOSTUNREACH || errno == EOPNOTSUPP)
-						{
-							continue;
-						}
-						else
-						{
-							std::string errorMsg = "ServerSocket#" + toString(_socketFD.getFd()) + "::Fatal Error::";
-							errorMsg += std::strerror(errno);
-							throw(WebservException(errorMsg));
-						}
-					}
-				}
-				return (true);
-				break;
-
-			}
-
-			if (event.customEventData.hasData() == true)
-			{
-				/* custom event for server socket?? don't know yet */
-				break;
-			}
-			return (true);
-		}
-		case CLIENT_SOCKET: {
-			/* for custom event in client socket */
-
-
-			if (event.epollEventData.hasData() == true)
-			{
-				if ((event.epollEventData->events & EPOLLRDHUP) || (event.epollEventData->events & EPOLLHUP) || (event.epollEventData->events & EPOLLERR))
-				{
-					int error_code;
-					socklen_t len = sizeof(error_code);
-					if (getsockopt(_socketFD.getFd(), SOL_SOCKET, SO_ERROR, &error_code, &len) != 0)
-					{
-						std::string errMsg = "Closing ClientSocket#" + toString(_socketFD.getFd()) + "Error::getsockopt()::";
-						errMsg += std::strerror(errno);
-						Logger::log(LC_CONN_LOG, errMsg);
-					}
-					else
-					{
-						std::string errMsg = "Closing ClientSocket#" + toString(_socketFD.getFd()) + "Error::";
-						errMsg += std::strerror(error_code);
-						Logger::log(LC_CONN_LOG, errMsg);
-					}
-					// return false to signal to remove from socket map
-					return false;
-				}
-				try {
-
-					if (event.epollEventData->events & EPOLLOUT){
-						http->writeToClient();
-						// Handle http response
-					}
-					if (event.epollEventData->events & EPOLLIN){
-						http->readFromClient();
-						// Handle http request
-					}
-
-				}
-				// should not have any throw in normal circum stance
-				/*
-					though the error that got thrown here can be
-
-					epoll_ctl() error because we lose the control
-					and best way to handle is just to close this socket
-				*/
-				catch (std::exception &e)
-				{
-					Logger::log(LC_ERROR, "socket#%d unexpected error occured closing this connection::%s", _socketFD.getFd(), e.what());
-					return (false);
-				}
-				//catch (...)
-				//{
-				//	Logger::log(LC_ERROR, "socket#%d unexpected error occured closing this connection", _socketFD.getFd());
-				//	return (false);
-				//}
-
-				if (http->isKeepConnection() == false)
-					return (false);
-			}
-
-			if (event.customEventData.hasData() == true)
-			{
-				if (event.customEventData->clientSocketManualDisconnect.hasData() == true)
-				{
-					 /* here means we want to terminate the client immediately */
-					if (*event.customEventData->clientSocketManualDisconnect == true)
-						return (false);
-				}
-				// process local redirect here
-				if (event.customEventData->httpRequestData.hasData() == true)
-					http->directRequestProcess(event.customEventData->httpRequestData);
-			}
-
-
-			return http->isKeepConnection();
-		}
-		case CGI_FD_STDOUT: {
-			// EPOLLIN is coming here 
-			/*
-				we dont need to check what the event is
-				because we don't know if we fully read all from the buffer yet
-				whether what event is
-
-				it is different from Client Socket that we need the
-				connection so we can send back to the same socket
-
-				in this case we don't need to check what event came here
-
-				just read() only once and check the errno() would be more practical
-
-				no we cannot check errno according to the subject
-			*/
-			(*httpCgi)->processCGI(this, **event.epollEventData);
-
-			return (*httpCgi)->isKeepConnection(this);
-		}
-		case CGI_FD_STDIN: {
-			/*
-				EPOLLOUT will be here
-				and we need to send the temporay file body to the CGI process
-			*/
-
-			(*httpCgi)->processCGI(this, **event.epollEventData);
-
-			return (*httpCgi)->isKeepConnection(this);
-		}
-		default:
-		{
-			std::string errorMsg = "Socket#" + toString(_socketFD.getFd()) + "::handleEvent()::NO_TYPE can't handle event!";
-			throw(WebservException(errorMsg));
-			break;
-		}
+		std::string errorMsg = "Socket#" + toString(_socketFD.getFd()) + "::handleEvent()::NO_TYPE can't handle event!";
+		throw(WebservException(errorMsg));
 	}
+
 	return (true);
 }
 

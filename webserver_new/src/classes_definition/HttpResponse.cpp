@@ -365,7 +365,6 @@ void HttpResponse::forcePrintAllResponse()
 		writeBuff.reserve(HTTP_SEND_BUFFER);
 		ssize_t	amountToRead;
 		std::streamsize readAmount;
-		ssize_t	writeAmount = 0;
 		ssize_t	writeRet;
 
 		while (true)

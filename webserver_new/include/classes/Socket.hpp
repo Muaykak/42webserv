@@ -50,12 +50,18 @@ private:
 	const std::vector<ServerConfig>* _serversConfig;
 	int _server_listen_port;
 	std::set<in_addr_t>	_server_ip_host;
+
+	bool (Socket::*handleEventPtr)(const s_webserv_event &event);
 	
 	//std::vector<Http>	http;
 	//std::vector<HttpCgi> httpCgi;			
 
 	// for CGI part
 	std::map<int, Socket>	*_socketMap;
+
+	bool handleServerSocketEvent(const s_webserv_event &event);
+	bool handleClientSocketEvent(const s_webserv_event &event);
+	bool handleCGISocketEvent(const s_webserv_event &event);
 
 public:
 	in_addr_t	_client_addr_in;

@@ -4,6 +4,9 @@
 # include "./HttpResponse.hpp"
 # include "./ServerConfig.hpp"
 
+class HttpRequest;
+class Http;
+
 struct s_http_request_header_data {
 	std::string	method;
 	std::string	requestTarget;
@@ -67,7 +70,7 @@ struct s_http_request_body_data
 	bool			discardBody; // whether to drain down the body
 	OptionalData<FileDescriptor> writeBodyFile;
 
-	int				body_type;
+	void (Http::*readingRequestBodyPtr)(HttpRequest& requestData);
 	size_t			body_size;
 	bool			chunkedBodyHasTrailerHeader;
 	bool			chunkedBodyIsFinished;

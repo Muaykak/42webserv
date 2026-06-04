@@ -3,3 +3,4 @@
 
 Basic Get Request ; 01_Basic_GET ; 200 ; localhost ; 4343
 Basic Get html Request ; 02_GET_HTML ; 200 ; localhost ; 4343
+Basic Get Wrong Host ; 03_Get_wrong_host; 403; localhost ; 4343

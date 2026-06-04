@@ -550,38 +550,7 @@ void	Http::generate3xxRedirectResponse(HttpRequest& requestData, unsigned int st
 	targetResponse.contentType = "text/html";
 
 	// status message
-	switch (statusCode)
-	{
-		case 301:
-		{
-			targetResponse.statusLine->second = "Moved Permanently";
-			break;
-		}
-		case 302:
-		{
-			targetResponse.statusLine->second = "Found";
-			break;
-		}
-		case 303:
-		{
-			targetResponse.statusLine->second = "See Other";
-			break;
-		}
-		case 307:
-		{
-			targetResponse.statusLine->second = "Temporary Redirect";
-			break;
-		}
-		case 308:
-		{
-			targetResponse.statusLine->second = "Permanent Redirect";
-			break;
-		}
-		default:
-		{
-			break;
-		}
-	}
+	targetResponse.statusLine->second = getStatusCodeMessage(statusCode);
 
 	std::string absoluteRedirectPath = "http://";
 	{
@@ -615,7 +584,7 @@ void	Http::generate3xxRedirectResponse(HttpRequest& requestData, unsigned int st
 
 	targetResponse.fixedBodyStr = tempHtml;
 
-	if (requestData.bodyData.body_type != 0)
+	if (requestData.bodyData.readingRequestBodyPtr)
 	{
 		requestData.processStatus = READ_BODY;
 		requestData.bodyData.discardBody = true;
@@ -736,60 +705,7 @@ void	Http::generate4xx5xxErrorReponseChildProcess(HttpRequest& requestData, unsi
 		}
 	}
 
-	std::string statusMessageTemp;
-	{
-		switch (errorStatusCode)
-		{
-			case (400):
-			{
-				statusMessageTemp = "Bad Request";
-				break;
-			}
-			case (404):
-			{
-				statusMessageTemp = "Not Found";
-				break;
-			}
-			case (500):
-			{
-				statusMessageTemp = "Internal Error";
-				break;
-			}
-			case (403):
-			{
-				statusMessageTemp = "Forbidden";
-				break;
-			}
-			case (405):
-			{
-				// the allowed method to the header
-				{
-					const std::vector<std::string>* foundAllowedMethodPtr = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "allowed_methods");
-
-					for (size_t i = 0; i < foundAllowedMethodPtr->size(); i++)
-					{
-						targetResponse.addHeader("Allow", (*foundAllowedMethodPtr)[i]);
-					}
-				}
-
-				statusMessageTemp = "Method Not Allowed";
-				break;
-			}
-			case (417):
-			{
-				statusMessageTemp = "Expection Failed";
-				break;
-			}
-			default:
-			{
-				statusMessageTemp = "";
-				break;
-			}
-
-		}
-
-
-	}
+	std::string statusMessageTemp = getStatusCodeMessage(errorStatusCode);
 
 	if (hasDefaultErrorPageFile == true)
 	{
@@ -933,59 +849,7 @@ void	Http::generate4xx5xxErrorReponse(HttpRequest& requestData, unsigned int err
 	targetResponse.contentType = "text/html";
 
 	// set status message
-	{
-		switch (errorStatusCode)
-		{
-			case (400):
-			{
-				targetResponse.statusLine->second = "Bad Request";
-				break;
-			}
-			case (404):
-			{
-				targetResponse.statusLine->second = "Not Found";
-				break;
-			}
-			case (500):
-			{
-				targetResponse.statusLine->second = "Internal Error";
-				break;
-			}
-			case (403):
-			{
-				targetResponse.statusLine->second = "Forbidden";
-				break;
-			}
-			case (405):
-			{
-				// the allowed method to the header
-				{
-					const std::vector<std::string>* foundAllowedMethodPtr = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "allowed_methods");
-
-					for (size_t i = 0; i < foundAllowedMethodPtr->size(); i++)
-					{
-						targetResponse.addHeader("Allow", (*foundAllowedMethodPtr)[i]);
-					}
-				}
-
-				targetResponse.statusLine->second = "Method Not Allowed";
-				break;
-			}
-			case (417):
-			{
-				targetResponse.statusLine->second = "Expection Failed";
-				break;
-			}
-			default:
-			{
-				targetResponse.statusLine->second = "";
-				break;
-			}
-
-		}
-
-
-	}
+	targetResponse.statusLine->second = getStatusCodeMessage(errorStatusCode);
 
 	if (hasDefaultErrorPageFile == true)
 	{
@@ -1571,7 +1435,8 @@ void	Http::checkRequestBodyType(HttpRequest& requestData)
 			generate4xx5xxErrorReponse(requestData, 400, false, "Bad request:: Content-Length::exceeds size_t value or something");
 
 		// type 1 is body size that specified by Content-Length
-		requestData.bodyData.body_type = 1;
+		// requestData.bodyData.body_type = 1;
+		requestData.bodyData.readingRequestBodyPtr = &Http::readingContentLengthBody;
 
 		// now check the body size if it exceeds the client_max_body_size
 		{
@@ -1660,14 +1525,16 @@ void	Http::checkRequestBodyType(HttpRequest& requestData)
 		}
 
 		// chunked found then this is chunked encoding.
-		requestData.bodyData.body_type = 2;
+		// requestData.bodyData.body_type = 2;
+		requestData.bodyData.readingRequestBodyPtr = &Http::readingTranferEncodingBody;
 		requestData.bodyData.body_size = 0;
 		requestData.bodyData.readBody = true;
 	}
 	// both Content-Length and Transfer-Encoding not found
 	else
 	{
-		requestData.bodyData.body_type = 0;
+		// requestData.bodyData.body_type = 0;
+		requestData.bodyData.readingRequestBodyPtr = NULL;
 		requestData.bodyData.body_size = 0;
 		requestData.bodyData.readBody = false;
 	}
@@ -2293,6 +2160,498 @@ void	Http::handleGetRequest(HttpRequest& requestData, bool isEndWithSlash, const
 	}
 }
 
+void	Http::checkConnectionHeader(HttpRequest& requestData)
+{
+	/* if omitted, assume to keep alive*/
+	std::map<std::string, std::string>::const_iterator foundConnection = requestData.requestData.headerField.find("connection");
+	if (foundConnection != requestData.requestData.headerField.end())
+	{
+		/* check the string */
+		std::string tempString;
+
+		if (httpFieldNormalSingletonTrim(foundConnection->second, tempString) == false)
+			generate4xx5xxErrorReponse(requestData, 400, false, "Bad Request::Invalid Connection Header");
+		
+		if (tempString == "close")
+			httpRequest.responseTargetPtr->keepAfterResponse = false;
+		else if (tempString == "keep-alive")
+			httpRequest.responseTargetPtr->keepAfterResponse = true;
+		else
+			generate4xx5xxErrorReponse(requestData, 400, false, "Bad Request::Invalid Connection Header");
+
+	}
+	else
+	{
+		httpRequest.responseTargetPtr->keepAfterResponse = true;
+	}
+}
+
+void	Http::appendTargetPath(HttpRequest& requestData, bool isEndWithSlash)
+{
+	if (requestData.requestData.method != "DELETE")
+	{
+
+		// should not delete file with 'index' seems to make sense to me
+		if (isEndWithSlash == true)
+		{
+			// if the path end with slash
+			// try to find the 'index' in that location block
+			
+			const std::vector<std::string>* foundIndex = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "index");
+
+			// only append if found
+			if (foundIndex)
+			{
+				if (foundIndex->size() != 1)
+				{
+					generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error:: invalid \'index\' directive in location block");
+				}
+
+				requestData.targetData.targetPath += (*foundIndex)[0];
+				isEndWithSlash = false;
+			}
+		}
+
+	}
+}
+
+void	Http::buildCombinedPath(HttpRequest& requestData)
+{
+	// we need to get the system path first
+	std::string systemPath;
+	/*
+		The reason to have this section is we need to know
+		whether we want to pick 'root' or 'upload_store'
+
+		- the GET method always need 'root'
+		- the POST method depends if the target is CGI or not
+			if CGI then use 'root' if not then 'upload store'
+			but if not found 'root' then just take 'upload_store'
+		- the DELETE also 
+	*/
+	createSystemPath(requestData, systemPath);
+
+	// we need to combine root of location block
+	// with the URI that we resolved
+	{
+		const std::vector<std::string>* foundLocationName = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "location_name");
+
+
+
+		if (!requestData.cgiData.cgiPath.empty())
+		{
+			if (!requestData.cgiData.cgiVirtualPath.empty())
+				requestData.cgiData.cgiPathTranslated = systemPath + requestData.cgiData.cgiVirtualPath;
+			requestData.targetData.combinedPath = systemPath + requestData.cgiData.cgiScriptPath;
+		}
+		else
+		{
+			requestData.targetData.cutPath = requestData.targetData.targetPath.substr((*foundLocationName)[0].size());
+			if (requestData.targetData.cutPath.empty() || requestData.targetData.cutPath[0] != '/')
+				requestData.targetData.cutPath.insert(requestData.targetData.cutPath.begin(), '/');
+
+			requestData.targetData.combinedPath = systemPath + requestData.targetData.cutPath;
+		}
+
+	}
+	std::cout << "combined path: \"" << requestData.targetData.combinedPath << '\"' << std::endl;
+}
+
+void Http::handleRequestMultipart(HttpRequest& requestData, std::pair<std::string, std::vector<std::pair<std::string, std::string> > >& outPair)
+{
+	if (outPair.second.size() < 1)
+		generate4xx5xxErrorReponse(requestData, 400, false, "Content-Type: multipart/form-data should have at least 1 attribute");
+		
+	std::pair<std::string, std::string>* foundBoundary = NULL;
+
+	for (size_t i = 0; i < outPair.second.size(); i++)
+	{
+		if (outPair.second[i].first == "boundary")
+		{
+			if (foundBoundary == NULL)
+				foundBoundary = &outPair.second[i];
+			else
+				generate4xx5xxErrorReponse(requestData, 400, false, "Content-Type:: multipart/form-data:: multiple boundary are not supposed to have");
+		}
+	}
+
+	if (foundBoundary == NULL)
+		generate4xx5xxErrorReponse(requestData, 400, false, "Content-Type:: multipart/form-data:: boundary not found");
+
+	if (foundBoundary->second.size() < 1 || foundBoundary->second.size() > 70)
+		generate4xx5xxErrorReponse(requestData, 400, false, "Content-Type:: boundary string size invalid");
+
+	requestData.bodyData.bodyContentType = outPair.first;
+	requestData.bodyData.multiformData->boundaryString = foundBoundary->second;
+
+	struct stat fileStat;
+	std::memset(&fileStat, 0, sizeof(fileStat));
+	if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) != 0)
+	{
+		std::string ErrMsg = "Http::stat()::target_path " + requestData.targetData.targetPath + "::";
+		ErrMsg += strerror(errno);
+		if (errno == EACCES)
+			generate4xx5xxErrorReponse(requestData, 403, true, ErrMsg);
+		generate4xx5xxErrorReponse(requestData, 404, true, ErrMsg);
+	}
+
+	if (S_ISDIR(fileStat.st_mode) != true)
+	{
+		/*
+			Here, I would give the  403 error, the reason is that
+			because multipart/form-data might contain information that 
+			we may need to store in to the directory, therefore the 
+			target route that the request targeted to must be a directory
+
+			I assumed
+		*/
+		generate4xx5xxErrorReponse(requestData, 403, false, "the request targeted route for POST request with Content-Type as multipart/form-data must be a directory");
+	}
+
+	requestData.bodyData.tempRequestBodyFileNum = tempFileManager().generateNewTempFile();
+
+	// open the file for writing now
+	{
+		std::string tempFilePath = TEMP_FILE_DIR + toString(requestData.bodyData.tempRequestBodyFileNum);
+
+		int fd;
+		while (true)
+		{
+			fd = open(tempFilePath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+
+			if (fd >= 0)
+				break ;
+			if (errno == EINTR)
+				continue ;
+			break;
+		}
+
+
+		if (fd < 0)
+		{
+			generate4xx5xxErrorReponse(requestData, 500, false, "POST method to non-cgi with Content-Type: multipart/form-data::open() error");
+		}
+
+		FileDescriptor tempFd(fd);
+		//requestData.bodyData.bodyFd.push_back(fd);
+		requestData.bodyData.writeBodyFile = tempFd;
+	}
+
+
+	// some how here you need to determine how to read the body part of this specific content type
+	requestData.bodyData.isUseTempFile = true;
+	requestData.bodyData.readBody = true;
+	requestData.bodyData.discardBody = false;
+
+	if (requestData.bodyData.checkExpectBody == true)
+	{
+		HttpResponse& target = *requestData.responseTargetPtr;
+
+		s_response_buff	tempBuff;
+
+		std::string expectResponse = "HTTP/1.1 100 Continue\r\n\r\n";
+
+		tempBuff.currentIndex = 0;
+		tempBuff.buffer.insert(tempBuff.buffer.end(), expectResponse.begin(), expectResponse.end());
+
+		target.pushNewResponseBuff(tempBuff);
+	}
+}
+
+void Http::handleUploadOctetStream(HttpRequest& requestData)
+{
+	/*
+		Don't need to care about file extension of the request target route
+		for me, the best check is to just simply
+		open() with the target path
+	*/
+
+	//int fd = open(requestData.targetData.combinedPath.c_str(), O_TRUNC | O_CREAT | O_RDWR);
+	int fd;
+	while (true)
+	{
+		fd = open(requestData.targetData.combinedPath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+
+		if (fd >= 0)
+			break ;
+		if (errno == EINTR)
+			continue ;
+		break;
+	}
+
+
+	if (fd < 0)
+	{
+		// i would insider this as internal error ?
+		generate4xx5xxErrorReponse(requestData, 500, false, "POST method to non-cgi with Content-Type: application/octet-stream::open() error");
+	}
+
+	FileDescriptor tempFd(fd);
+
+	//requestData.bodyData.bodyFd.push_back(fd);
+	requestData.bodyData.writeBodyFile = tempFd;
+
+	requestData.bodyData.isUseTempFile = false;
+	requestData.bodyData.readBody = true;
+	requestData.bodyData.discardBody = false;
+
+	if (requestData.bodyData.checkExpectBody == true)
+	{
+		HttpResponse& target = *requestData.responseTargetPtr;
+
+		s_response_buff	tempBuff;
+
+		std::string expectResponse = "HTTP/1.1 100 Continue\r\n\r\n";
+
+		tempBuff.currentIndex = 0;
+		tempBuff.buffer.insert(tempBuff.buffer.end(), expectResponse.begin(), expectResponse.end());
+
+		target.pushNewResponseBuff(tempBuff);
+	}
+}
+
+void Http::handleUploadFoundType(HttpRequest& requestData, std::pair<std::string, std::vector<std::pair<std::string, std::string> > >& outPair)
+{
+	const std::set<std::string>& foundExtensionTable = contentTypeTable().contentTypeToExtension(outPair.first);
+	// here is the allowed Content-Type and we need to check corresponding file extension
+
+	if (foundExtensionTable.size() != 0)
+	{
+		//
+		std::string routeExtension;
+		{
+			size_t pos = requestData.targetData.combinedPath.find_last_of('.');
+
+			if (pos != std::string::npos && pos + 1 < requestData.targetData.combinedPath.size())
+			{
+				routeExtension = requestData.targetData.combinedPath.substr(pos + 1);
+			}
+		}
+
+		if (routeExtension.empty())
+		{
+			generate4xx5xxErrorReponse(requestData, 403, false, "POST to non-cgi::the Content-Type and the target file extension are not matched");
+		}
+
+		if (foundExtensionTable.find(routeExtension) != foundExtensionTable.end())
+		{
+			//int fd = open(requestData.targetData.combinedPath.c_str(), O_TRUNC | O_CREAT | O_RDWR);
+
+			//struct stat fileStat;
+			//std::memset(&fileStat, 0, sizeof(fileStat));
+			//if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) != 0)
+			//{
+			//	std::string ErrMsg = "Http::stat()::target_path " + requestData.targetData.targetPath + "::";
+			//	ErrMsg += strerror(errno);
+			//	if (errno == EACCES)
+			//		generate4xx5xxErrorReponse(requestData, 403, true, ErrMsg);
+			//	generate4xx5xxErrorReponse(requestData, 404, true, ErrMsg);
+			//}
+
+			int fd;
+			while (true)
+			{
+				fd = open(requestData.targetData.combinedPath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+
+				if (fd >= 0)
+					break ;
+				if (errno == EINTR)
+					continue ;
+				break;
+			}
+
+			if (fd < 0)
+			{
+				// i would insider this as internal error ?
+				generate4xx5xxErrorReponse(requestData, 500, false, "POST method to non-cgi with Content-Type: " + outPair.first + "::open() failed");
+			}
+
+			FileDescriptor tempFd(fd);
+		
+			//requestData.bodyData.bodyFd.push_back(fd);
+			requestData.bodyData.writeBodyFile = tempFd;
+
+			requestData.bodyData.isUseTempFile = false;
+			requestData.bodyData.readBody = true;
+			requestData.bodyData.discardBody = false;
+		
+			if (requestData.bodyData.checkExpectBody == true)
+			{
+				HttpResponse& target = *requestData.responseTargetPtr;
+
+				s_response_buff	tempBuff;
+
+				std::string expectResponse = "HTTP/1.1 100 Continue\r\n\r\n";
+
+				tempBuff.currentIndex = 0;
+				tempBuff.buffer.insert(tempBuff.buffer.end(), expectResponse.begin(), expectResponse.end());
+
+				target.pushNewResponseBuff(tempBuff);
+			}
+
+		}
+		else
+		{
+			generate4xx5xxErrorReponse(requestData, 403, false, "POST to non-cgi::the Content-Type and the target file extension are not matched");
+		}
+
+	}
+	else
+	{
+		// create response for un supported media type
+		HttpResponse& target = *requestData.responseTargetPtr;
+
+		target.responseBodyType = HTTP_RESPONSE_NOBODY;
+		target.statusLine->first = 415;
+		target.keepAfterResponse = false;
+		target.statusLine->second = "Unsupported Media Type";
+
+		// get all the content type to the response header
+		{
+			const std::map<std::string, std::set<std::string> >& contentTypetoExtentionMap = contentTypeTable().getContentTypetoExtensionMap();
+			std::map<std::string, std::set<std::string> >::const_iterator it = contentTypetoExtentionMap.begin();
+
+			while (it != contentTypetoExtentionMap.end())
+			{
+				target.addHeader("Accept-Post", it->first);
+				++it;
+			}
+		}
+
+		target.generateResponse();
+		throw HttpThrowStatus(415, "Unsupported Media Type");
+	}
+}
+
+void Http::handleUploadPostRequest(HttpRequest& requestData)
+{
+	// need to check content type
+	// get the _bodyContentType
+	std::map<std::string, std::string>::const_iterator foundContentTypeElement = requestData.requestData.headerField.find("content-type");
+
+	if (foundContentTypeElement == requestData.requestData.headerField.end())
+	{
+		generate4xx5xxErrorReponse(requestData, 400, false, "The request contains body, but no Content-Type found in the request header");
+	}
+
+	const std::string& contentTypeString = foundContentTypeElement->second;
+
+	// we need to extract the string
+	std::pair<std::string, std::vector<std::pair<std::string, std::string> > > outPair;
+	if (httpFieldContentTypeExtract(contentTypeString, outPair) == false)
+		generate4xx5xxErrorReponse(requestData, 400, false, "Content-Type::invalid value");
+
+
+	if (outPair.first == "multipart/form-data")
+		handleRequestMultipart(requestData, outPair);
+	else if (outPair.first == "application/octet-stream")
+		handleUploadOctetStream(requestData);
+	else
+		handleUploadFoundType(requestData, outPair);
+
+	requestData.processStatus = READ_BODY;
+	return ;
+
+}
+
+void Http::handlePostCgiRequest(HttpRequest& requestData)
+{
+
+	struct stat fileStat;
+	std::memset(&fileStat, 0, sizeof(fileStat));
+	if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) != 0)
+	{
+		std::string ErrMsg = "Http::stat()::target_path " + requestData.targetData.targetPath + "::";
+		ErrMsg += strerror(errno);
+		if (errno == EACCES)
+			generate4xx5xxErrorReponse(requestData, 403, true, ErrMsg);
+		generate4xx5xxErrorReponse(requestData, 404, true, ErrMsg);
+	}
+	/* need to read the body first before starting the CGI */
+
+	/* access() is a good practice before doing anything big because
+	forking new process() take a lot of memory*/
+
+	/* we need to check the _combinedPath 
+		- it must be a regular file, and readable */
+	if (S_ISREG(fileStat.st_mode) == false)
+	{
+		generate4xx5xxErrorReponse(requestData, 400, false,"The cgi script path must be a regular file");
+	}
+
+	/*now access*/
+	if (access(requestData.targetData.combinedPath.c_str(), R_OK) != 0)
+	{
+		std::string throwMsg = "Error:: cgi script path access()::" + std::string(std::strerror(errno));
+		if (errno == EACCES)
+			generate4xx5xxErrorReponse(requestData, 403, false, throwMsg);
+		generate4xx5xxErrorReponse(requestData, 404, false, throwMsg);
+	}
+
+	/* now we can do the thing*/
+
+	requestData.bodyData.tempRequestBodyFileNum = tempFileManager().generateNewTempFile();
+
+	// open the file for writing now
+	{
+		std::string tempFilePath = TEMP_FILE_DIR + toString(requestData.bodyData.tempRequestBodyFileNum);
+
+		//int fd = open(tempFilePath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+		int fd;
+		while (true)
+		{
+			fd = open(tempFilePath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+
+			if (fd >= 0)
+				break ;
+			if (errno == EINTR)
+				continue ;
+			break;
+		}
+
+		if (fd < 0)
+		{
+			generate4xx5xxErrorReponse(requestData, 500, false, "HTTP::validating::POST method to non-cgi with Content-Type: multipart/form-data::open() error::" + std::string(std::strerror(errno)));
+		}
+
+		FileDescriptor tempFd(fd);
+
+		//requestData.bodyData.bodyFd.push_back(fd);
+		requestData.bodyData.writeBodyFile = tempFd;
+	}
+
+	requestData.bodyData.isUseTempFile = true;
+	requestData.bodyData.readBody = true;
+	requestData.bodyData.discardBody = false;
+
+	if (requestData.bodyData.checkExpectBody == true)
+	{
+		HttpResponse& target = *requestData.responseTargetPtr;
+
+		s_response_buff	tempBuff;
+
+		std::string expectResponse = "HTTP/1.1 100 Continue\r\n\r\n";
+
+		tempBuff.currentIndex = 0;
+		tempBuff.buffer.insert(tempBuff.buffer.end(), expectResponse.begin(), expectResponse.end());
+
+		target.pushNewResponseBuff(tempBuff);
+	}
+
+	requestData.processStatus = READ_BODY;
+	return ;
+
+	generate4xx5xxErrorReponse(requestData, 500, false, "Post to CGI didn't finished yet");
+}
+
+void Http::handlePostRequest(HttpRequest& requestData)
+{
+	if (requestData.cgiData.cgiPath.empty())
+		handleUploadPostRequest(requestData);
+	else
+		handlePostCgiRequest(requestData);
+}
+
 void	Http::validateRequestData(HttpRequest& requestData, const Socket& clientSocket, std::map<int, Socket>& socketMap)
 {
 
@@ -2319,62 +2678,14 @@ void	Http::validateRequestData(HttpRequest& requestData, const Socket& clientSoc
 		return ;
 
 	/* check Connection: header */
-	{
-		/* if omitted, assume to keep alive*/
-		std::map<std::string, std::string>::const_iterator foundConnection = requestData.requestData.headerField.find("connection");
-		if (foundConnection != requestData.requestData.headerField.end())
-		{
-			/* check the string */
-			std::string tempString;
-
-			if (httpFieldNormalSingletonTrim(foundConnection->second, tempString) == false)
-				generate4xx5xxErrorReponse(requestData, 400, false, "Bad Request::Invalid Connection Header");
-			
-			if (tempString == "close")
-				httpRequest.responseTargetPtr->keepAfterResponse = false;
-			else if (tempString == "keep-alive")
-				httpRequest.responseTargetPtr->keepAfterResponse = true;
-			else
-				generate4xx5xxErrorReponse(requestData, 400, false, "Bad Request::Invalid Connection Header");
-
-		}
-		else
-		{
-			httpRequest.responseTargetPtr->keepAfterResponse = true;
-		}
-	}
+	checkConnectionHeader(requestData);
 
 	// check the method
 	// return 405 if method is not allowed
 	checkMethod(requestData);
 
 	bool isEndWithSlash = requestData.targetData.targetPath[requestData.targetData.targetPath.size() - 1] == '/' ? true : false;
-
-	if (requestData.requestData.method != "DELETE")
-	{
-
-		// should not delete file with 'index' seems to make sense to me
-		if (isEndWithSlash == true)
-		{
-			// if the path end with slash
-			// try to find the 'index' in that location block
-			
-			const std::vector<std::string>* foundIndex = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "index");
-
-			// only append if found
-			if (foundIndex)
-			{
-				if (foundIndex->size() != 1)
-				{
-					generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error:: invalid \'index\' directive in location block");
-				}
-
-				requestData.targetData.targetPath += (*foundIndex)[0];
-				isEndWithSlash = false;
-			}
-		}
-
-	}
+	appendTargetPath(requestData, isEndWithSlash);
 
 	// need to check first if this location block
 	// has the cgi_pass
@@ -2382,58 +2693,7 @@ void	Http::validateRequestData(HttpRequest& requestData, const Socket& clientSoc
 
 	// now we can check the file existence
 	{
-
-		// we need to get the system path first
-		std::string systemPath;
-		/*
-			The reason to have this section is we need to know
-			whether we want to pick 'root' or 'upload_store'
-
-			- the GET method always need 'root'
-			- the POST method depends if the target is CGI or not
-				if CGI then use 'root' if not then 'upload store'
-				but if not found 'root' then just take 'upload_store'
-			- the DELETE also 
-		*/
-		createSystemPath(requestData, systemPath);
-
-		// we need to combine root of location block
-		// with the URI that we resolved
-		{
-			const std::vector<std::string>* foundLocationName = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "location_name");
-
-
-
-			if (!requestData.cgiData.cgiPath.empty())
-			{
-				if (!requestData.cgiData.cgiVirtualPath.empty())
-					requestData.cgiData.cgiPathTranslated = systemPath + requestData.cgiData.cgiVirtualPath;
-				requestData.targetData.combinedPath = systemPath + requestData.cgiData.cgiScriptPath;
-			}
-			else
-			{
-				requestData.targetData.cutPath = requestData.targetData.targetPath.substr((*foundLocationName)[0].size());
-				if (requestData.targetData.cutPath.empty() || requestData.targetData.cutPath[0] != '/')
-					requestData.targetData.cutPath.insert(requestData.targetData.cutPath.begin(), '/');
-
-				requestData.targetData.combinedPath = systemPath + requestData.targetData.cutPath;
-			}
-
-		}
-
-		std::cout << "combined path: \"" << requestData.targetData.combinedPath << '\"' << std::endl;
-
-
-		//struct stat fileStat;
-		//std::memset(&fileStat, 0, sizeof(fileStat));
-		//if (stat(_combinedPath.c_str(), &fileStat) != 0)
-		//{
-		//	std::string ErrMsg = "Http::stat()::target_path " + _targetPath + "::";
-		//	ErrMsg += strerror(errno);
-		//	if (errno == EACCES)
-		//		throw HttpThrowStatus(403, ErrMsg);
-		//	throw HttpThrowStatus(404, ErrMsg);
-		//}
+		buildCombinedPath(requestData);
 
 		//check for DELETE method first
 		/*
@@ -2458,490 +2718,428 @@ void	Http::validateRequestData(HttpRequest& requestData, const Socket& clientSoc
 		}
 		// for POST method just leave it as error for now
 		else
+			handlePostRequest(requestData);
+	}
+}
+
+void Http::readingContentLengthBody(HttpRequest& requestData)
+{
+	size_t	readBodyAmount;
+	{
+		// calculate the read body amount here
+		
+		// the size of _requestBuffer is the most the the body can read right now
+		
+		// content-length body type has _body_size which specified its fixed size
+		readBodyAmount = requestData.bodyData.body_size - requestData.bodyData.curr_body_read;
+		
+		// then if the readBody amount is more than the _requestBuffer.size() then
+		if (readBodyAmount > _requestBuffer.size())
 		{
-
-			//struct stat fileStat;
-			//std::memset(&fileStat, 0, sizeof(fileStat));
-			//if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) != 0)
-			//{
-			//	std::string ErrMsg = "Http::stat()::target_path " + requestData.targetData.targetPath + "::";
-			//	ErrMsg += strerror(errno);
-			//	if (errno == EACCES)
-			//		generate4xx5xxErrorReponse(requestData, 403, true, ErrMsg);
-			//	generate4xx5xxErrorReponse(requestData, 404, true, ErrMsg);
-			//}
-
-			if (requestData.cgiData.cgiPath.empty())
+			readBodyAmount = _requestBuffer.size();
+		}
+	}
+	
+	if (requestData.bodyData.discardBody == true)
+	{
+		// we just discard from the buffer by that calculated amount
+		_requestBuffer.erase(0, readBodyAmount);
+		requestData.bodyData.curr_body_read += readBodyAmount;
+		
+		if (requestData.bodyData.curr_body_read == requestData.bodyData.body_size)
+			requestData.processStatus = FINISHED_READ_BODY;
+		
+		return ;
+	}
+	else
+	{
+		// here we need to perform the write() operation
+		while (true)
+		{
+			ssize_t	writeAmount = write(requestData.bodyData.writeBodyFile->getFd(), &_requestBuffer[0], readBodyAmount);
+			if (writeAmount < 0)
 			{
-				// need to check content type
-				// get the _bodyContentType
+				if (errno == EINTR)
+					continue;
+				else
 				{
-					std::map<std::string, std::string>::const_iterator foundContentTypeElement = requestData.requestData.headerField.find("content-type");
-
-					if (foundContentTypeElement == requestData.requestData.headerField.end())
-					{
-						generate4xx5xxErrorReponse(requestData, 400, false, "The request contains body, but no Content-Type found in the request header");
-					}
-
-					const std::string& contentTypeString = foundContentTypeElement->second;
-
-					// we need to extract the string
-					std::pair<std::string, std::vector<std::pair<std::string, std::string> > > outPair;
-					if (httpFieldContentTypeExtract(contentTypeString, outPair) == false)
-						generate4xx5xxErrorReponse(requestData, 400, false, "Content-Type::invalid value");
-
-					if (outPair.first == "multipart/form-data")
-					{
-						if (outPair.second.size() < 1)
-							generate4xx5xxErrorReponse(requestData, 400, false, "Content-Type: multipart/form-data should have at least 1 attribute");
-						
-						std::pair<std::string, std::string>* foundBoundary = NULL;
-
-						for (size_t i = 0; i < outPair.second.size(); i++)
-						{
-							if (outPair.second[i].first == "boundary")
-							{
-								if (foundBoundary == NULL)
-									foundBoundary = &outPair.second[i];
-								else
-									generate4xx5xxErrorReponse(requestData, 400, false, "Content-Type:: multipart/form-data:: multiple boundary are not supposed to have");
-							}
-						}
-
-						if (foundBoundary == NULL)
-							generate4xx5xxErrorReponse(requestData, 400, false, "Content-Type:: multipart/form-data:: boundary not found");
-
-						if (foundBoundary->second.size() < 1 || foundBoundary->second.size() > 70)
-							generate4xx5xxErrorReponse(requestData, 400, false, "Content-Type:: boundary string size invalid");
-
-						requestData.bodyData.bodyContentType = outPair.first;
-						requestData.bodyData.multiformData->boundaryString = foundBoundary->second;
-
-						struct stat fileStat;
-						std::memset(&fileStat, 0, sizeof(fileStat));
-						if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) != 0)
-						{
-							std::string ErrMsg = "Http::stat()::target_path " + requestData.targetData.targetPath + "::";
-							ErrMsg += strerror(errno);
-							if (errno == EACCES)
-								generate4xx5xxErrorReponse(requestData, 403, true, ErrMsg);
-							generate4xx5xxErrorReponse(requestData, 404, true, ErrMsg);
-						}
-
-						if (S_ISDIR(fileStat.st_mode) != true)
-						{
-							/*
-								Here, I would give the  403 error, the reason is that
-								because multipart/form-data might contain information that 
-								we may need to store in to the directory, therefore the 
-								target route that the request targeted to must be a directory
-
-								I assumed
-							*/
-							generate4xx5xxErrorReponse(requestData, 403, false, "the request targeted route for POST request with Content-Type as multipart/form-data must be a directory");
-						}
-
-						requestData.bodyData.tempRequestBodyFileNum = tempFileManager().generateNewTempFile();
-
-						// open the file for writing now
-						{
-							std::string tempFilePath = TEMP_FILE_DIR + toString(requestData.bodyData.tempRequestBodyFileNum);
-
-							int fd;
-							while (true)
-							{
-								fd = open(tempFilePath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
-
-								if (fd >= 0)
-									break ;
-								if (errno == EINTR)
-									continue ;
-								break;
-							}
-
-
-							if (fd < 0)
-							{
-								generate4xx5xxErrorReponse(requestData, 500, false, "POST method to non-cgi with Content-Type: multipart/form-data::open() error");
-							}
-
-							FileDescriptor tempFd(fd);
-							//requestData.bodyData.bodyFd.push_back(fd);
-							requestData.bodyData.writeBodyFile = tempFd;
-						}
-
-
-						// some how here you need to determine how to read the body part of this specific content type
-						requestData.bodyData.isUseTempFile = true;
-						requestData.bodyData.readBody = true;
-						requestData.bodyData.discardBody = false;
-
-						if (requestData.bodyData.checkExpectBody == true)
-						{
-							HttpResponse& target = *requestData.responseTargetPtr;
-
-							s_response_buff	tempBuff;
-
-							std::string expectResponse = "HTTP/1.1 100 Continue\r\n\r\n";
-
-							tempBuff.currentIndex = 0;
-							tempBuff.buffer.insert(tempBuff.buffer.end(), expectResponse.begin(), expectResponse.end());
-
-							target.pushNewResponseBuff(tempBuff);
-						}
-					
-					}
-					else if (outPair.first == "application/octet-stream")
-					{
-						/*
-							Don't need to care about file extension of the request target route
-							for me, the best check is to just simply
-							open() with the target path
-						*/
-
-						//int fd = open(requestData.targetData.combinedPath.c_str(), O_TRUNC | O_CREAT | O_RDWR);
-						int fd;
-						while (true)
-						{
-							fd = open(requestData.targetData.combinedPath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
-
-							if (fd >= 0)
-								break ;
-							if (errno == EINTR)
-								continue ;
-							break;
-						}
-
-
-						if (fd < 0)
-						{
-							// i would insider this as internal error ?
-							generate4xx5xxErrorReponse(requestData, 500, false, "POST method to non-cgi with Content-Type: application/octet-stream::open() error");
-						}
-
-						FileDescriptor tempFd(fd);
-
-						//requestData.bodyData.bodyFd.push_back(fd);
-						requestData.bodyData.writeBodyFile = tempFd;
-
-						requestData.bodyData.isUseTempFile = false;
-						requestData.bodyData.readBody = true;
-						requestData.bodyData.discardBody = false;
-
-						if (requestData.bodyData.checkExpectBody == true)
-						{
-							HttpResponse& target = *requestData.responseTargetPtr;
-
-							s_response_buff	tempBuff;
-
-							std::string expectResponse = "HTTP/1.1 100 Continue\r\n\r\n";
-
-							tempBuff.currentIndex = 0;
-							tempBuff.buffer.insert(tempBuff.buffer.end(), expectResponse.begin(), expectResponse.end());
-
-							target.pushNewResponseBuff(tempBuff);
-						}
-
-					}
+					// try to correctly remove file if write operation is failed 
+					requestData.bodyData.writeBodyFile.clear();
+					if (requestData.bodyData.isUseTempFile)
+						tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 					else
-					{
-						const std::set<std::string>& foundExtensionTable = contentTypeTable().contentTypeToExtension(outPair.first);
-						// here is the allowed Content-Type and we need to check corresponding file extension
-
-						if (foundExtensionTable.size() != 0)
-						{
-							//
-							std::string routeExtension;
-							{
-								size_t pos = requestData.targetData.combinedPath.find_last_of('.');
-
-								if (pos != std::string::npos && pos + 1 < requestData.targetData.combinedPath.size())
-								{
-									routeExtension = requestData.targetData.combinedPath.substr(pos + 1);
-								}
-							}
-
-							if (routeExtension.empty())
-							{
-								generate4xx5xxErrorReponse(requestData, 403, false, "POST to non-cgi::the Content-Type and the target file extension are not matched");
-							}
-
-							if (foundExtensionTable.find(routeExtension) != foundExtensionTable.end())
-							{
-								//int fd = open(requestData.targetData.combinedPath.c_str(), O_TRUNC | O_CREAT | O_RDWR);
-
-								//struct stat fileStat;
-								//std::memset(&fileStat, 0, sizeof(fileStat));
-								//if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) != 0)
-								//{
-								//	std::string ErrMsg = "Http::stat()::target_path " + requestData.targetData.targetPath + "::";
-								//	ErrMsg += strerror(errno);
-								//	if (errno == EACCES)
-								//		generate4xx5xxErrorReponse(requestData, 403, true, ErrMsg);
-								//	generate4xx5xxErrorReponse(requestData, 404, true, ErrMsg);
-								//}
-
-								int fd;
-								while (true)
-								{
-									fd = open(requestData.targetData.combinedPath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
-
-									if (fd >= 0)
-										break ;
-									if (errno == EINTR)
-										continue ;
-									break;
-								}
-
-								if (fd < 0)
-								{
-									// i would insider this as internal error ?
-									generate4xx5xxErrorReponse(requestData, 500, false, "POST method to non-cgi with Content-Type: " + outPair.first + "::open() failed");
-								}
-
-								FileDescriptor tempFd(fd);
-							
-								//requestData.bodyData.bodyFd.push_back(fd);
-								requestData.bodyData.writeBodyFile = tempFd;
-
-								requestData.bodyData.isUseTempFile = false;
-								requestData.bodyData.readBody = true;
-								requestData.bodyData.discardBody = false;
-							
-								if (requestData.bodyData.checkExpectBody == true)
-								{
-									HttpResponse& target = *requestData.responseTargetPtr;
-
-									s_response_buff	tempBuff;
-
-									std::string expectResponse = "HTTP/1.1 100 Continue\r\n\r\n";
-
-									tempBuff.currentIndex = 0;
-									tempBuff.buffer.insert(tempBuff.buffer.end(), expectResponse.begin(), expectResponse.end());
-
-									target.pushNewResponseBuff(tempBuff);
-								}
-
-							}
-							else
-							{
-								generate4xx5xxErrorReponse(requestData, 403, false, "POST to non-cgi::the Content-Type and the target file extension are not matched");
-							}
-
-						}
-						else
-						{
-							// create response for un supported media type
-							HttpResponse& target = *requestData.responseTargetPtr;
-
-							target.responseBodyType = HTTP_RESPONSE_NOBODY;
-							target.statusLine->first = 415;
-							target.keepAfterResponse = false;
-							target.statusLine->second = "Unsupported Media Type";
-
-							// get all the content type to the response header
-							{
-								const std::map<std::string, std::set<std::string> >& contentTypetoExtentionMap = contentTypeTable().getContentTypetoExtensionMap();
-								std::map<std::string, std::set<std::string> >::const_iterator it = contentTypetoExtentionMap.begin();
-
-								while (it != contentTypetoExtentionMap.end())
-								{
-									target.addHeader("Accept-Post", it->first);
-									++it;
-								}
-							}
-
-							target.generateResponse();
-							throw HttpThrowStatus(415, "Unsupported Media Type");
-						}
-
-
-					}
+						std::remove(requestData.targetData.combinedPath.c_str());
+				
+					generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::write() operation failed during reading the request body");
 				}
-
-				requestData.processStatus = READ_BODY;
-				return ;
 			}
 			else
 			{
-
-				struct stat fileStat;
-				std::memset(&fileStat, 0, sizeof(fileStat));
-				if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) != 0)
-				{
-					std::string ErrMsg = "Http::stat()::target_path " + requestData.targetData.targetPath + "::";
-					ErrMsg += strerror(errno);
-					if (errno == EACCES)
-						generate4xx5xxErrorReponse(requestData, 403, true, ErrMsg);
-					generate4xx5xxErrorReponse(requestData, 404, true, ErrMsg);
-				}
-				/* need to read the body first before starting the CGI */
-
-				/* access() is a good practice before doing anything big because
-				forking new process() take a lot of memory*/
-
-				/* we need to check the _combinedPath 
-					- it must be a regular file, and readable */
-				if (S_ISREG(fileStat.st_mode) == false)
-				{
-					generate4xx5xxErrorReponse(requestData, 400, false,"The cgi script path must be a regular file");
-				}
-
-				/*now access*/
-				if (access(requestData.targetData.combinedPath.c_str(), R_OK) != 0)
-				{
-					std::string throwMsg = "Error:: cgi script path access()::" + std::string(std::strerror(errno));
-					if (errno == EACCES)
-						generate4xx5xxErrorReponse(requestData, 403, false, throwMsg);
-					generate4xx5xxErrorReponse(requestData, 404, false, throwMsg);
-				}
-
-				/* now we can do the thing*/
-
-				requestData.bodyData.tempRequestBodyFileNum = tempFileManager().generateNewTempFile();
-
-				// open the file for writing now
-				{
-					std::string tempFilePath = TEMP_FILE_DIR + toString(requestData.bodyData.tempRequestBodyFileNum);
-
-					//int fd = open(tempFilePath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
-					int fd;
-					while (true)
-					{
-						fd = open(tempFilePath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
-
-						if (fd >= 0)
-							break ;
-						if (errno == EINTR)
-							continue ;
-						break;
-					}
-
-					if (fd < 0)
-					{
-						generate4xx5xxErrorReponse(requestData, 500, false, "HTTP::validating::POST method to non-cgi with Content-Type: multipart/form-data::open() error::" + std::string(std::strerror(errno)));
-					}
-
-					FileDescriptor tempFd(fd);
-
-					//requestData.bodyData.bodyFd.push_back(fd);
-					requestData.bodyData.writeBodyFile = tempFd;
-				}
-
-				requestData.bodyData.isUseTempFile = true;
-				requestData.bodyData.readBody = true;
-				requestData.bodyData.discardBody = false;
-
-				if (requestData.bodyData.checkExpectBody == true)
-				{
-					HttpResponse& target = *requestData.responseTargetPtr;
-
-					s_response_buff	tempBuff;
-
-					std::string expectResponse = "HTTP/1.1 100 Continue\r\n\r\n";
-
-					tempBuff.currentIndex = 0;
-					tempBuff.buffer.insert(tempBuff.buffer.end(), expectResponse.begin(), expectResponse.end());
-
-					target.pushNewResponseBuff(tempBuff);
-				}
-
-				requestData.processStatus = READ_BODY;
-				return ;
-
-				/* we need to read to temporary file first for checking?*/
-
-				//int pipe_in[2];
-				//int	pipe_out[2];
-
-				//if (pipe(pipe_in) != 0)
-				//	generate4xx5xxErrorReponse(500, false, "Internal Error::CGI:: pipe() failed::" + std::string(std::strerror(errno)));
-				//if (pipe(pipe_out) != 0)
-				//{
-				//	close(pipe_in[0]);
-				//	close(pipe_in[1]);
-				//	generate4xx5xxErrorReponse(500, false, "Internal Error::CGI:: pipe() failed::" + std::string(std::strerror(errno)));
-				//}
-
-				//pid_t pid = fork();
-
-				//if (pid < 0)
-				//{
-				//	close(pipe_in[0]);
-				//	close(pipe_in[1]);
-				//	close(pipe_out[0]);
-				//	close(pipe_out[1]);
-
-				//	generate4xx5xxErrorReponse(500, false, "Internal Error::CGI:: fork() failed::" + std::string(std::strerror(errno)));
-				//}
-
-				//else if (pid == 0)
-				//{
-				//	try
-				//	{
-				//		close(pipe_in[1]);
-				//		close(pipe_out[0]);
-
-				//		if (dup2(pipe_out[1], STDOUT_FILENO) != 0)
-				//		{
-				//			for (int i = 3; i < MAX_FD; i++)
-				//				close(i);
-
-				//			throw(42);
-				//		}
-
-				//		if (dup2(pipe_in[0], STDIN_FILENO) != 0)
-				//		{
-				//			for (int i = 3; i < MAX_FD; i++)
-				//				close(i);
-
-				//			generate4xx5xxErrorReponse(500, false, "Internal Error:: dup2 to stdin failed");
-				//		}
-
-				//		for (int i = 3; i < MAX_FD; i++)
-				//			close(i);
-						
-				//		{
-
-				//		}
-				//	}
-				//	catch (HttpThrowStatus &e)
-				//	{
-				//		// should generate response on the list
-				//		HttpResponse& target = _httpResponseList.back();
-
-				//		// here print all of that to STDOUT
-				//		target.forcePrintAllResponse();
-
-				//		throw int(1);
-				//	}
-				//	catch (int &e)
-				//	{
-				//		throw ;
-				//	}
-				//	catch (...)
-				//	{
-				//		throw int(1);
-				//	}
-
-				//}
-				//else
-				//{
-				//	close(pipe_out[1]);
-				//	close(pipe_in[0]);
-				//}
-
-
-				generate4xx5xxErrorReponse(requestData, 500, false, "Post to CGI didn't finished yet");
+				_requestBuffer.erase(0, writeAmount);
+				requestData.bodyData.curr_body_read += writeAmount;
+				break ;
 			}
 		}
+		
+		if (requestData.bodyData.curr_body_read == requestData.bodyData.body_size)
+			requestData.processStatus = FINISHED_READ_BODY;
+		return ;
+	}
+}
 
+int Http::readTransferEncodingChunkFinished(HttpRequest& requestData, size_t& endLinePos)
+{
+	// we also skipped the first \r\n from 0\r\n
+	// but normal chunked with no trailer header
+	// is 0\r\n\r\n
+	endLinePos = _requestBuffer.find("\r\n");
+
+	if (endLinePos == std::string::npos)
+	{
+		if (requestData.bodyData.chunkedBodyHasTrailerHeader == true)
+		{
+			/*
+			though here we have to wait the buffer to find next \r\n
+			but should also have limit of how much length should a line be
+
+			we have MAX_HTTP_HEADER_LINE_LENGTH to protect now !
+
+			though the MAX_HTTP_HEADER_LINE_LENGTH has size
+			if not found the endLinePos can also mean that
+			the buffer string now contained only \r
+
+			*/
+			if (_requestBuffer.size() > MAX_HTTP_HEADER_LINE_LENGTH + 1)
+			{
+				requestData.bodyData.writeBodyFile.clear();
+				if (requestData.bodyData.isUseTempFile)
+					tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+				else
+					std::remove(requestData.targetData.combinedPath.c_str());
+
+				generate4xx5xxErrorReponse(requestData, 403, false, "Reading request body::chunked::trailer header:: line too long");
+			}
+			else
+			{
+				// so we wait for next round
+				return (1);
+			}
+		}
+		else
+		{
+			/*
+				For no trailer header, the \r\n would need to
+				close to 0\r\n so ican only be 0\r\n\r\n
+
+				So if the request buffer is longer or equal 2
+				but you haven't found i would throw 400 error
+			*/
+
+			if (_requestBuffer.size() >= 2)
+			{
+				requestData.bodyData.writeBodyFile.clear();
+				if (requestData.bodyData.isUseTempFile)
+					tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+				else
+					std::remove(requestData.targetData.combinedPath.c_str());
+				
+				generate4xx5xxErrorReponse(requestData, 400, false, "Reading request body::chunked::no trailer header::i would say wrong ending for this chunked request. It should be \"0\\r\\n\\r\\n\"");
+
+			}
+			else
+			{
+				// here just wait for next buffer next round;
+				return (1);
+			}
+
+		}
+	}
+	else
+	{
+		/* here is where we found the endLinePos 
+		*/
+
+		if (requestData.bodyData.chunkedBodyHasTrailerHeader)
+		{
+			if (endLinePos == 0)
+			{
+				requestData.processStatus = FINISHED_READ_BODY;
+				return (1);
+			}
+			else
+			{
+				std::string headerLineStr = _requestBuffer.substr(0, endLinePos);
+
+				// check the limit
+				if (headerLineStr.empty() || headerLineStr.size() > MAX_HTTP_HEADER_LINE_LENGTH)
+				{
+					requestData.bodyData.writeBodyFile.clear();
+					if (requestData.bodyData.isUseTempFile)
+						tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+					else
+						std::remove(requestData.targetData.combinedPath.c_str());
+					
+					generate4xx5xxErrorReponse(requestData, 400, false, "Reading request body::chunked::trailer header line size wrong");
+				}
+
+				size_t colonPos = headerLineStr.find_first_of(':');
+				if (colonPos == std::string::npos)
+				{
+					requestData.bodyData.writeBodyFile.clear();
+					if (requestData.bodyData.isUseTempFile)
+						tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+					else
+						std::remove(requestData.targetData.combinedPath.c_str());
+
+					generate4xx5xxErrorReponse(requestData, 400, false, "chunked trailer header::name and value in the header field must seperated by \':\'");
+				}
+
+				std::string tempFieldName = headerLineStr.substr(0, colonPos);
+
+				if (tempFieldName.empty())
+				{
+					requestData.bodyData.writeBodyFile.clear();
+					if (requestData.bodyData.isUseTempFile)
+						tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+					else
+						std::remove(requestData.targetData.combinedPath.c_str());
+
+					generate4xx5xxErrorReponse(requestData, 400, false, "chunked trailer header::name in header field must not empty string");
+				}
+
+				if (httpFieldNameChar().isMatch(tempFieldName) == false || allAlphaChar()[tempFieldName[0]] == false)
+					generate4xx5xxErrorReponse(requestData, 400, false, "name in header field must not contain any forbidden char");
+
+				/* we must check first if the header name matched the Trailer: header */
+				{
+					std::set<std::string>::const_iterator foundHeader = requestData.bodyData.trailerHeader.find(stringToLower(tempFieldName));
+					if (foundHeader == requestData.bodyData.trailerHeader.end())
+					{
+						// if not match then would error
+						requestData.bodyData.writeBodyFile.clear();
+						if (requestData.bodyData.isUseTempFile)
+							tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+						else
+							std::remove(requestData.targetData.combinedPath.c_str());
+
+						generate4xx5xxErrorReponse(requestData, 400, false, "chunked trailer header::the header is not matched");
+					}
+				}
+
+				std::string tempSep = headerLineStr.substr(colonPos + 1);
+				tempSep = my_ft_trim(tempSep, " \t");
+
+				if (!tempSep.empty())
+				{
+					if (forbiddenFieldValueChar().isNotMatch(tempSep) == false)
+						generate4xx5xxErrorReponse(httpRequest, 400, false, "value in trailer header field must not contain any forbidden char");
+				}
+
+
+				tempFieldName = stringToLower(tempFieldName);
+
+				std::string &headerValueTarget = httpRequest.requestData.headerField[tempFieldName];
+
+				// separated by the ", "
+				if (headerValueTarget.empty() == false)
+					headerValueTarget += ", ";
+
+				headerValueTarget += tempSep;
+
+				tempSep.clear();
+			}
+		}
+		else
+		{
+			/*
+				if we found the \r\n, for no trailer chunked request.
+				it must be on position 0	
+			*/
+			if (endLinePos == 0)
+			{
+				requestData.processStatus = FINISHED_READ_BODY;
+				return (1);
+			}
+			else
+			{
+				requestData.bodyData.writeBodyFile.clear();
+				if (requestData.bodyData.isUseTempFile)
+					tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+				else
+					std::remove(requestData.targetData.combinedPath.c_str());
+				
+				generate4xx5xxErrorReponse(requestData, 400, false, "Reading request body::chunked::no trailer header::i would say wrong ending for this chunked request. It should be \"0\\r\\n\\r\\n\"");
+			}
+		}
+	}
+	return (1);
+}
+
+int	Http::readTransferEncodingChunk(HttpRequest& requestData, size_t& endLinePos)
+{
+	if (requestData.bodyData.curr_body_read >= requestData.bodyData.body_size)
+	{
+		endLinePos = _requestBuffer.find("\r\n");
+
+		if (endLinePos == std::string::npos)
+		{
+			// maybe next read
+			return (1);
+		}
+		std::string hexString = _requestBuffer.substr(0, endLinePos);
+			
+		size_t hexNum = 0;
+			
+		// convert that to size_t
+		if (hex_to_size_t(hexString, hexNum) == false)
+		{
+			// wrong chunked format, blame the client with 4xx error
+		
+			requestData.bodyData.writeBodyFile.clear();
+			if (requestData.bodyData.isUseTempFile)
+				tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+			else
+				std::remove(requestData.targetData.combinedPath.c_str());
+		
+			generate4xx5xxErrorReponse(requestData, 400, false, "Request Body Chunked::wrong hex format");
+		}
+			
+		// now we have hexnum converted
+		/*
+			next is to check if it will exceed the _client_max_body_size	
+		*/
+		{
+			// both number must not exceed the _client_max_body_size
+			if (requestData.bodyData.body_size > requestData.bodyData.client_max_body_size || hexNum > requestData.bodyData.client_max_body_size)
+			{
+				requestData.bodyData.writeBodyFile.clear();
+				if (requestData.bodyData.isUseTempFile)
+					tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+				else
+					std::remove(requestData.targetData.combinedPath.c_str());
+			
+				generate4xx5xxErrorReponse(requestData, 400, false, "Request Body Chunked::wrong hex format");
+			}
+		
+			/*
+				because using [hexNum + _body_size > _client_max_body_size
+
+				size_t + size_t might result as overflow so i have to
+				work around
+			*/
+			if (hexNum > requestData.bodyData.client_max_body_size - requestData.bodyData.body_size)
+			{
+				requestData.bodyData.writeBodyFile.clear();
+				if (requestData.bodyData.isUseTempFile)
+					tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+				else
+					std::remove(requestData.targetData.combinedPath.c_str());
+			
+				generate4xx5xxErrorReponse(requestData, 413, false, "Request Body Chunked::Content Too Large");
+			}
+		
+			// 
+			if (hexNum == 0)
+			{
+				_requestBuffer.erase(0, endLinePos + 2);
+			
+				requestData.bodyData.chunkedBodyIsFinished = true;
+				return (2);
+			}
+			requestData.bodyData.chunkedBodyIsFinished = false;
+		
+			// increase the body size to this chunk
+			requestData.bodyData.body_size += hexNum;
+		}
+			
+		// now we skip the hex num part
+		_requestBuffer.erase(0, endLinePos + 2);
 	}
 
+	size_t	readBodyAmount;
+	{
+		// calculate the read body amount here
+			
+		// the size of _requestBuffer is the most the the body can read right now
+			
+		// content-length body type has _body_size which specified its fixed size
+		readBodyAmount = requestData.bodyData.body_size - requestData.bodyData.curr_body_read;
+			
+		// then if the readBody amount is more than the _requestBuffer.size() then
+		if (readBodyAmount > _requestBuffer.size())
+		{
+			readBodyAmount = _requestBuffer.size();
+		}
+	}
+		
+	if (requestData.bodyData.discardBody == true)
+	{
+		// we just discard from the buffer by that calculated amount
+		_requestBuffer.erase(0, readBodyAmount);
+		requestData.bodyData.curr_body_read += readBodyAmount;
 
-
-
+		if (requestData.bodyData.curr_body_read == requestData.bodyData.body_size)
+			return (2);
+	}
+	else
+	{
+		// here we need to perform the write() operation
+		while (true)
+		{
+			ssize_t	writeAmount = write(requestData.bodyData.writeBodyFile->getFd(), &_requestBuffer[0], readBodyAmount);
+			if (writeAmount < 0)
+			{
+				if (errno == EINTR)
+					continue;
+				else
+				{
+					// try to correctly remove file if write operation is failed 
+					requestData.bodyData.writeBodyFile.clear();
+					if (requestData.bodyData.isUseTempFile)
+						tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+					else
+						std::remove(requestData.targetData.combinedPath.c_str());
+				
+					generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::write() operation failed during reading the request body");
+				}
+			}
+			else
+			{
+				_requestBuffer.erase(0, writeAmount);
+				requestData.bodyData.curr_body_read += writeAmount;
+				break ;
+			}
+		}
+			
+		if (requestData.bodyData.curr_body_read == requestData.bodyData.body_size)
+			return (2) ;
+	}
+	return (0);
 }
+
+void Http::readingTranferEncodingBody(HttpRequest& requestData)
+{
+	size_t	endLinePos;
+
+	while (true)
+	{
+		if (requestData.bodyData.chunkedBodyIsFinished == true)
+		{
+			if (readTransferEncodingChunkFinished(requestData, endLinePos) == 1)
+				return ;
+		}
+		else
+		{
+			int ret = readTransferEncodingChunk(requestData, endLinePos);
+			if (ret == 1)
+				return ;
+			else if (ret == 2)
+				continue;
+		}
+	}
+	return ;
+}
+
 
 void Http::readingRequestBody(HttpRequest& requestData)
 {
@@ -2949,420 +3147,22 @@ void Http::readingRequestBody(HttpRequest& requestData)
 	if (requestData.processStatus != READ_BODY)
 		return ;
 
-	if (requestData.bodyData.body_type == 0)
+	if (requestData.bodyData.readingRequestBodyPtr)
+		(this->*requestData.bodyData.readingRequestBodyPtr)(requestData);
+	else
 	{
 		requestData.processStatus = FINISHED_READ_BODY;
 		return ;
 	}
-	else if (requestData.bodyData.body_type == 1)
-	{
 
-		size_t	readBodyAmount;
-		{
-			// calculate the read body amount here
-		
-			// the size of _requestBuffer is the most the the body can read right now
-		
-			// content-length body type has _body_size which specified its fixed size
-			readBodyAmount = requestData.bodyData.body_size - requestData.bodyData.curr_body_read;
-		
-			// then if the readBody amount is more than the _requestBuffer.size() then
-			if (readBodyAmount > _requestBuffer.size())
-			{
-				readBodyAmount = _requestBuffer.size();
-			}
-		}
-	
-		if (requestData.bodyData.discardBody == true)
-		{
-			// we just discard from the buffer by that calculated amount
-			_requestBuffer.erase(0, readBodyAmount);
-			requestData.bodyData.curr_body_read += readBodyAmount;
-			
-			if (requestData.bodyData.curr_body_read == requestData.bodyData.body_size)
-				requestData.processStatus = FINISHED_READ_BODY;
-		
-			return ;
-		}
-		else
-		{
-			// here we need to perform the write() operation
-			while (true)
-			{
-				ssize_t	writeAmount = write(requestData.bodyData.writeBodyFile->getFd(), &_requestBuffer[0], readBodyAmount);
-				if (writeAmount < 0)
-				{
-					if (errno == EINTR)
-						continue;
-					else
-					{
-						// try to correctly remove file if write operation is failed 
-						requestData.bodyData.writeBodyFile.clear();
-						if (requestData.bodyData.isUseTempFile)
-							tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
-						else
-							std::remove(requestData.targetData.combinedPath.c_str());
-					
-						generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::write() operation failed during reading the request body");
-					}
-				}
-				else
-				{
-					_requestBuffer.erase(0, writeAmount);
-					requestData.bodyData.curr_body_read += writeAmount;
-					break ;
-				}
-			}
-		
-			if (requestData.bodyData.curr_body_read == requestData.bodyData.body_size)
-				requestData.processStatus = FINISHED_READ_BODY;
-			return ;
-		}
-
-	}
-	else if (requestData.bodyData.body_type == 2)
-	{
-		size_t	endLinePos;
-
-		while (true)
-		{
-			if (requestData.bodyData.chunkedBodyIsFinished == true)
-			{
-				// we also skipped the first \r\n from 0\r\n
-				// but normal chunked with no trailer header
-				// is 0\r\n\r\n
-				endLinePos = _requestBuffer.find("\r\n");
-
-				if (endLinePos == std::string::npos)
-				{
-					if (requestData.bodyData.chunkedBodyHasTrailerHeader == true)
-					{
-						/*
-						though here we have to wait the buffer to find next \r\n
-						but should also have limit of how much length should a line be
-
-						we have MAX_HTTP_HEADER_LINE_LENGTH to protect now !
-
-						though the MAX_HTTP_HEADER_LINE_LENGTH has size
-						if not found the endLinePos can also mean that
-						the buffer string now contained only \r
-
-						*/
-						if (_requestBuffer.size() > MAX_HTTP_HEADER_LINE_LENGTH + 1)
-						{
-							requestData.bodyData.writeBodyFile.clear();
-							if (requestData.bodyData.isUseTempFile)
-								tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
-							else
-								std::remove(requestData.targetData.combinedPath.c_str());
-
-							generate4xx5xxErrorReponse(requestData, 403, false, "Reading request body::chunked::trailer header:: line too long");
-						}
-						else
-						{
-							// so we wait for next round
-							return ;
-						}
-					}
-					else
-					{
-						/*
-							For no trailer header, the \r\n would need to
-							close to 0\r\n so ican only be 0\r\n\r\n
-
-							So if the request buffer is longer or equal 2
-							but you haven't found i would throw 400 error
-						*/
-
-						if (_requestBuffer.size() >= 2)
-						{
-							requestData.bodyData.writeBodyFile.clear();
-							if (requestData.bodyData.isUseTempFile)
-								tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
-							else
-								std::remove(requestData.targetData.combinedPath.c_str());
-							
-							generate4xx5xxErrorReponse(requestData, 400, false, "Reading request body::chunked::no trailer header::i would say wrong ending for this chunked request. It should be \"0\\r\\n\\r\\n\"");
-
-						}
-						else
-						{
-							// here just wait for next buffer next round;
-							return ;
-						}
-
-					}
-				}
-				else
-				{
-					/* here is where we found the endLinePos 
-					*/
-
-					if (requestData.bodyData.chunkedBodyHasTrailerHeader)
-					{
-						if (endLinePos == 0)
-						{
-							requestData.processStatus = FINISHED_READ_BODY;
-							return ;
-						}
-						else
-						{
-							std::string headerLineStr = _requestBuffer.substr(0, endLinePos);
-
-							// check the limit
-							if (headerLineStr.empty() || headerLineStr.size() > MAX_HTTP_HEADER_LINE_LENGTH)
-							{
-								requestData.bodyData.writeBodyFile.clear();
-								if (requestData.bodyData.isUseTempFile)
-									tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
-								else
-									std::remove(requestData.targetData.combinedPath.c_str());
-								
-								generate4xx5xxErrorReponse(requestData, 400, false, "Reading request body::chunked::trailer header line size wrong");
-							}
-
-							size_t colonPos = headerLineStr.find_first_of(':');
-							if (colonPos == std::string::npos)
-							{
-								requestData.bodyData.writeBodyFile.clear();
-								if (requestData.bodyData.isUseTempFile)
-									tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
-								else
-									std::remove(requestData.targetData.combinedPath.c_str());
-
-								generate4xx5xxErrorReponse(requestData, 400, false, "chunked trailer header::name and value in the header field must seperated by \':\'");
-							}
-
-							std::string tempFieldName = headerLineStr.substr(0, colonPos);
-
-							if (tempFieldName.empty())
-							{
-								requestData.bodyData.writeBodyFile.clear();
-								if (requestData.bodyData.isUseTempFile)
-									tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
-								else
-									std::remove(requestData.targetData.combinedPath.c_str());
-
-								generate4xx5xxErrorReponse(requestData, 400, false, "chunked trailer header::name in header field must not empty string");
-							}
-
-							if (httpFieldNameChar().isMatch(tempFieldName) == false || allAlphaChar()[tempFieldName[0]] == false)
-								generate4xx5xxErrorReponse(requestData, 400, false, "name in header field must not contain any forbidden char");
-
-							/* we must check first if the header name matched the Trailer: header */
-							{
-								std::set<std::string>::const_iterator foundHeader = requestData.bodyData.trailerHeader.find(stringToLower(tempFieldName));
-								if (foundHeader == requestData.bodyData.trailerHeader.end())
-								{
-									// if not match then would error
-									requestData.bodyData.writeBodyFile.clear();
-									if (requestData.bodyData.isUseTempFile)
-										tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
-									else
-										std::remove(requestData.targetData.combinedPath.c_str());
-
-									generate4xx5xxErrorReponse(requestData, 400, false, "chunked trailer header::the header is not matched");
-								}
-							}
-
-							std::string tempSep = headerLineStr.substr(colonPos + 1);
-							tempSep = my_ft_trim(tempSep, " \t");
-
-							if (!tempSep.empty())
-							{
-								if (forbiddenFieldValueChar().isNotMatch(tempSep) == false)
-									generate4xx5xxErrorReponse(httpRequest, 400, false, "value in trailer header field must not contain any forbidden char");
-							}
-
-
-							tempFieldName = stringToLower(tempFieldName);
-
-							std::string &headerValueTarget = httpRequest.requestData.headerField[tempFieldName];
-
-							// separated by the ", "
-							if (headerValueTarget.empty() == false)
-								headerValueTarget += ", ";
-
-							headerValueTarget += tempSep;
-
-							tempSep.clear();
-						}
-					}
-					else
-					{
-						/*
-							if we found the \r\n, for no trailer chunked request.
-							it must be on position 0	
-						*/
-						if (endLinePos == 0)
-						{
-							requestData.processStatus = FINISHED_READ_BODY;
-							return ;
-						}
-						else
-						{
-							requestData.bodyData.writeBodyFile.clear();
-							if (requestData.bodyData.isUseTempFile)
-								tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
-							else
-								std::remove(requestData.targetData.combinedPath.c_str());
-							
-							generate4xx5xxErrorReponse(requestData, 400, false, "Reading request body::chunked::no trailer header::i would say wrong ending for this chunked request. It should be \"0\\r\\n\\r\\n\"");
-						}
-					}
-				}
-			}
-			else
-			{
-				if (requestData.bodyData.curr_body_read >= requestData.bodyData.body_size)
-				{
-					endLinePos = _requestBuffer.find("\r\n");
-
-					if (endLinePos == std::string::npos)
-					{
-						// maybe next read
-						return ;
-					}
-					std::string hexString = _requestBuffer.substr(0, endLinePos);
-				
-					size_t hexNum = 0;
-				
-					// convert that to size_t
-					if (hex_to_size_t(hexString, hexNum) == false)
-					{
-						// wrong chunked format, blame the client with 4xx error
-					
-						requestData.bodyData.writeBodyFile.clear();
-						if (requestData.bodyData.isUseTempFile)
-							tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
-						else
-							std::remove(requestData.targetData.combinedPath.c_str());
-					
-						generate4xx5xxErrorReponse(requestData, 400, false, "Request Body Chunked::wrong hex format");
-					}
-				
-					// now we have hexnum converted
-					/*
-						next is to check if it will exceed the _client_max_body_size	
-					*/
-					{
-						// both number must not exceed the _client_max_body_size
-						if (requestData.bodyData.body_size > requestData.bodyData.client_max_body_size || hexNum > requestData.bodyData.client_max_body_size)
-						{
-							requestData.bodyData.writeBodyFile.clear();
-							if (requestData.bodyData.isUseTempFile)
-								tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
-							else
-								std::remove(requestData.targetData.combinedPath.c_str());
-						
-							generate4xx5xxErrorReponse(requestData, 400, false, "Request Body Chunked::wrong hex format");
-						}
-					
-						/*
-							because using [hexNum + _body_size > _client_max_body_size
-
-							size_t + size_t might result as overflow so i have to
-							work around
-						*/
-						if (hexNum > requestData.bodyData.client_max_body_size - requestData.bodyData.body_size)
-						{
-							requestData.bodyData.writeBodyFile.clear();
-							if (requestData.bodyData.isUseTempFile)
-								tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
-							else
-								std::remove(requestData.targetData.combinedPath.c_str());
-						
-							generate4xx5xxErrorReponse(requestData, 413, false, "Request Body Chunked::Content Too Large");
-						}
-					
-						// 
-						if (hexNum == 0)
-						{
-							_requestBuffer.erase(0, endLinePos + 2);
-						
-							requestData.bodyData.chunkedBodyIsFinished = true;
-							continue;
-						}
-						requestData.bodyData.chunkedBodyIsFinished = false;
-					
-						// increase the body size to this chunk
-						requestData.bodyData.body_size += hexNum;
-					}
-				
-					// now we skip the hex num part
-					_requestBuffer.erase(0, endLinePos + 2);
-				}
-
-				size_t	readBodyAmount;
-				{
-					// calculate the read body amount here
-				
-					// the size of _requestBuffer is the most the the body can read right now
-				
-					// content-length body type has _body_size which specified its fixed size
-					readBodyAmount = requestData.bodyData.body_size - requestData.bodyData.curr_body_read;
-				
-					// then if the readBody amount is more than the _requestBuffer.size() then
-					if (readBodyAmount > _requestBuffer.size())
-					{
-						readBodyAmount = _requestBuffer.size();
-					}
-				}
-			
-				if (requestData.bodyData.discardBody == true)
-				{
-					// we just discard from the buffer by that calculated amount
-					_requestBuffer.erase(0, readBodyAmount);
-					requestData.bodyData.curr_body_read += readBodyAmount;
-
-					if (requestData.bodyData.curr_body_read == requestData.bodyData.body_size)
-						continue;
-				}
-				else
-				{
-					// here we need to perform the write() operation
-					while (true)
-					{
-						ssize_t	writeAmount = write(requestData.bodyData.writeBodyFile->getFd(), &_requestBuffer[0], readBodyAmount);
-						if (writeAmount < 0)
-						{
-							if (errno == EINTR)
-								continue;
-							else
-							{
-								// try to correctly remove file if write operation is failed 
-								requestData.bodyData.writeBodyFile.clear();
-								if (requestData.bodyData.isUseTempFile)
-									tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
-								else
-									std::remove(requestData.targetData.combinedPath.c_str());
-							
-								generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::write() operation failed during reading the request body");
-							}
-						}
-						else
-						{
-							_requestBuffer.erase(0, writeAmount);
-							requestData.bodyData.curr_body_read += writeAmount;
-							break ;
-						}
-					}
-				
-					if (requestData.bodyData.curr_body_read == requestData.bodyData.body_size)
-						continue ;
-				}
-			}
-		}
-	}
-	else
-	{
-		requestData.bodyData.writeBodyFile.clear();
-		if (requestData.bodyData.isUseTempFile)
-			tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
-		else
-			std::remove(requestData.targetData.combinedPath.c_str());
-		generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::_body_type should be only 0, 1, 2");
-	}
+	// {
+	// 	requestData.bodyData.writeBodyFile.clear();
+	// 	if (requestData.bodyData.isUseTempFile)
+	// 		tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+	// 	else
+	// 		std::remove(requestData.targetData.combinedPath.c_str());
+	// 	generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::_body_type should be only 0, 1, 2");
+	// }
 }
 
 void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientSocket, std::map<int, Socket>& socketMap)
@@ -4190,7 +3990,7 @@ void Http::multiformDataValidating(HttpRequest& requestData)
 			int fd;
 			while (true)
 			{
-				fd = open(multiFormData.combinedPathFileName->c_str(), O_CREAT | O_TRUNC | O_RDWR);
+				fd = open(multiFormData.combinedPathFileName->c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
 				if (fd >= 0)
 					break ;
 				if (errno == EINTR)
@@ -4332,7 +4132,7 @@ void Http::multiformDataReadBody(HttpRequest& requestData, std::string& multipar
 					break ;
 				}
 
-				if (writeAmount >= writeBuffer.size())
+				if (writeAmount >= static_cast<ssize_t>(writeBuffer.size()))
 				{
 					writeBuffer.clear();
 				}
