@@ -1337,7 +1337,7 @@ void	Http::requestLineCheck(HttpRequest& requestData, const Socket& clientSocket
 	// rough check for method first
 	{
 		if (requestData.requestData.method != "GET" && requestData.requestData.method != "POST" && requestData.requestData.method != "DELETE")
-			generate4xx5xxErrorReponse(requestData, 501, false, "Http::Method not implemented: " + requestData.requestData.method);
+			generate4xx5xxErrorReponse(requestData, 405, false, "Http::Method not implemented: " + requestData.requestData.method);
 	}
 
 	// before anything, we check the protocol version first
@@ -2236,17 +2236,21 @@ void	Http::buildCombinedPath(HttpRequest& requestData)
 	{
 		const std::vector<std::string>* foundLocationName = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "location_name");
 
-
-
 		if (!requestData.cgiData.cgiPath.empty())
 		{
+			requestData.targetData.cutPath = requestData.cgiData.cgiScriptPath.substr((*foundLocationName)[0].size() > requestData.cgiData.cgiScriptPath.size() ? requestData.cgiData.cgiScriptPath.size() : (*foundLocationName)[0].size());
+			if (requestData.targetData.cutPath.empty() || requestData.targetData.cutPath[0] != '/')
+				requestData.targetData.cutPath.insert(requestData.targetData.cutPath.begin(), '/');
+
 			if (!requestData.cgiData.cgiVirtualPath.empty())
 				requestData.cgiData.cgiPathTranslated = systemPath + requestData.cgiData.cgiVirtualPath;
-			requestData.targetData.combinedPath = systemPath + requestData.cgiData.cgiScriptPath;
+			requestData.targetData.combinedPath = systemPath + requestData.targetData.cutPath;
+			std::cout << "cgiVirtualPath: " << requestData.cgiData.cgiVirtualPath << std::endl;
+			std::cout << "cgiScriptPath: " << requestData.cgiData.cgiScriptPath << std::endl;
 		}
 		else
 		{
-			requestData.targetData.cutPath = requestData.targetData.targetPath.substr((*foundLocationName)[0].size());
+			requestData.targetData.cutPath = requestData.targetData.targetPath.substr((*foundLocationName)[0].size() > requestData.targetData.targetPath.size() ? requestData.targetData.targetPath.size() : (*foundLocationName)[0].size());
 			if (requestData.targetData.cutPath.empty() || requestData.targetData.cutPath[0] != '/')
 				requestData.targetData.cutPath.insert(requestData.targetData.cutPath.begin(), '/');
 
@@ -2541,6 +2545,10 @@ void Http::handleUploadPostRequest(HttpRequest& requestData)
 	if (httpFieldContentTypeExtract(contentTypeString, outPair) == false)
 		generate4xx5xxErrorReponse(requestData, 400, false, "Content-Type::invalid value");
 
+	struct stat fileStat;
+	std::memset(&fileStat, 0, sizeof(fileStat));
+	if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) == 0)
+		generate4xx5xxErrorReponse(requestData, 403, true, "Forbidden::stat()::the file already exists!");
 
 	if (outPair.first == "multipart/form-data")
 		handleRequestMultipart(requestData, outPair);
@@ -2664,6 +2672,7 @@ void	Http::validateRequestData(HttpRequest& requestData, const Socket& clientSoc
 	// get the targeted location block
 	targetLocationBlockGet(requestData);
 
+
 	/*
 	check if found Transfer-Encoding or Content-Length
 		if both are found , simply return error,
@@ -2691,8 +2700,11 @@ void	Http::validateRequestData(HttpRequest& requestData, const Socket& clientSoc
 	// has the cgi_pass
 	checkCgiPath(requestData);
 
+
+
 	// now we can check the file existence
 	{
+
 		buildCombinedPath(requestData);
 
 		//check for DELETE method first
@@ -3981,7 +3993,7 @@ void Http::multiformDataValidating(HttpRequest& requestData)
 			if (stat(multiFormData.combinedPathFileName->c_str(), &fileStat) == 0)
 			{
 				/* if == 0 meaning that stat() can open this part, which it should not*/
-				generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::multipart/form-data::file already exists!");
+				generate4xx5xxErrorReponse(requestData, 403, false, "Forbidden::multipart/form-data::file already exists!");
 			}
 			/* after checking with stat() proved that the target path is not exist then we open the file
 			to write the data*/

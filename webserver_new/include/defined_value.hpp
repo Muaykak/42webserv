@@ -20,6 +20,7 @@
 #define WEBSERV_EPOLL_WAIT_MILLISEC 1000
 #define WEBSERV_CLIENT_SOCKET_TIMEOUT_SECOND 60.0
 #define WEBSERV_CGI_SOCKET_TIMEOUT_SECOND 60.0
+#define WEBSERV_HTTP_REQUEST_TIMEOUT_SECOND 60.0
 
 /* max seconds to force SIGKILL to the CGI process
  usually, after we send SIGTERM to the process for a while*/

@@ -264,17 +264,37 @@ void ServerConfig::resolveLocationPath(std::string locationPath)
 const t_config_map *ServerConfig::findLocationBlock(std::string locationPath) const
    {
        std::string tempPath = locationPath;
-
+	   t_location_map::const_iterator it;
        while (true)
        {
-           t_location_map::const_iterator it = _locationsConfig.find(tempPath);
-           if (it != _locationsConfig.end())
-               return (&it->second);
-           
-           if (tempPath.size() > 0 && tempPath[tempPath.size() - 1] != '/') {
-               it = _locationsConfig.find(tempPath + "/");
-               if (it != _locationsConfig.end()) return (&it->second);
-           }
+		   it = _locationsConfig.find(tempPath);
+		   if (it != _locationsConfig.end())
+		   {
+			   std::cout << "find location block: " << tempPath << std::endl;
+			  return (&it->second);
+		   }
+		   if (tempPath.size() > 0) {
+				if (tempPath[tempPath.size() - 1] == '/')
+				{
+					tempPath.erase(tempPath.size() - 1);
+
+					it = _locationsConfig.find(tempPath);
+					if (it != _locationsConfig.end())
+					{
+						std::cout << "find location block: " << tempPath << std::endl;
+						return (&it->second);
+					}
+				}
+				else
+				{
+					it = _locationsConfig.find(tempPath + "/");
+					if (it != _locationsConfig.end())
+					{
+						std::cout << "find location block: " << tempPath + "/" << std::endl;
+						return (&it->second);
+					}
+				}
+			}
 
            if (tempPath.empty() || tempPath == "/")
                return (NULL);
@@ -285,7 +305,7 @@ const t_config_map *ServerConfig::findLocationBlock(std::string locationPath) co
            else if (lastSlash == 0)
                tempPath = "/";
            else
-               tempPath = tempPath.substr(0, lastSlash);
+               tempPath = tempPath.substr(0, lastSlash + 1);
        }
    }
 // ##############################################################

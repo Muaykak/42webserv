@@ -16,7 +16,8 @@ DEBUG_MODE=0  # Set to 1 to view Raw Response on errors
 # ==============================================================================
 RESET="\033[0m"
 BOLD="\033[1m"
-GREEN="\033[32m"
+GREEN="\033[32m"/home/paradari/Desktop/github/42webserv/webserver_new/wwwroot
+
 RED="\033[31m"
 YELLOW="\033[33m"
 CYAN="\033[36m"
