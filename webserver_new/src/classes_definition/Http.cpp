@@ -2369,6 +2369,10 @@ void Http::handleUploadOctetStream(HttpRequest& requestData)
 		for me, the best check is to just simply
 		open() with the target path
 	*/
+	struct stat fileStat;
+	std::memset(&fileStat, 0, sizeof(fileStat));
+	if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) == 0)
+		generate4xx5xxErrorReponse(requestData, 403, true, "Forbidden::stat()::the file already exists!");
 
 	//int fd = open(requestData.targetData.combinedPath.c_str(), O_TRUNC | O_CREAT | O_RDWR);
 	int fd;
@@ -2416,6 +2420,11 @@ void Http::handleUploadOctetStream(HttpRequest& requestData)
 
 void Http::handleUploadFoundType(HttpRequest& requestData, std::pair<std::string, std::vector<std::pair<std::string, std::string> > >& outPair)
 {
+	struct stat fileStat;
+	std::memset(&fileStat, 0, sizeof(fileStat));
+	if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) == 0)
+		generate4xx5xxErrorReponse(requestData, 403, true, "Forbidden::stat()::the file already exists!");
+
 	const std::set<std::string>& foundExtensionTable = contentTypeTable().contentTypeToExtension(outPair.first);
 	// here is the allowed Content-Type and we need to check corresponding file extension
 
@@ -2545,10 +2554,10 @@ void Http::handleUploadPostRequest(HttpRequest& requestData)
 	if (httpFieldContentTypeExtract(contentTypeString, outPair) == false)
 		generate4xx5xxErrorReponse(requestData, 400, false, "Content-Type::invalid value");
 
-	struct stat fileStat;
-	std::memset(&fileStat, 0, sizeof(fileStat));
-	if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) == 0)
-		generate4xx5xxErrorReponse(requestData, 403, true, "Forbidden::stat()::the file already exists!");
+	// struct stat fileStat;
+	// std::memset(&fileStat, 0, sizeof(fileStat));
+	// if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) == 0)
+	// 	generate4xx5xxErrorReponse(requestData, 403, true, "Forbidden::stat()::the file already exists!");
 
 	if (outPair.first == "multipart/form-data")
 		handleRequestMultipart(requestData, outPair);

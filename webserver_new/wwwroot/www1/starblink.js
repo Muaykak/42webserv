@@ -8,7 +8,7 @@
             stars.push({
                 x: Math.random() * canvas.width,
                 y: Math.random() * canvas.height,
-                radius: Math.random() * 1.5,
+                radius: Math.random() * 1.2,
                 alpha: Math.random(),
                 blinkSpeed: 0.01 + Math.random() * 0.03,
                 direction: Math.random() > 0.5 ? 1 : -1
