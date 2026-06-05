@@ -1,13 +1,6 @@
     const canvas = document.getElementById('starfield');
         const ctx = canvas.getContext('2d');
 
-        function resizeCanvas() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
-        resizeCanvas();
-        window.addEventListener('resize', resizeCanvas);
-
         const stars = [];
         const numStars = 150;
 
@@ -17,7 +10,7 @@
                 y: Math.random() * canvas.height,
                 radius: Math.random() * 1.5,
                 alpha: Math.random(),
-                twinkleSpeed: 0.01 + Math.random() * 0.03,
+                blinkSpeed: 0.01 + Math.random() * 0.03,
                 direction: Math.random() > 0.5 ? 1 : -1
             });
         }
@@ -25,7 +18,7 @@
         function animate() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             stars.forEach(star => {
-                star.alpha += star.twinkleSpeed * star.direction;
+                star.alpha += star.blinkSpeed * star.direction;
                 if (star.alpha >= 1 || star.alpha <= 0.1) {
                     star.direction *= -1;
                 }
