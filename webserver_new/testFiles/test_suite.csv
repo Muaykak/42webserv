@@ -1,6 +1,31 @@
-# รูปแบบ: Test_Name ; File_Name ; Expected_Code ; Host ; Port
-# -----------------------------------------------------------
+# test_name; req_file; expect_code; host; port; expect_headers
 
-Basic Get Request ; 01_Basic_GET ; 200 ; localhost ; 4343
-Basic Get html Request ; 02_GET_HTML ; 200 ; localhost ; 4343
-Basic Get Wrong Host ; 03_Get_wrong_host; 403; localhost ; 4343
+Request Line #1 basic valid; 01; 200; localhost; 4343;
+Request Line #2 unknown method; 02; 501; localhost; 4343;
+Request Line #3 method with small letter; 03; 400; localhost; 4343;
+Request Line #4 looong method; 04; 414; localhost; 4343;
+Request Line #5 wrong format space#1 ; 05; 400; localhost; 4343;
+Request Line #6 wrong format space#2 ; 06; 400; localhost; 4343;
+Request Line #7 wrong format space#3 ; 07; 400; localhost; 4343;
+Request Line #8 wrong format space#4 ; 08; 400; localhost; 4343;
+Request Line #9 wrong protocol #1 ; 09; 400; localhost; 4343;
+Request Line #10 wrong protocol #2 ; 10; 400; localhost; 4343;
+Request Line #11 wrong protocol #3 ; 11; 400; localhost; 4343;
+Request Line #12 wrong protocol #4 ; 12; 400; localhost; 4343;
+Request Line #13 wrong protocol #5 ; 13; 400; localhost; 4343;
+Request Line #14 wrong protocol #6 ; 14; 400; localhost; 4343;
+Request Line #15 wrong protocol #7 ; 15; 400; localhost; 4343;
+Request Line #16 wrong protocol #8 ; 16; 400; localhost; 4343;
+Request Line #17 wrong protocol version #1 ; 17; 505; localhost; 4343;
+Request Line #18 wrong protocol version #2 ; 18; 505; localhost; 4343;
+Request Line #19 Method is wrong Scope ; 19; 405; localhost; 4343;
+Request Line #20 Definitely Wrong URI ; 20; 400; localhost; 4343;
+Request Line #21 Definitely Wrong URI ; 21; 414; localhost; 4343;
+Request Line #22 Definitely Wrong URI ; 22; 400; localhost; 4343;
+Request Line #23 Wrong authority part URI ; 23; 400; localhost; 4343;
+Request Line #24 Wrong authority part URI ; 24; 400; localhost; 4343;
+Request Line #25 Wrong authority part URI ; 25; 400; localhost; 4343;
+Request Line #26 Wrong authority part URI ; 26; 400; localhost; 4343;
+Request Line #27 Wrong authority part URI ; 27; 403; localhost; 4343;
+Request Line #28 Wrong authority part URI ; 28; 400; localhost; 4343;
+Request Line #29 Wrong authority part URI ; 29; 400; localhost; 4343;

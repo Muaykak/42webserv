@@ -146,11 +146,20 @@ void WebServ::checkSocketTimeOut()
 	{
 		if (socketIt->second.getServerSockerType() == CLIENT_SOCKET)
 		{
-			if (std::difftime(currentTime, socketIt->second.getLastEventTime()) >= WEBSERV_CLIENT_SOCKET_TIMEOUT_SECOND)
+			if (socketIt->second.timeOutMarked == false && std::difftime(currentTime, socketIt->second.getLastEventTime()) >= WEBSERV_CLIENT_SOCKET_TIMEOUT_SECOND)
 			{
-				Logger::log(LC_INFO, "Closing Socket#%d due to timeout.", socketIt->first);
-				sockets.erase(socketIt++);
-				continue ;
+				std::map<int, s_webserv_custom_event>& customEventMap = _customEventMap;
+				s_webserv_custom_event& targetCustomEvent = customEventMap[socketIt->first];
+				targetCustomEvent.send408 = true;
+				socketIt->second.timeOutMarked = true;
+				
+				/* should not silently quit the working connection, need to send 408 back to client,
+				for this design we should be able to to that with sending custom event to client*/
+				//Logger::log(LC_INFO, "Closing Socket#%d due to timeout.", socketIt->first);
+				//sockets.erase(socketIt++);
+				//continue ;
+				++socketIt;
+				continue;
 			}
 		}
 		else if (socketIt->second.getServerSockerType() == CGI_FD_STDOUT)

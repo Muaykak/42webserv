@@ -6,7 +6,8 @@ _socketType(NO_TYPE),
 _server_listen_port(-1),
 _socketMap(NULL),
 _serversConfig(NULL),
-handleEventPtr(NULL)
+handleEventPtr(NULL),
+timeOutMarked(false)
 {
 	Logger::log(LC_DEBUG, "socket default construct called!;");
 	sleep(5);
@@ -20,7 +21,8 @@ _serversConfig(obj._serversConfig),
 _server_listen_port(obj._server_listen_port),
 _socketMap(obj._socketMap),
 _server_ip_host(obj._server_ip_host),
-handleEventPtr(obj.handleEventPtr)
+handleEventPtr(obj.handleEventPtr),
+timeOutMarked(obj.timeOutMarked)
 {
 	_lastEventTime = std::time(NULL);
 }
@@ -30,7 +32,8 @@ _socketType(NO_TYPE),
 _server_listen_port(-1),
 _socketMap(NULL),
 _serversConfig(NULL),
-handleEventPtr(NULL)
+handleEventPtr(NULL),
+timeOutMarked(false)
 {
 	_lastEventTime = std::time(NULL);
 
@@ -41,7 +44,8 @@ _socketType(NO_TYPE),
 _server_listen_port(-1),
 _socketMap(NULL),
 _serversConfig(NULL),
-handleEventPtr(NULL)
+handleEventPtr(NULL),
+timeOutMarked(false)
 {
 	_lastEventTime = std::time(NULL);
 }
@@ -58,6 +62,7 @@ Socket& Socket::operator=(const Socket &obj)
 		_socketMap = obj._socketMap;
 		_server_ip_host = obj._server_ip_host;
 		handleEventPtr = obj.handleEventPtr;
+		timeOutMarked = obj.timeOutMarked;
 	}
 	return (*this);
 }
@@ -499,7 +504,7 @@ bool Socket::handleClientSocketEvent(const s_webserv_event &event)
 				http->writeToClient();
 				// Handle http response
 			}
-			if (event.epollEventData->events & EPOLLIN){
+			if ((event.epollEventData->events & EPOLLIN) && timeOutMarked == false){
 				http->readFromClient();
 				// Handle http request
 			}
@@ -538,6 +543,14 @@ bool Socket::handleClientSocketEvent(const s_webserv_event &event)
 		// process local redirect here
 		if (event.customEventData->httpRequestData.hasData() == true)
 			http->directRequestProcess(event.customEventData->httpRequestData);
+
+		if (event.customEventData->send408.hasData() == true)
+		{
+			if (event.epollEventData.hasData() == false)
+				http->send408();
+			else
+				timeOutMarked = false;
+		}
 	}
 
 	return http->isKeepConnection();

@@ -1,10 +1,12 @@
 #include "../../include/classes/HttpRequest.hpp"
+#include "../../include/classes/TempFileManager.hpp"
 
 HttpRequest::HttpRequest()
 : processStatus(NO_STATUS),
+state_timeStamp(0),
 responseTargetPtr(NULL)
 {
-	serverData.targetLocationBlockPtr = NULL;
+	serverData.targetServerPtr = NULL;
 	serverData.targetLocationBlockPtr = NULL;
 
 	bodyData.body_size = 0;
@@ -24,6 +26,7 @@ responseTargetPtr(NULL)
 
 HttpRequest::HttpRequest(const HttpRequest &obj)
 : processStatus(obj.processStatus),
+state_timeStamp(obj.state_timeStamp),
 responseTargetPtr(obj.responseTargetPtr),
 requestData(obj.requestData),
 serverData(obj.serverData),
@@ -42,6 +45,7 @@ HttpRequest& HttpRequest::operator=(const HttpRequest& obj)
 		this->clear();
 
 		processStatus = obj.processStatus;
+		state_timeStamp = obj.state_timeStamp;
 		localRedirectCount = obj.localRedirectCount;
 		responseTargetPtr = obj.responseTargetPtr;
 		requestData = obj.requestData;
@@ -55,11 +59,19 @@ HttpRequest& HttpRequest::operator=(const HttpRequest& obj)
 
 HttpRequest::~HttpRequest()
 {
-
+	clear();
 }
 
 void HttpRequest::clear()
 {
+	if (bodyData.writeBodyFile.hasData())
+	{
+		if (bodyData.isUseTempFile)
+			tempFileManager().removeTempFile(this->bodyData.tempRequestBodyFileNum);
+		else
+			std::remove(targetData.combinedPath.c_str());
+	}
+
 	/* clean all and ready for the next request*/
 	processStatus = NO_STATUS;
 	responseTargetPtr = NULL;
@@ -105,4 +117,20 @@ void HttpRequest::clear()
 	bodyData.tempRequestBodyFileNum = 0;
 
 	localRedirectCount = 0;
+}
+
+void HttpRequest::setProcessStatus(e_http_process_status status)
+{
+	processStatus = status;
+	state_timeStamp = std::time(NULL);
+}
+
+e_http_process_status HttpRequest::getProcessStatus() const
+{
+	return (processStatus);
+}
+
+std::time_t HttpRequest::getStateTimeStamp() const
+{
+	return (state_timeStamp);
 }

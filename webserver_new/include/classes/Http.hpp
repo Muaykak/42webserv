@@ -35,6 +35,7 @@ class Http {
 		std::map<int, Socket>* _socketMapPtr;
 		std::vector<char>	_recvBuffer;
 		std::string _requestBuffer;
+		size_t		_requestBufferOffset;
 
 		bool	_keepConnection;
 		bool	_isEpollout;
@@ -126,10 +127,9 @@ class Http {
 		void	writeToClient();
 
 		void	directRequestProcess(HttpRequest requestData);
+		void	send408();
 
 		bool	isKeepConnection() const;
-
-
 
 		static bool extractHttpFieldValueString(const std::string& toExtract, std::deque<s_http_field_value_token>& tokenList, const std::string& delimiterCharSet, const std::string& optionalSpaceCharSet);
 		static bool httpFieldNormalSingletonTrim(const std::string& toExtract, std::string& outString);

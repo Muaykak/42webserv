@@ -451,7 +451,7 @@ void HttpCgi::validateCGIOUTresponse()
 				HttpRequest& newRequestData = *_cgiTargetResponse->httpRequestData;
 
 				/* what i need to change here */
-				newRequestData.processStatus = VALIDATING_REQUEST;
+				newRequestData.setProcessStatus(VALIDATING_REQUEST);
 
 				/* change the request target to new ?*/
 				newRequestData.requestData.requestTarget = string;
@@ -651,27 +651,27 @@ void HttpCgi::validateCGIOUTresponse()
 		}
 	}
 
-	{
-		std::cout << " =========== PRINT CGI HEADER ==========" << std::endl;
+	//{
+	//	std::cout << " =========== PRINT CGI HEADER ==========" << std::endl;
 
-		t_config_map::const_iterator it = _cgiTargetResponse->getHeader().begin();
+	//	t_config_map::const_iterator it = _cgiTargetResponse->getHeader().begin();
 
-		std::vector<std::string>::const_iterator vecIt;
-		while (it != _cgiTargetResponse->getHeader().end())
-		{
-			std::cout << it->first << ": ";
-			vecIt = it->second.begin();
-			while (vecIt != it->second.end())
-			{
-				if (vecIt != it->second.begin())
-					std::cout << ", ";
-				std::cout << *vecIt;
-				++vecIt;
-			}
-			std::cout << std::endl;
-			++it;
-		}
-	}
+	//	std::vector<std::string>::const_iterator vecIt;
+	//	while (it != _cgiTargetResponse->getHeader().end())
+	//	{
+	//		std::cout << it->first << ": ";
+	//		vecIt = it->second.begin();
+	//		while (vecIt != it->second.end())
+	//		{
+	//			if (vecIt != it->second.begin())
+	//				std::cout << ", ";
+	//			std::cout << *vecIt;
+	//			++vecIt;
+	//		}
+	//		std::cout << std::endl;
+	//		++it;
+	//	}
+	//}
 
 	/* complete checking the response header, now preparing to next process */
 	_cgiTargetResponse->generateResponse();
@@ -1022,6 +1022,10 @@ void HttpCgi::readFromCGI(Socket* currentSocket, const epoll_event& epollEvent)
 			}
 			else
 			{
+				//std::cout << "======== READ FROMC CGI RAW BUFFER READ FROM  =========" << '\n';
+				//std::cout << std::string(_readCgiBuffer.data(), readAmount) << '\n';
+				//std::cout << "=========================" << '\n';
+
 				_responseBuffer.append(_readCgiBuffer.data(), readAmount);
 				/* we can try the same method from http here. but the implementation
 				is a bit different from Http class so it would be kinda the same but it's not
@@ -1118,6 +1122,7 @@ void HttpCgi::sendToCGI(Socket* currentSocket, const epoll_event& epollEvent)
 
 			std::vector<char> temp(HTTP_WRITE_TO_CGI_BUFFER_SIZE);
 
+
 			while (needToAppendSize > 0)
 			{
 				ssize_t readAmount = read(_tempFileData->tempReadFileFd.getFd(), &temp[0], HTTP_WRITE_TO_CGI_BUFFER_SIZE);
@@ -1155,6 +1160,10 @@ void HttpCgi::sendToCGI(Socket* currentSocket, const epoll_event& epollEvent)
 
 		/* here we read from the tempFd that we used */
 		ssize_t	writeAmount = write(_cgiInSocket->getSocketFD().getFd(), &_writeCgiBuffer[0], HTTP_WRITE_TO_CGI_BUFFER_SIZE);
+
+		//static size_t count = 0;
+
+		//std::cout << "sendToCGI_count: " << count++ << "   writeAmount: " << writeAmount << '\n';
 
 		if (writeAmount < 0)
 		{

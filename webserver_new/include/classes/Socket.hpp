@@ -65,6 +65,7 @@ private:
 
 public:
 	in_addr_t	_client_addr_in;
+	bool		timeOutMarked;
 
 	Socket();
 	Socket(const Socket &obj);

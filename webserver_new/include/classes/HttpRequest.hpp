@@ -110,6 +110,8 @@ struct s_http_request_target_data
 class HttpRequest
 {
 	private:
+		e_http_process_status	processStatus;
+		std::time_t		state_timeStamp;
 
 	public:
 		HttpRequest();
@@ -117,8 +119,6 @@ class HttpRequest
 		HttpRequest& operator=(const HttpRequest& obj);
 
 		~HttpRequest();
-
-		e_http_process_status	processStatus;
 
 		HttpResponse*	responseTargetPtr;
 		s_http_request_header_data	requestData;
@@ -130,7 +130,9 @@ class HttpRequest
 		int localRedirectCount;
 
 		void clear();
-
+		void setProcessStatus(e_http_process_status status);
+		e_http_process_status getProcessStatus() const;
+		std::time_t getStateTimeStamp() const;
 };
 
 #endif

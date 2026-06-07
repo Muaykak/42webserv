@@ -22,6 +22,7 @@ struct s_webserv_custom_event
 {
 	OptionalData<HttpRequest> httpRequestData;
 	OptionalData<bool> clientSocketManualDisconnect;
+	OptionalData<bool> send408;
 };
 
 

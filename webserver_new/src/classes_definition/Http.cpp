@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <dirent.h>
+#include <limits>
 
 Http::Http()
 :
@@ -18,6 +19,8 @@ _recvBuffer(HTTP_RECV_BUFFER),
 _keepConnection(true),
 _isEpollout(false)
 {
+	_requestBuffer.reserve(HTTP_RECV_BUFFER * 2);
+	_requestBufferOffset = 0;
 }
 
 Http::Http(Socket *clientSocketPtr, std::map<int, Socket>* socketMapPtr)
@@ -28,6 +31,8 @@ _recvBuffer(HTTP_RECV_BUFFER),
 _keepConnection(true),
 _isEpollout(false)
 {
+	_requestBuffer.reserve(HTTP_RECV_BUFFER * 2);
+	_requestBufferOffset = 0;
 }
 
 Http::Http(const Http& obj)
@@ -38,6 +43,8 @@ _recvBuffer(HTTP_RECV_BUFFER),
 _keepConnection(true),
 _isEpollout(false)
 {
+	_requestBuffer.reserve(HTTP_RECV_BUFFER * 2);
+	_requestBufferOffset = 0;
 }
 
 Http::~Http()
@@ -46,9 +53,9 @@ Http::~Http()
 
 void Http::printHeaderField(HttpRequest& requestData) const
 {
-	if (requestData.processStatus != NO_STATUS
-	&& requestData.processStatus != READING_HEADER
-	&& requestData.processStatus != READING_REQUEST_LINE)
+	if (requestData.getProcessStatus() != NO_STATUS
+	&& requestData.getProcessStatus() != READING_HEADER
+	&& requestData.getProcessStatus() != READING_REQUEST_LINE)
 	{
 		std::cout << "====================================" << std::endl;
 		//print request line
@@ -160,6 +167,12 @@ void Http::cgiChildProcessNoRequestBody(HttpRequest& requestData, int pipeForCgi
 			envData().assignEnv("PATH_INFO", requestData.cgiData.cgiVirtualPath);
 			envData().assignEnv("PATH_TRANSLATED", requestData.cgiData.cgiPathTranslated);
 		}
+		else
+		{
+			envData().assignEnv("PATH_INFO", "");
+			envData().assignEnv("PATH_TRANSLATED", "");
+
+		}
 
 		/* SERVER_NAME just take the host part in Host: from header field, i don't know
 		if it is correct but the CGI documentation also state that we can use this so..*/
@@ -220,6 +233,10 @@ void Http::cgiChildProcessNoRequestBody(HttpRequest& requestData, int pipeForCgi
 			argv[0] = const_cast<char *>(requestData.cgiData.cgiPath.c_str());
 			argv[1] = const_cast<char *>(requestData.targetData.combinedPath.c_str());
 			argv[2] = NULL;
+
+			//char* argv[2];
+			//argv[0] = const_cast<char *>(requestData.cgiData.cgiPath.c_str());
+			//argv[1] = NULL;
 
 			//int storeTemp = open("/home/muaykak/Coding/42webserv/webserver_new/StoreTemp.txt", O_CREAT | O_RDWR | O_TRUNC, 0644);
 
@@ -291,11 +308,18 @@ void Http::cgiChildProcessNoRequestBody(HttpRequest& requestData, int pipeForCgi
 
 void	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 {
-	if (httpRequest.processStatus == NO_STATUS)
-		httpRequest.processStatus = READING_REQUEST_LINE;
+	if (httpRequest.getProcessStatus() == NO_STATUS)
+		httpRequest.setProcessStatus(READING_REQUEST_LINE);
 
-	if (httpRequest.processStatus != READING_REQUEST_LINE)
+	if (httpRequest.getProcessStatus() != READING_REQUEST_LINE)
 		return ;
+	
+	{
+		std::time_t currentTime = std::time(NULL);
+		if (std::difftime(currentTime, httpRequest.getStateTimeStamp()) >= WEBSERV_HTTP_REQUEST_TIMEOUT_SECOND)
+			generate4xx5xxErrorReponse(httpRequest, 408, false, "Http::Request Timeout::took too much time to send the request header");
+	}
+	
 
 	/* we have to bind our request with response queue first */
 	/* check if the request already bind with the response queue yet*/
@@ -340,10 +364,17 @@ void	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 		// doesn't find any endline delimiter
 		// will process later
 		if (endLinePos == _requestBuffer.npos){
+			/* really need to check if the request line is tooo long */
+			if (_requestBuffer.size() - currIndex >= MAX_HTTP_REQUEST_LINE_LENGTH)
+				generate4xx5xxErrorReponse(httpReq, 414, false, "REQUEST LINE IS TOO LONG");
+
 			if (currIndex != 0)
 				_requestBuffer = _requestBuffer.substr(currIndex);
 			return ;
 		}
+
+		if (endLinePos - currIndex >= MAX_HTTP_REQUEST_LINE_LENGTH)
+			generate4xx5xxErrorReponse(httpReq, 414, false, "REQUEST LINE IS TOO LONG");
 
 		// find pos any whitespaces but not '\n'
 		size_t	pos = htabSp().findFirstCharset(_requestBuffer, currIndex, endLinePos - currIndex);
@@ -389,7 +420,7 @@ void	Http::parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize)
 		currIndex = endLinePos + 2;
 	}
 
-	httpReq.processStatus = READING_HEADER;
+	httpReq.setProcessStatus(READING_HEADER);
 	return ;
 }
 
@@ -411,8 +442,15 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 	std::string	tempSep;
 	size_t	colonPos;
 
-	while (httpRequest.processStatus == READING_HEADER)
+	while (httpRequest.getProcessStatus() == READING_HEADER)
 	{
+		/* check timeout */
+		{
+			std::time_t currentTime = std::time(NULL);
+			if (std::difftime(currentTime, httpRequest.getStateTimeStamp()) >= WEBSERV_HTTP_REQUEST_TIMEOUT_SECOND)
+				generate4xx5xxErrorReponse(httpRequest, 408, false, "Http::Request Timeout::took too much time to send the request header");
+		}
+
 		endLinePos = _requestBuffer.find("\r\n", currIndex);
 
 		// cannot find endline yet, process next read later
@@ -427,7 +465,7 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 		if (endLinePos == currIndex)
 		{
 
-			httpRequest.processStatus = VALIDATING_REQUEST;
+			httpRequest.setProcessStatus(VALIDATING_REQUEST);
 			if (currIndex + 2 >= reqBuffSize)
 				_requestBuffer.clear();
 			else
@@ -586,11 +624,11 @@ void	Http::generate3xxRedirectResponse(HttpRequest& requestData, unsigned int st
 
 	if (requestData.bodyData.readingRequestBodyPtr)
 	{
-		requestData.processStatus = READ_BODY;
+		requestData.setProcessStatus(READ_BODY);
 		requestData.bodyData.discardBody = true;
 	}
 	else
-		requestData.processStatus = FINISHED_READ_BODY;
+		requestData.setProcessStatus(FINISHED_READ_BODY);
 
 	//throw HttpThrowStatus(returnCode, (*return_redirect)[1]);
 
@@ -689,7 +727,8 @@ void	Http::generate4xx5xxErrorReponseChildProcess(HttpRequest& requestData, unsi
 
 	HttpResponse& targetResponse = *requestData.responseTargetPtr;
 
-	targetResponse.keepAfterResponse = keepAfterResponse;
+	if (targetResponse.keepAfterResponse == true)
+		targetResponse.keepAfterResponse = keepAfterResponse;
 	targetResponse.contentType = "text/html";
 
 	targetResponse.addHeader("Status", toString(errorStatusCode));
@@ -842,9 +881,21 @@ void	Http::generate4xx5xxErrorReponse(HttpRequest& requestData, unsigned int err
 		}
 	}
 
+
 	HttpResponse& targetResponse = *requestData.responseTargetPtr;
 
-	targetResponse.keepAfterResponse = keepAfterResponse;
+	if (errorStatusCode == 405)
+	{
+		const std::vector<std::string>* foundAllowedMethodPtr = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "allowed_methods");
+
+		for (size_t i = 0; i < foundAllowedMethodPtr->size(); i++)
+		{
+			targetResponse.addHeader("Allow", (*foundAllowedMethodPtr)[i]);
+		}
+	}
+
+	if (targetResponse.keepAfterResponse == true)
+		targetResponse.keepAfterResponse = keepAfterResponse;
 	targetResponse.statusLine->first = errorStatusCode;
 	targetResponse.contentType = "text/html";
 
@@ -897,7 +948,7 @@ void	Http::generate4xx5xxErrorReponse(HttpRequest& requestData, unsigned int err
 
 void	Http::validateRequestBufferSelectServer(HttpRequest& requestData, const Socket& clientSocket,const std::string& authStr)
 {
-	if (requestData.processStatus != VALIDATING_REQUEST)
+	if (requestData.getProcessStatus() != VALIDATING_REQUEST)
 		return ;
 	printHeaderField(requestData);
 	//separate port and host from authStr
@@ -1061,6 +1112,43 @@ void	Http::validateRequestBufferSelectServer(HttpRequest& requestData, const Soc
 		}
 		else
 		{
+
+			if (host.empty() || host.size() > 255)
+				generate4xx5xxErrorReponse(requestData, 400, false, "Invalid::URI Authority::Hostname length is invalid");
+
+			bool lastCharWasDot = true;
+			size_t labelLength = 0;
+
+			for (size_t i = 0; i < host.length(); ++i)
+			{
+				char c = host[i];
+
+				if (c == ';')
+					generate4xx5xxErrorReponse(requestData, 400, false, "Invalid::URI Authority::Semicolon is forbidden in Hostname");
+
+				if (c == '.')
+				{
+					if (lastCharWasDot || (i > 0 && host[i - 1] == '-'))
+						generate4xx5xxErrorReponse(requestData, 400, false, "Invalid::URI Authority::Malformed dots/hyphens placement");
+					lastCharWasDot = true;
+					labelLength = 0;
+				}
+				else if (std::isalnum(c) || c == '-')
+				{
+					if (lastCharWasDot && c == '-')
+						generate4xx5xxErrorReponse(requestData, 400, false, "Invalid::URI Authority::Label cannot start with a hyphen");
+					if (++labelLength > 63)
+						generate4xx5xxErrorReponse(requestData, 400, false, "Invalid::URI Authority::Label component too long (>63)");
+					lastCharWasDot = false;
+				}
+				else
+					generate4xx5xxErrorReponse(requestData, 400, false, "Invalid::URI Authority::Illegal characters detected in hostname");
+			}
+
+			if (host[host.length() - 1] == '-')
+				generate4xx5xxErrorReponse(requestData, 400, false, "Invalid::URI Authority::Hostname cannot end with a hyphen");
+
+			host = stringToLower(host);
 			/*
 
 				this part mean that is host of authority part
@@ -1094,7 +1182,7 @@ void	Http::validateRequestBufferSelectServer(HttpRequest& requestData, const Soc
 					while (tempNameVecIt != serverVecIt->getServerNameVec().end())
 					{
 						// if matches, then pick this server and break
-						if (*tempNameVecIt == host)
+						if (stringToLower(*tempNameVecIt) == host)
 						{
 							requestData.serverData.targetServerPtr = &(*serverVecIt);
 							break ;
@@ -1337,7 +1425,7 @@ void	Http::requestLineCheck(HttpRequest& requestData, const Socket& clientSocket
 	// rough check for method first
 	{
 		if (requestData.requestData.method != "GET" && requestData.requestData.method != "POST" && requestData.requestData.method != "DELETE")
-			generate4xx5xxErrorReponse(requestData, 405, false, "Http::Method not implemented: " + requestData.requestData.method);
+			generate4xx5xxErrorReponse(requestData, 501, false, "Http::Method not implemented: " + requestData.requestData.method);
 	}
 
 	// before anything, we check the protocol version first
@@ -1376,12 +1464,23 @@ void	Http::checkRequestBodyType(HttpRequest& requestData)
 {
 
 	// check the client_max_body_size of the server block if exist first
-	const std::vector<std::string>* clientMaxBodySizePtr = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "client_max_body_size");
-	if (clientMaxBodySizePtr == NULL || clientMaxBodySizePtr->size() != 1)
+	const std::vector<std::string>* client_max_body_size_ptr = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "client_max_body_size");
+
+	// internal error
+	if (client_max_body_size_ptr == NULL || client_max_body_size_ptr->size() != 1 || digitChar().isMatch((*client_max_body_size_ptr)[0]) == false)
+		generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::cannot find client_max_body_size value, or the value is not correct");
+
+	requestData.bodyData.client_max_body_size = 0;
+	if (string_to_size_t((*client_max_body_size_ptr)[0], requestData.bodyData.client_max_body_size) == false)
 	{
-		// treat as internal error
-		generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::cannot find client_max_body_size, Or it has no matching element");
+		// cannot torelate because no boundary to check client request
+		generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error:: client_max_body_size value conversion failed");
 	}
+			
+	if (requestData.bodyData.client_max_body_size == 0)
+		requestData.bodyData.client_max_body_size = std::numeric_limits<size_t>::max();
+
+	std::cout << "CLIENT MAX BODY: " << requestData.bodyData.client_max_body_size << std::endl;
 
 	// 
 	std::map<std::string, std::string>::const_iterator content_length = requestData.requestData.headerField.find("content-length");
@@ -1440,19 +1539,6 @@ void	Http::checkRequestBodyType(HttpRequest& requestData)
 
 		// now check the body size if it exceeds the client_max_body_size
 		{
-			const std::vector<std::string>* client_max_body_size_ptr = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "client_max_body_size");
-
-			// internal error
-			if (client_max_body_size_ptr == NULL || client_max_body_size_ptr->size() != 1 || digitChar().isMatch((*client_max_body_size_ptr)[0]) == false)
-				generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::cannot find client_max_body_size value, or the value is not correct");
-
-			requestData.bodyData.client_max_body_size = 0;
-			if (string_to_size_t((*client_max_body_size_ptr)[0], requestData.bodyData.client_max_body_size) == false)
-			{
-				// cannot torelate because no boundary to check client request
-				generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error:: client_max_body_size value conversion failed");
-			}
-			
 			if (requestData.bodyData.body_size > requestData.bodyData.client_max_body_size)
 				generate4xx5xxErrorReponse(requestData, 413, false, "HTTP::request Content-Length is Larger than client_max_body_size");
 
@@ -1595,7 +1681,7 @@ void	Http::checkMethod(HttpRequest& requestData)
 	// return 405 Not Implemented
 	if (found == false)
 	{
-		generate4xx5xxErrorReponse(requestData, 405, false, "Http::method::not implemented::" + requestData.requestData.method);
+		generate4xx5xxErrorReponse(requestData, 405, false, "Http::method not allowed in this location::" + requestData.requestData.method);
 	}
 }
 
@@ -1608,33 +1694,43 @@ void	Http::checkCgiPath(HttpRequest& requestData)
 	// if found then we check
 	if (foundCgiPass != NULL)
 	{
-		if (foundCgiPass->size() < 2 || foundCgiPass->size() % 2 != 0)
+		if (foundCgiPass->size() < 2)
 			generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CgiPass on this location block is misconfigured");
 
 		// convert into temporary map
-		std::map<std::string, std::string>	tempCgiPassMap;
+		std::map<std::string, std::vector<std::string> >	tempCgiPassMap;
 		{
-			size_t i = 0;
-			while (i < foundCgiPass->size())
+			std::vector<std::string>::const_iterator vecIt = foundCgiPass->begin();
+			std::vector<std::string>::const_iterator nextIt = vecIt;
+			while (vecIt != foundCgiPass->end())
 			{
-				if ((*foundCgiPass)[i][0] != '.')
+				if ((*vecIt)[0] != '.')
 					generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CgiPass on this location block is misconfigured");
-				
-				tempCgiPassMap[(*foundCgiPass)[i]] = (*foundCgiPass)[i + 1];
 
-				i += 2;
+				nextIt = vecIt + 1;
+				while (nextIt != foundCgiPass->end())
+				{
+					if ((*nextIt)[0] == '.')
+						break ;
+					++nextIt;
+				}
+
+				tempCgiPassMap.insert(std::make_pair(*vecIt, std::vector<std::string>(vecIt + 1, nextIt)));
+				if (tempCgiPassMap[*vecIt].size() < 1)
+					generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CgiPass on this location block is misconfigured");
+				vecIt = nextIt;
 			}
 		}
 
 		std::string tempPath = (*requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "location_name"))[0];
 		// devide into segment
 
-		std::string tempTofil = requestData.targetData.targetPath.substr(tempPath.size());
+		std::string tempTofil = requestData.targetData.targetPath.substr(tempPath.size() > requestData.targetData.targetPath.size() ? requestData.targetData.targetPath.size() : tempPath.size());
 		std::cout << "tempToFill: " << tempTofil << std::endl;
 		size_t	slashPos;
 		size_t	dotPos;
 		std::string tempExtensionStr;
-		std::map<std::string, std::string>::iterator it;
+		std::map<std::string, std::vector<std::string> >::iterator it;
 		while (!tempTofil.empty())
 		{
 			slashPos = tempTofil.find_first_of('/');
@@ -1668,7 +1764,21 @@ void	Http::checkCgiPath(HttpRequest& requestData)
 				}
 				else
 				{
-					requestData.cgiData.cgiPath = it->second;
+					/* check if that CGI pass allow this request method to be cgi */
+					std::vector<std::string>& target = it->second;
+					if (target.size() > 1)
+					{
+						bool found = false;
+						for (size_t i = 1; i < target.size(); i++)
+						{
+							if (target[i] == requestData.requestData.method)
+								found = true;
+						}
+						if (found == false)
+							break ;
+					}
+
+					requestData.cgiData.cgiPath = target[0];
 					requestData.cgiData.cgiScriptPath = tempPath;
 					Logger::log(LC_RES_NOK_LOG, "cgiScriptPath = %s", tempPath.c_str());
 					requestData.cgiData.cgiVirtualPath = tempTofil;
@@ -1687,6 +1797,13 @@ void	Http::checkCgiPath(HttpRequest& requestData)
 	if (requestData.cgiData.cgiPath.empty())
 		return ;
 
+	// /* if cgiPath is relative path must turn it into absulute path */
+	if (requestData.cgiData.cgiPath[0] != '/')
+	{
+		std::string pwdString = envData().findValue("PWD");
+		if (!pwdString.empty())
+			requestData.cgiData.cgiPath = pwdString + '/' + requestData.cgiData.cgiPath;
+	}
 
 	// now we know if the request target is CGI or not by
 	// checking _cgiPath.empty()
@@ -1816,12 +1933,12 @@ void Http::handleDeleteRequest(HttpRequest& requestData)
 			HttpResponse& targetResponse = *requestData.responseTargetPtr;
 
 			targetResponse.responseBodyType = HTTP_RESPONSE_NOBODY;
-			targetResponse.keepAfterResponse = true;
+			//targetResponse.keepAfterResponse = true;
 			targetResponse.statusLine->first = 204;
 			targetResponse.statusLine->second = "No Content";
 
 			targetResponse.generateResponse();
-			requestData.processStatus = FINISHED_READ_BODY;
+			requestData.setProcessStatus(FINISHED_READ_BODY);
 			return ;
 		}
 	}
@@ -1956,7 +2073,7 @@ void	Http::handleGetRequest(HttpRequest& requestData, bool isEndWithSlash, const
 					targetResponse.responseBodyType = HTTP_RESPONSE_BODY_FIXED_STR;
 					targetResponse.fixedBodyStr = tempBodyString;
 
-					requestData.processStatus = FINISHED_READ_BODY;
+					requestData.setProcessStatus(FINISHED_READ_BODY);
 					targetResponse.generateResponse();
 					return ;
 				}
@@ -2052,11 +2169,11 @@ void	Http::handleGetRequest(HttpRequest& requestData, bool isEndWithSlash, const
 			targetResponse.responseBodyType = HTTP_RESPONSE_BODY_FILE;
 			targetResponse.fileBody = targetFile;
 			targetResponse.fileSize = fileStat.st_size;
-			targetResponse.keepAfterResponse = true;
+			//targetResponse.keepAfterResponse = true;
 			targetResponse.statusLine->first = 200;
 			targetResponse.statusLine->second = "OK";
 
-			requestData.processStatus = FINISHED_READ_BODY;
+			requestData.setProcessStatus(FINISHED_READ_BODY);
 			targetResponse.generateResponse();
 
 			return ;
@@ -2147,7 +2264,7 @@ void	Http::handleGetRequest(HttpRequest& requestData, bool isEndWithSlash, const
 
 			}
 
-			requestData.processStatus = FINISHED_READ_BODY;
+			requestData.setProcessStatus(FINISHED_READ_BODY);
 			return ;
 
 			// GET to CGI didn't build yet so
@@ -2245,8 +2362,10 @@ void	Http::buildCombinedPath(HttpRequest& requestData)
 			if (!requestData.cgiData.cgiVirtualPath.empty())
 				requestData.cgiData.cgiPathTranslated = systemPath + requestData.cgiData.cgiVirtualPath;
 			requestData.targetData.combinedPath = systemPath + requestData.targetData.cutPath;
+			std::cout << "cgi path: " << requestData.cgiData.cgiPath << std::endl;
 			std::cout << "cgiVirtualPath: " << requestData.cgiData.cgiVirtualPath << std::endl;
 			std::cout << "cgiScriptPath: " << requestData.cgiData.cgiScriptPath << std::endl;
+			std::cout << "cgiPathTranslated: " << requestData.cgiData.cgiPathTranslated << std::endl;
 		}
 		else
 		{
@@ -2372,36 +2491,72 @@ void Http::handleUploadOctetStream(HttpRequest& requestData)
 	struct stat fileStat;
 	std::memset(&fileStat, 0, sizeof(fileStat));
 	if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) == 0)
-		generate4xx5xxErrorReponse(requestData, 403, true, "Forbidden::stat()::the file already exists!");
-
-	//int fd = open(requestData.targetData.combinedPath.c_str(), O_TRUNC | O_CREAT | O_RDWR);
-	int fd;
-	while (true)
 	{
-		fd = open(requestData.targetData.combinedPath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+		/* if the target is a directory we don't need to upload anything */
+		if (S_ISDIR(fileStat.st_mode))
+		{
+			requestData.bodyData.tempRequestBodyFileNum = tempFileManager().generateNewTempFile();
+			std::string tempFilePath = TEMP_FILE_DIR + toString(requestData.bodyData.tempRequestBodyFileNum);
 
-		if (fd >= 0)
-			break ;
-		if (errno == EINTR)
-			continue ;
-		break;
+			int fd;
+			while (true)
+			{
+				fd = open(tempFilePath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+
+				if (fd >= 0)
+					break ;
+				if (errno == EINTR)
+					continue ;
+				break;
+			}
+
+			if (fd < 0)
+			{
+				generate4xx5xxErrorReponse(requestData, 500, false, "HTTP::validating::POST method to non-cgi to directory Path::open() error::" + std::string(std::strerror(errno)));
+			}
+
+			FileDescriptor tempFd(fd);
+
+			requestData.bodyData.writeBodyFile = tempFd;
+			requestData.bodyData.isUseTempFile = true;
+			requestData.bodyData.readBody = true;
+			requestData.bodyData.discardBody = false;
+		}
+		else 
+			generate4xx5xxErrorReponse(requestData, 403, true, "Forbidden::stat()::the file already exists!");
+	}
+	else
+	{
+		//int fd = open(requestData.targetData.combinedPath.c_str(), O_TRUNC | O_CREAT | O_RDWR);
+		int fd;
+		while (true)
+		{
+			fd = open(requestData.targetData.combinedPath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+
+			if (fd >= 0)
+				break ;
+			if (errno == EINTR)
+				continue ;
+			break;
+		}
+
+
+		if (fd < 0)
+		{
+			// i would insider this as internal error ?
+			generate4xx5xxErrorReponse(requestData, 500, false, "POST method to non-cgi with Content-Type: application/octet-stream::open() error");
+		}
+
+		FileDescriptor tempFd(fd);
+
+		//requestData.bodyData.bodyFd.push_back(fd);
+		requestData.bodyData.writeBodyFile = tempFd;
+
+		requestData.bodyData.isUseTempFile = false;
+		requestData.bodyData.readBody = true;
+		requestData.bodyData.discardBody = false;
 	}
 
-
-	if (fd < 0)
-	{
-		// i would insider this as internal error ?
-		generate4xx5xxErrorReponse(requestData, 500, false, "POST method to non-cgi with Content-Type: application/octet-stream::open() error");
-	}
-
-	FileDescriptor tempFd(fd);
-
-	//requestData.bodyData.bodyFd.push_back(fd);
-	requestData.bodyData.writeBodyFile = tempFd;
-
-	requestData.bodyData.isUseTempFile = false;
-	requestData.bodyData.readBody = true;
-	requestData.bodyData.discardBody = false;
 
 	if (requestData.bodyData.checkExpectBody == true)
 	{
@@ -2423,48 +2578,16 @@ void Http::handleUploadFoundType(HttpRequest& requestData, std::pair<std::string
 	struct stat fileStat;
 	std::memset(&fileStat, 0, sizeof(fileStat));
 	if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) == 0)
-		generate4xx5xxErrorReponse(requestData, 403, true, "Forbidden::stat()::the file already exists!");
-
-	const std::set<std::string>& foundExtensionTable = contentTypeTable().contentTypeToExtension(outPair.first);
-	// here is the allowed Content-Type and we need to check corresponding file extension
-
-	if (foundExtensionTable.size() != 0)
 	{
-		//
-		std::string routeExtension;
+		if (S_ISDIR(fileStat.st_mode))
 		{
-			size_t pos = requestData.targetData.combinedPath.find_last_of('.');
-
-			if (pos != std::string::npos && pos + 1 < requestData.targetData.combinedPath.size())
-			{
-				routeExtension = requestData.targetData.combinedPath.substr(pos + 1);
-			}
-		}
-
-		if (routeExtension.empty())
-		{
-			generate4xx5xxErrorReponse(requestData, 403, false, "POST to non-cgi::the Content-Type and the target file extension are not matched");
-		}
-
-		if (foundExtensionTable.find(routeExtension) != foundExtensionTable.end())
-		{
-			//int fd = open(requestData.targetData.combinedPath.c_str(), O_TRUNC | O_CREAT | O_RDWR);
-
-			//struct stat fileStat;
-			//std::memset(&fileStat, 0, sizeof(fileStat));
-			//if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) != 0)
-			//{
-			//	std::string ErrMsg = "Http::stat()::target_path " + requestData.targetData.targetPath + "::";
-			//	ErrMsg += strerror(errno);
-			//	if (errno == EACCES)
-			//		generate4xx5xxErrorReponse(requestData, 403, true, ErrMsg);
-			//	generate4xx5xxErrorReponse(requestData, 404, true, ErrMsg);
-			//}
+			requestData.bodyData.tempRequestBodyFileNum = tempFileManager().generateNewTempFile();
+			std::string tempFilePath = TEMP_FILE_DIR + toString(requestData.bodyData.tempRequestBodyFileNum);
 
 			int fd;
 			while (true)
 			{
-				fd = open(requestData.targetData.combinedPath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+				fd = open(tempFilePath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
 
 				if (fd >= 0)
 					break ;
@@ -2475,64 +2598,131 @@ void Http::handleUploadFoundType(HttpRequest& requestData, std::pair<std::string
 
 			if (fd < 0)
 			{
-				// i would insider this as internal error ?
-				generate4xx5xxErrorReponse(requestData, 500, false, "POST method to non-cgi with Content-Type: " + outPair.first + "::open() failed");
+				generate4xx5xxErrorReponse(requestData, 500, false, "HTTP::validating::POST method to non-cgi to directory Path::open() error::" + std::string(std::strerror(errno)));
 			}
 
 			FileDescriptor tempFd(fd);
-		
-			//requestData.bodyData.bodyFd.push_back(fd);
-			requestData.bodyData.writeBodyFile = tempFd;
 
-			requestData.bodyData.isUseTempFile = false;
+			requestData.bodyData.writeBodyFile = tempFd;
+			requestData.bodyData.isUseTempFile = true;
 			requestData.bodyData.readBody = true;
 			requestData.bodyData.discardBody = false;
-		
-			if (requestData.bodyData.checkExpectBody == true)
+		}
+		else
+			generate4xx5xxErrorReponse(requestData, 403, true, "Forbidden::stat()::the file already exists!");
+	}
+	else
+	{
+		const std::set<std::string>& foundExtensionTable = contentTypeTable().contentTypeToExtension(outPair.first);
+		// here is the allowed Content-Type and we need to check corresponding file extension
+
+		if (foundExtensionTable.size() != 0)
+		{
+			//
+			std::string routeExtension;
 			{
-				HttpResponse& target = *requestData.responseTargetPtr;
+				size_t pos = requestData.targetData.combinedPath.find_last_of('.');
 
-				s_response_buff	tempBuff;
+				if (pos != std::string::npos && pos + 1 < requestData.targetData.combinedPath.size())
+				{
+					routeExtension = requestData.targetData.combinedPath.substr(pos + 1);
+				}
+			}
 
-				std::string expectResponse = "HTTP/1.1 100 Continue\r\n\r\n";
+			if (routeExtension.empty())
+			{
+				generate4xx5xxErrorReponse(requestData, 403, false, "POST to non-cgi::the Content-Type and the target file extension are not matched");
+			}
 
-				tempBuff.currentIndex = 0;
-				tempBuff.buffer.insert(tempBuff.buffer.end(), expectResponse.begin(), expectResponse.end());
+			if (foundExtensionTable.find(routeExtension) != foundExtensionTable.end())
+			{
+				//int fd = open(requestData.targetData.combinedPath.c_str(), O_TRUNC | O_CREAT | O_RDWR);
 
-				target.pushNewResponseBuff(tempBuff);
+				//struct stat fileStat;
+				//std::memset(&fileStat, 0, sizeof(fileStat));
+				//if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) != 0)
+				//{
+				//	std::string ErrMsg = "Http::stat()::target_path " + requestData.targetData.targetPath + "::";
+				//	ErrMsg += strerror(errno);
+				//	if (errno == EACCES)
+				//		generate4xx5xxErrorReponse(requestData, 403, true, ErrMsg);
+				//	generate4xx5xxErrorReponse(requestData, 404, true, ErrMsg);
+				//}
+
+				int fd;
+				while (true)
+				{
+					fd = open(requestData.targetData.combinedPath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+
+					if (fd >= 0)
+						break ;
+					if (errno == EINTR)
+						continue ;
+					break;
+				}
+
+				if (fd < 0)
+				{
+					// i would insider this as internal error ?
+					generate4xx5xxErrorReponse(requestData, 500, false, "POST method to non-cgi with Content-Type: " + outPair.first + "::open() failed");
+				}
+
+				FileDescriptor tempFd(fd);
+			
+				//requestData.bodyData.bodyFd.push_back(fd);
+				requestData.bodyData.writeBodyFile = tempFd;
+
+				requestData.bodyData.isUseTempFile = false;
+				requestData.bodyData.readBody = true;
+				requestData.bodyData.discardBody = false;
+			
+			}
+			else
+			{
+				generate4xx5xxErrorReponse(requestData, 403, false, "POST to non-cgi::the Content-Type and the target file extension are not matched");
 			}
 
 		}
 		else
 		{
-			generate4xx5xxErrorReponse(requestData, 403, false, "POST to non-cgi::the Content-Type and the target file extension are not matched");
+			// create response for un supported media type
+			HttpResponse& target = *requestData.responseTargetPtr;
+
+			target.responseBodyType = HTTP_RESPONSE_NOBODY;
+			target.statusLine->first = 415;
+			target.keepAfterResponse = false;
+			target.statusLine->second = "Unsupported Media Type";
+
+			// get all the content type to the response header
+			{
+				const std::map<std::string, std::set<std::string> >& contentTypetoExtentionMap = contentTypeTable().getContentTypetoExtensionMap();
+				std::map<std::string, std::set<std::string> >::const_iterator it = contentTypetoExtentionMap.begin();
+
+				while (it != contentTypetoExtentionMap.end())
+				{
+					target.addHeader("Accept-Post", it->first);
+					++it;
+				}
+			}
+
+			target.generateResponse();
+			throw HttpThrowStatus(415, "Unsupported Media Type");
 		}
 
 	}
-	else
+
+	if (requestData.bodyData.checkExpectBody == true)
 	{
-		// create response for un supported media type
 		HttpResponse& target = *requestData.responseTargetPtr;
-
-		target.responseBodyType = HTTP_RESPONSE_NOBODY;
-		target.statusLine->first = 415;
-		target.keepAfterResponse = false;
-		target.statusLine->second = "Unsupported Media Type";
-
-		// get all the content type to the response header
-		{
-			const std::map<std::string, std::set<std::string> >& contentTypetoExtentionMap = contentTypeTable().getContentTypetoExtensionMap();
-			std::map<std::string, std::set<std::string> >::const_iterator it = contentTypetoExtentionMap.begin();
-
-			while (it != contentTypetoExtentionMap.end())
-			{
-				target.addHeader("Accept-Post", it->first);
-				++it;
-			}
-		}
-
-		target.generateResponse();
-		throw HttpThrowStatus(415, "Unsupported Media Type");
+				
+		s_response_buff	tempBuff;
+				
+		std::string expectResponse = "HTTP/1.1 100 Continue\r\n\r\n";
+				
+		tempBuff.currentIndex = 0;
+		tempBuff.buffer.insert(tempBuff.buffer.end(), expectResponse.begin(), expectResponse.end());
+				
+		target.pushNewResponseBuff(tempBuff);
 	}
 }
 
@@ -2566,7 +2756,7 @@ void Http::handleUploadPostRequest(HttpRequest& requestData)
 	else
 		handleUploadFoundType(requestData, outPair);
 
-	requestData.processStatus = READ_BODY;
+	requestData.setProcessStatus(READ_BODY);
 	return ;
 
 }
@@ -2574,16 +2764,16 @@ void Http::handleUploadPostRequest(HttpRequest& requestData)
 void Http::handlePostCgiRequest(HttpRequest& requestData)
 {
 
-	struct stat fileStat;
-	std::memset(&fileStat, 0, sizeof(fileStat));
-	if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) != 0)
-	{
-		std::string ErrMsg = "Http::stat()::target_path " + requestData.targetData.targetPath + "::";
-		ErrMsg += strerror(errno);
-		if (errno == EACCES)
-			generate4xx5xxErrorReponse(requestData, 403, true, ErrMsg);
-		generate4xx5xxErrorReponse(requestData, 404, true, ErrMsg);
-	}
+	//struct stat fileStat;
+	//std::memset(&fileStat, 0, sizeof(fileStat));
+	//if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) != 0)
+	//{
+	//	std::string ErrMsg = "Http::stat()::target_path " + requestData.targetData.targetPath + "::";
+	//	ErrMsg += strerror(errno);
+	//	if (errno == EACCES)
+	//		generate4xx5xxErrorReponse(requestData, 403, false, ErrMsg);
+	//	generate4xx5xxErrorReponse(requestData, 404, false, ErrMsg);
+	//}
 	/* need to read the body first before starting the CGI */
 
 	/* access() is a good practice before doing anything big because
@@ -2591,19 +2781,19 @@ void Http::handlePostCgiRequest(HttpRequest& requestData)
 
 	/* we need to check the _combinedPath 
 		- it must be a regular file, and readable */
-	if (S_ISREG(fileStat.st_mode) == false)
-	{
-		generate4xx5xxErrorReponse(requestData, 400, false,"The cgi script path must be a regular file");
-	}
+	//if (S_ISREG(fileStat.st_mode) == false)
+	//{
+	//	generate4xx5xxErrorReponse(requestData, 400, false,"The cgi script path must be a regular file");
+	//}
 
 	/*now access*/
-	if (access(requestData.targetData.combinedPath.c_str(), R_OK) != 0)
-	{
-		std::string throwMsg = "Error:: cgi script path access()::" + std::string(std::strerror(errno));
-		if (errno == EACCES)
-			generate4xx5xxErrorReponse(requestData, 403, false, throwMsg);
-		generate4xx5xxErrorReponse(requestData, 404, false, throwMsg);
-	}
+	//if (access(requestData.targetData.combinedPath.c_str(), R_OK) != 0)
+	//{
+	//	std::string throwMsg = "Error:: cgi script path access()::" + std::string(std::strerror(errno));
+	//	if (errno == EACCES)
+	//		generate4xx5xxErrorReponse(requestData, 403, false, throwMsg);
+	//	generate4xx5xxErrorReponse(requestData, 404, false, throwMsg);
+	//}
 
 	/* now we can do the thing*/
 
@@ -2655,7 +2845,7 @@ void Http::handlePostCgiRequest(HttpRequest& requestData)
 		target.pushNewResponseBuff(tempBuff);
 	}
 
-	requestData.processStatus = READ_BODY;
+	requestData.setProcessStatus(READ_BODY);
 	return ;
 
 	generate4xx5xxErrorReponse(requestData, 500, false, "Post to CGI didn't finished yet");
@@ -2672,7 +2862,7 @@ void Http::handlePostRequest(HttpRequest& requestData)
 void	Http::validateRequestData(HttpRequest& requestData, const Socket& clientSocket, std::map<int, Socket>& socketMap)
 {
 
-	if (requestData.processStatus != VALIDATING_REQUEST)
+	if (requestData.getProcessStatus() != VALIDATING_REQUEST)
 		return ;
 
 	// checking the request line
@@ -2689,6 +2879,7 @@ void	Http::validateRequestData(HttpRequest& requestData, const Socket& clientSoc
 		way to implement this is if Both are found
 		'Transfer-Encoding' takes priority
 	*/
+
 	checkRequestBodyType(requestData);
 
 	// check for redirection
@@ -2708,8 +2899,6 @@ void	Http::validateRequestData(HttpRequest& requestData, const Socket& clientSoc
 	// need to check first if this location block
 	// has the cgi_pass
 	checkCgiPath(requestData);
-
-
 
 	// now we can check the file existence
 	{
@@ -2750,6 +2939,9 @@ void Http::readingContentLengthBody(HttpRequest& requestData)
 		// calculate the read body amount here
 		
 		// the size of _requestBuffer is the most the the body can read right now
+		size_t availableSize = _requestBuffer.size() - _requestBufferOffset;
+		if (availableSize == 0)
+			return ;
 		
 		// content-length body type has _body_size which specified its fixed size
 		readBodyAmount = requestData.bodyData.body_size - requestData.bodyData.curr_body_read;
@@ -2764,20 +2956,19 @@ void Http::readingContentLengthBody(HttpRequest& requestData)
 	if (requestData.bodyData.discardBody == true)
 	{
 		// we just discard from the buffer by that calculated amount
-		_requestBuffer.erase(0, readBodyAmount);
+		// _requestBuffer.erase(0, readBodyAmount);
+		_requestBufferOffset += readBodyAmount;
 		requestData.bodyData.curr_body_read += readBodyAmount;
 		
 		if (requestData.bodyData.curr_body_read == requestData.bodyData.body_size)
-			requestData.processStatus = FINISHED_READ_BODY;
-		
-		return ;
+			requestData.setProcessStatus(FINISHED_READ_BODY);
 	}
 	else
 	{
 		// here we need to perform the write() operation
 		while (true)
 		{
-			ssize_t	writeAmount = write(requestData.bodyData.writeBodyFile->getFd(), &_requestBuffer[0], readBodyAmount);
+			ssize_t	writeAmount = write(requestData.bodyData.writeBodyFile->getFd(), &_requestBuffer[_requestBufferOffset], readBodyAmount);
 			if (writeAmount < 0)
 			{
 				if (errno == EINTR)
@@ -2796,16 +2987,24 @@ void Http::readingContentLengthBody(HttpRequest& requestData)
 			}
 			else
 			{
-				_requestBuffer.erase(0, writeAmount);
+				//_requestBuffer.erase(0, writeAmount);
+				_requestBufferOffset += writeAmount;
 				requestData.bodyData.curr_body_read += writeAmount;
 				break ;
 			}
 		}
 		
 		if (requestData.bodyData.curr_body_read == requestData.bodyData.body_size)
-			requestData.processStatus = FINISHED_READ_BODY;
-		return ;
+			requestData.setProcessStatus(FINISHED_READ_BODY);
 	}
+	
+	if (_requestBufferOffset > 0)
+	{
+		_requestBuffer.erase(0, _requestBufferOffset);
+		_requestBufferOffset = 0;
+	}
+
+	return ;
 }
 
 int Http::readTransferEncodingChunkFinished(HttpRequest& requestData, size_t& endLinePos)
@@ -2813,7 +3012,9 @@ int Http::readTransferEncodingChunkFinished(HttpRequest& requestData, size_t& en
 	// we also skipped the first \r\n from 0\r\n
 	// but normal chunked with no trailer header
 	// is 0\r\n\r\n
-	endLinePos = _requestBuffer.find("\r\n");
+	endLinePos = _requestBuffer.find("\r\n", _requestBufferOffset);
+
+	size_t availableSize = _requestBuffer.size() - _requestBufferOffset;
 
 	if (endLinePos == std::string::npos)
 	{
@@ -2830,7 +3031,7 @@ int Http::readTransferEncodingChunkFinished(HttpRequest& requestData, size_t& en
 			the buffer string now contained only \r
 
 			*/
-			if (_requestBuffer.size() > MAX_HTTP_HEADER_LINE_LENGTH + 1)
+			if (availableSize > MAX_HTTP_HEADER_LINE_LENGTH + 1)
 			{
 				requestData.bodyData.writeBodyFile.clear();
 				if (requestData.bodyData.isUseTempFile)
@@ -2856,7 +3057,7 @@ int Http::readTransferEncodingChunkFinished(HttpRequest& requestData, size_t& en
 				but you haven't found i would throw 400 error
 			*/
 
-			if (_requestBuffer.size() >= 2)
+			if (availableSize >= 2)
 			{
 				requestData.bodyData.writeBodyFile.clear();
 				if (requestData.bodyData.isUseTempFile)
@@ -2879,17 +3080,17 @@ int Http::readTransferEncodingChunkFinished(HttpRequest& requestData, size_t& en
 	{
 		/* here is where we found the endLinePos 
 		*/
-
-		if (requestData.bodyData.chunkedBodyHasTrailerHeader)
+		if (endLinePos == _requestBufferOffset)
 		{
-			if (endLinePos == 0)
+			_requestBufferOffset += 2;
+			requestData.setProcessStatus(FINISHED_READ_BODY);
+			return (1);
+		}
+		else
+		{
+			if (requestData.bodyData.chunkedBodyHasTrailerHeader)
 			{
-				requestData.processStatus = FINISHED_READ_BODY;
-				return (1);
-			}
-			else
-			{
-				std::string headerLineStr = _requestBuffer.substr(0, endLinePos);
+				std::string headerLineStr = _requestBuffer.substr(_requestBufferOffset, endLinePos - _requestBufferOffset);
 
 				// check the limit
 				if (headerLineStr.empty() || headerLineStr.size() > MAX_HTTP_HEADER_LINE_LENGTH)
@@ -2899,7 +3100,7 @@ int Http::readTransferEncodingChunkFinished(HttpRequest& requestData, size_t& en
 						tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 					else
 						std::remove(requestData.targetData.combinedPath.c_str());
-					
+
 					generate4xx5xxErrorReponse(requestData, 400, false, "Reading request body::chunked::trailer header line size wrong");
 				}
 
@@ -2968,30 +3169,27 @@ int Http::readTransferEncodingChunkFinished(HttpRequest& requestData, size_t& en
 				headerValueTarget += tempSep;
 
 				tempSep.clear();
-			}
-		}
-		else
-		{
-			/*
-				if we found the \r\n, for no trailer chunked request.
-				it must be on position 0	
-			*/
-			if (endLinePos == 0)
-			{
-				requestData.processStatus = FINISHED_READ_BODY;
-				return (1);
+
+				_requestBufferOffset = endLinePos + 2;
+				return (2);
 			}
 			else
 			{
+				/*
+					if we found the \r\n, for no trailer chunked request.
+					it must be on position 0	
+				*/
 				requestData.bodyData.writeBodyFile.clear();
 				if (requestData.bodyData.isUseTempFile)
 					tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 				else
 					std::remove(requestData.targetData.combinedPath.c_str());
-				
+
 				generate4xx5xxErrorReponse(requestData, 400, false, "Reading request body::chunked::no trailer header::i would say wrong ending for this chunked request. It should be \"0\\r\\n\\r\\n\"");
 			}
+
 		}
+
 	}
 	return (1);
 }
@@ -3000,14 +3198,28 @@ int	Http::readTransferEncodingChunk(HttpRequest& requestData, size_t& endLinePos
 {
 	if (requestData.bodyData.curr_body_read >= requestData.bodyData.body_size)
 	{
-		endLinePos = _requestBuffer.find("\r\n");
+		if (requestData.bodyData.curr_body_read > 0)
+		{
+			size_t availablesize = _requestBuffer.size() - _requestBufferOffset;
+			if (availablesize >= 2 && _requestBuffer.compare(_requestBufferOffset, 2, "\r\n") == 0)
+				_requestBuffer.erase(0, 2);
+			else if (availablesize == 1 && _requestBuffer[_requestBufferOffset] == '\r')
+				return (1);
+			else if (availablesize == 0)
+				return (1);
+		}
+
+		endLinePos = _requestBuffer.find("\r\n", _requestBufferOffset);
 
 		if (endLinePos == std::string::npos)
 		{
 			// maybe next read
 			return (1);
 		}
-		std::string hexString = _requestBuffer.substr(0, endLinePos);
+
+		std::string hexString = _requestBuffer.substr(_requestBufferOffset, endLinePos - _requestBufferOffset);
+
+		//std::cout << "Hexstring: \"" << hexString << "\"\n";
 			
 		size_t hexNum = 0;
 			
@@ -3022,8 +3234,10 @@ int	Http::readTransferEncodingChunk(HttpRequest& requestData, size_t& endLinePos
 			else
 				std::remove(requestData.targetData.combinedPath.c_str());
 		
-			generate4xx5xxErrorReponse(requestData, 400, false, "Request Body Chunked::wrong hex format");
+			generate4xx5xxErrorReponse(requestData, 400, false, "Request Body Chunked::wrong hex format::" + toString(hexNum));
 		}
+
+		//std::cout << "HEX NUM: " << hexNum << '\n' << "curr BODY SIZE: " << requestData.bodyData.body_size << '\n';
 			
 		// now we have hexnum converted
 		/*
@@ -3039,7 +3253,7 @@ int	Http::readTransferEncodingChunk(HttpRequest& requestData, size_t& endLinePos
 				else
 					std::remove(requestData.targetData.combinedPath.c_str());
 			
-				generate4xx5xxErrorReponse(requestData, 400, false, "Request Body Chunked::wrong hex format");
+				generate4xx5xxErrorReponse(requestData, 413, false, "Request Body Chunked::Too large::" + toString(hexNum));
 			}
 		
 			/*
@@ -3062,7 +3276,8 @@ int	Http::readTransferEncodingChunk(HttpRequest& requestData, size_t& endLinePos
 			// 
 			if (hexNum == 0)
 			{
-				_requestBuffer.erase(0, endLinePos + 2);
+				// _requestBuffer.erase(0, endLinePos + 2);
+				_requestBufferOffset = endLinePos + 2;
 			
 				requestData.bodyData.chunkedBodyIsFinished = true;
 				return (2);
@@ -3074,8 +3289,11 @@ int	Http::readTransferEncodingChunk(HttpRequest& requestData, size_t& endLinePos
 		}
 			
 		// now we skip the hex num part
-		_requestBuffer.erase(0, endLinePos + 2);
+		// _requestBuffer.erase(0, endLinePos + 2);
+		_requestBufferOffset = endLinePos + 2;
 	}
+
+	size_t availableSize = _requestBuffer.size() - _requestBufferOffset;
 
 	size_t	readBodyAmount;
 	{
@@ -3087,16 +3305,17 @@ int	Http::readTransferEncodingChunk(HttpRequest& requestData, size_t& endLinePos
 		readBodyAmount = requestData.bodyData.body_size - requestData.bodyData.curr_body_read;
 			
 		// then if the readBody amount is more than the _requestBuffer.size() then
-		if (readBodyAmount > _requestBuffer.size())
+		if (readBodyAmount > availableSize)
 		{
-			readBodyAmount = _requestBuffer.size();
+			readBodyAmount = availableSize;
 		}
 	}
 		
 	if (requestData.bodyData.discardBody == true)
 	{
 		// we just discard from the buffer by that calculated amount
-		_requestBuffer.erase(0, readBodyAmount);
+		// _requestBuffer.erase(0, readBodyAmount);
+		_requestBufferOffset += readBodyAmount;
 		requestData.bodyData.curr_body_read += readBodyAmount;
 
 		if (requestData.bodyData.curr_body_read == requestData.bodyData.body_size)
@@ -3107,7 +3326,7 @@ int	Http::readTransferEncodingChunk(HttpRequest& requestData, size_t& endLinePos
 		// here we need to perform the write() operation
 		while (true)
 		{
-			ssize_t	writeAmount = write(requestData.bodyData.writeBodyFile->getFd(), &_requestBuffer[0], readBodyAmount);
+			ssize_t	writeAmount = write(requestData.bodyData.writeBodyFile->getFd(), &_requestBuffer[_requestBufferOffset], readBodyAmount);
 			if (writeAmount < 0)
 			{
 				if (errno == EINTR)
@@ -3121,12 +3340,13 @@ int	Http::readTransferEncodingChunk(HttpRequest& requestData, size_t& endLinePos
 					else
 						std::remove(requestData.targetData.combinedPath.c_str());
 				
-					generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::write() operation failed during reading the request body");
+					generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::write() operation failed during reading the request body::" + std::string(std::strerror(errno)));
 				}
 			}
 			else
 			{
-				_requestBuffer.erase(0, writeAmount);
+				// _requestBuffer.erase(0, writeAmount);
+				_requestBufferOffset += writeAmount;
 				requestData.bodyData.curr_body_read += writeAmount;
 				break ;
 			}
@@ -3141,22 +3361,26 @@ int	Http::readTransferEncodingChunk(HttpRequest& requestData, size_t& endLinePos
 void Http::readingTranferEncodingBody(HttpRequest& requestData)
 {
 	size_t	endLinePos;
+	int ret;
 
 	while (true)
 	{
 		if (requestData.bodyData.chunkedBodyIsFinished == true)
-		{
-			if (readTransferEncodingChunkFinished(requestData, endLinePos) == 1)
-				return ;
-		}
+			ret = readTransferEncodingChunkFinished(requestData, endLinePos);
 		else
+			ret = readTransferEncodingChunk(requestData, endLinePos);
+
+		if (ret == 1 || ret == 0)
 		{
-			int ret = readTransferEncodingChunk(requestData, endLinePos);
-			if (ret == 1)
-				return ;
-			else if (ret == 2)
-				continue;
+			if (_requestBufferOffset > 0)
+			{
+				_requestBuffer.erase(0, _requestBufferOffset);
+				_requestBufferOffset = 0;
+			}
+			return ;
 		}
+		else if (ret == 2)
+			continue;
 	}
 	return ;
 }
@@ -3165,14 +3389,29 @@ void Http::readingTranferEncodingBody(HttpRequest& requestData)
 void Http::readingRequestBody(HttpRequest& requestData)
 {
 	// read the body using
-	if (requestData.processStatus != READ_BODY)
+	if (requestData.getProcessStatus() != READ_BODY)
 		return ;
+
+	{
+		char buffer[80];
+		std::time_t currentTime = std::time(NULL);
+		std::tm* localTime = std::localtime(&currentTime);
+
+		std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", localTime);
+		std::cout << "currentTime: " << buffer << '\n';
+		std::time_t stamp = requestData.getStateTimeStamp();
+		localTime = std::localtime(&stamp);
+		std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", localTime);
+		std::cout << "state Time Stamp: " << buffer << '\n';
+		if (std::difftime(currentTime, httpRequest.getStateTimeStamp()) >= WEBSERV_HTTP_REQUEST_TIMEOUT_SECOND)
+			generate4xx5xxErrorReponse(httpRequest, 408, false, "Http::Request Timeout::took too much time to send the request header");
+	}
 
 	if (requestData.bodyData.readingRequestBodyPtr)
 		(this->*requestData.bodyData.readingRequestBodyPtr)(requestData);
 	else
 	{
-		requestData.processStatus = FINISHED_READ_BODY;
+		requestData.setProcessStatus(FINISHED_READ_BODY);
 		return ;
 	}
 
@@ -3188,7 +3427,7 @@ void Http::readingRequestBody(HttpRequest& requestData)
 
 void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientSocket, std::map<int, Socket>& socketMap)
 {
-	if (requestData.processStatus == FINISHED_READ_BODY)
+	if (requestData.getProcessStatus() == FINISHED_READ_BODY)
 	{
 		if (!requestData.targetData.redirectPath.empty())
 		{
@@ -3219,7 +3458,7 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 
 					HttpResponse& targetResponse = *requestData.responseTargetPtr;
 
-					targetResponse.keepAfterResponse = true;
+					//targetResponse.keepAfterResponse = true;
 					targetResponse.statusLine->first = 201;
 					targetResponse.statusLine->second = "Created";
 					targetResponse.contentType = "text/plain";
@@ -3236,10 +3475,16 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 				}
 				else
 				{
+					requestData.bodyData.writeBodyFile.clear();
+					if (requestData.bodyData.isUseTempFile)
+					{
+						tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+					}
+
 					/* didn't use the temp file and i think it's complete, and it is normal download. so */
 					HttpResponse& targetResponse = *requestData.responseTargetPtr;
 
-					targetResponse.keepAfterResponse = true;
+					//targetResponse.keepAfterResponse = true;
 					targetResponse.statusLine->first = 201;
 					targetResponse.statusLine->second = "Created";
 					targetResponse.contentType = "text/plain";
@@ -3256,6 +3501,7 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 			}
 			else
 			{
+				std::cout << "Spawning CGI!\n";
 				int fd;
 
 				/* we need to re open this temporary file so we can send it so cgi*/			
@@ -3382,9 +3628,21 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 
 							envData().assignEnv("SCRIPT_NAME", requestData.cgiData.cgiScriptPath);
 
-							if (!requestData.cgiData.cgiVirtualPath.empty())
+							envData().assignEnv("REQUEST_URI", requestData.requestData.requestTarget);
+
+							if (requestData.cgiData.cgiVirtualPath.empty())
 							{
-								envData().assignEnv("PATH_INFO", requestData.cgiData.cgiVirtualPath);
+								//envData().assignEnv("PATH_INFO", requestData.cgiData.cgiVirtualPath);
+								//envData().assignEnv("PATH_TRANSLATED", requestData.cgiData.cgiPathTranslated);
+								envData().assignEnv("PATH_INFO", requestData.cgiData.cgiScriptPath);
+								envData().assignEnv("PATH_TRANSLATED", requestData.targetData.combinedPath);
+							}
+							else
+							{
+								std::string vPath = requestData.cgiData.cgiVirtualPath;
+								if (vPath[0] != '/')
+									vPath = "/" + vPath;
+								envData().assignEnv("PATH_INFO", vPath);
 								envData().assignEnv("PATH_TRANSLATED", requestData.cgiData.cgiPathTranslated);
 							}
 
@@ -3448,6 +3706,10 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 							argv[2] = NULL;
 							argv[0] = const_cast<char *>(requestData.cgiData.cgiPath.c_str());
 							argv[1] = const_cast<char *>(requestData.targetData.combinedPath.c_str());
+
+							//char* argv[2];
+							//argv[0] = const_cast<char *>(requestData.cgiData.cgiPath.c_str());
+							//argv[1] = NULL;
 
 							for (int i = 3; i < MAX_FD; i++)
 								close(i);
@@ -4254,7 +4516,7 @@ void	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Soc
 
 			processingRequestBody(httpRequest, clientSocket, socketMap);
 
-			if (httpRequest.processStatus == NO_STATUS && _keepConnection == true)
+			if (httpRequest.getProcessStatus() == NO_STATUS && _keepConnection == true)
 				continue ;
 			else
 				break ;
@@ -4270,11 +4532,56 @@ void	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Soc
 	return ;
 }
 
+void Http::send408()
+{
+	try
+	{
+		if (httpRequest.responseTargetPtr == NULL)
+		{
+			_httpResponseList.push_back(HttpResponse());
+			httpRequest.responseTargetPtr = &_httpResponseList.back();
+		}
+
+		generate4xx5xxErrorReponse(httpRequest, 408, false, "Request Timeout");
+		/* code */
+	}
+	catch(HttpThrowStatus &status)
+	{
+		Logger::log(LC_INFO, "%d::reponse with status code %d::%s", _clientSocketPtr->getSocketFD().getFd(), status.statusCode(), status.message().c_str());
+	}
+	catch(const std::exception& e)
+	{
+		Logger::log(LC_INFO, "Http::socket#%d::Internal Error::%s", e.what());
+	}
+
+	if (_isEpollout == false && _httpResponseList.empty() == false && _httpResponseList.front().hasSomethingtoSend() == true)
+	{
+		epoll_event	event;
+		std::memset(&event, 0, sizeof(event));
+		event.events = EPOLLIN | EPOLLOUT;
+		event.data.fd = _clientSocketPtr->getSocketFD().getFd();
+
+		if (epoll_ctl(_clientSocketPtr->getEpollFD().getFd(), EPOLL_CTL_MOD, _clientSocketPtr->getSocketFD().getFd(), &event) == -1)
+		{
+			std::string msg = "Http::readFromClient()::epoll_ctl()::error::";
+			msg += std::strerror(errno);
+			throw WebservException(msg);
+		}
+		_isEpollout = true;
+	}
+}
+
 
 void Http::directRequestProcess(HttpRequest requestData)
 {
 	try 
 	{
+		if (requestData.responseTargetPtr == NULL)
+		{
+			_httpResponseList.push_back(HttpResponse());
+			requestData.responseTargetPtr = &_httpResponseList.back();
+		}
+
 		if (requestData.localRedirectCount >= MAX_HTTP_LOCAL_REDIRECT_COUNT)
 		{
 			generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::MAX_HTTP_LOCAL_REDIRECT_COUNT reached");
@@ -4284,8 +4591,8 @@ void Http::directRequestProcess(HttpRequest requestData)
 		validateRequestData(requestData, *_clientSocketPtr, *_socketMapPtr);
 
 		/* skip the reading body */
-		if (requestData.processStatus == READ_BODY)
-			requestData.processStatus = FINISHED_READ_BODY;
+		if (requestData.getProcessStatus() == READ_BODY)
+			requestData.setProcessStatus(FINISHED_READ_BODY);
 
 		processingRequestBody(requestData, *_clientSocketPtr, *_socketMapPtr);
 	}
@@ -4307,14 +4614,56 @@ void Http::directRequestProcess(HttpRequest requestData)
 		Logger::log(LC_INFO, "Http::socket#%d::Unknown Internal Error");
 	}
 
+	if (_isEpollout == false && _httpResponseList.empty() == false && _httpResponseList.front().hasSomethingtoSend() == true)
+	{
+		epoll_event	event;
+		std::memset(&event, 0, sizeof(event));
+		event.events = EPOLLIN | EPOLLOUT;
+		event.data.fd = _clientSocketPtr->getSocketFD().getFd();
+
+		if (epoll_ctl(_clientSocketPtr->getEpollFD().getFd(), EPOLL_CTL_MOD, _clientSocketPtr->getSocketFD().getFd(), &event) == -1)
+		{
+			std::string msg = "Http::readFromClient()::epoll_ctl()::error::";
+			msg += std::strerror(errno);
+			throw WebservException(msg);
+		}
+		_isEpollout = true;
+	}
 }
 
 void Http::readFromClient()
 {
-	//std::cout << "READ FROM CLIENT" << std::endl;
 	ssize_t	readAmount;
 
+	//static size_t count = 0;
+	std::cout << "CURR STATE: ";
+	switch (httpRequest.getProcessStatus())
+	{
+		case NO_STATUS:
+			std::cout << "NO_STATUS" << '\n';
+			break ;
+		case READING_REQUEST_LINE:
+			std::cout << "READING_REQUEST_LINE" << '\n';
+			break ;
+		case READING_HEADER:
+			std::cout << "READING_HEADER" << '\n';
+			break ;
+		case VALIDATING_REQUEST:
+			std::cout << "VALIDATING REQUEST" << '\n';
+			break ;
+		case READ_BODY:
+			std::cout << "READ_BODY" << '\n';
+			break ;
+		case FINISHED_READ_BODY:
+			std::cout << "FINISHED_READ_BODY" << '\n';
+			break ;
+		default:
+			std::cout << '\n';
+	}
+
 	readAmount = recv(_clientSocketPtr->getSocketFD().getFd(), _recvBuffer.data(), HTTP_RECV_BUFFER, 0);
+
+	//std::cout << "readFromClient !: " << count++ << "     READAMOUNT: " << readAmount << '\n';
 	if (readAmount == 0)
 	{
 		Logger::log(LC_CONN_LOG, "Disconnecting client Socket#%d", _clientSocketPtr->getSocketFD().getFd());
