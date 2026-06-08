@@ -21,7 +21,6 @@ static size_t max_hex_digit()
 bool hex_to_size_t(const std::string& hexStr, size_t& returnValue)
 {
 	static size_t max_hex_digits = max_hex_digit();
-	static size_t max_size_t = std::numeric_limits<size_t>::max();
 
 	// won't torelate if '0' is in front
 	if (hexStr.empty() || hexChar().isMatch(hexStr) == false || (hexStr.size() > 1 && hexStr[0] == '0') || hexStr.size() > max_hex_digits)

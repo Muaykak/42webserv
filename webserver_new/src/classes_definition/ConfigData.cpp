@@ -1,6 +1,7 @@
 #include "../../include/classes/ConfigData.hpp"
 #include "../../include/utility_function.hpp"
 
+
 ConfigData::ConfigData(const ConfigData& obj){
 	_serversConfigs = obj._serversConfigs;
 }

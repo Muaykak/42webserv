@@ -8,7 +8,7 @@
 #include "./classes/FileDescriptor.hpp"
 
 typedef std::map<std::string, std::vector<std::string> > t_config_map;
-typedef std::map<std::string, const t_config_map> t_location_map;
+typedef std::map<std::string, t_config_map> t_location_map;
 
 class HttpRequest;
 

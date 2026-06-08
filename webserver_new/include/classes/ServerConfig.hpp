@@ -27,8 +27,28 @@ private:
 	std::set<in_addr_t>	_host_ip_set;
 	// there are helper functions in utility_function.hpp
 
-	static void resolveLocationPath(std::string locationPath);
-	void	locationBlockValidate();
+	void	checkIfPathIsDirectory(const std::string& path, const t_config_map* targetLocationBlock);
+	void	checkIfPathIsRegularReadable(const std::string& path, const t_config_map* targetLocationBlock);
+	void	checkIfPathIsRegularExecutable(const std::string& path, const t_config_map* targetLocationBlock);
+
+	void	checkConfigBlock(t_config_map& configBlock);
+
+	void	checkMustExistDirective(const std::vector<std::string>& directiveKeyVec, const t_config_map& mapToFind);
+
+	std::map<std::string, void(ServerConfig::*)(std::vector<std::string>&, const t_config_map*)> buildConfigCheckMap();
+	void	(ServerConfig::*getDirectiveCheckFunction(const std::string& directiveKey))(std::vector<std::string>&, const t_config_map*);
+
+	void	checkDirectiveRoot(std::vector<std::string>& valueVec, const t_config_map* targetLocationBLock);
+	void	checkDirectiveServerName(std::vector<std::string>& valueVec, const t_config_map* targetLocationBLock);
+	void	checkDirectiveClientMaxBodySize(std::vector<std::string>& valueVec, const t_config_map* targetLocationBLock);
+	void	checkDirectiveErrorPage(std::vector<std::string>& valueVec, const t_config_map* targetLocationBLock);
+	void	checkDirectiveIndex(std::vector<std::string>& valueVec, const t_config_map* targetLocationBLock);
+	void	checkDirectiveAllowedMethods(std::vector<std::string>& valueVec, const t_config_map* targetLocationBLock);
+	void	checkDirectiveUploadStore(std::vector<std::string>& valueVec, const t_config_map* targetLocationBLock);
+	void	checkDirectiveAutoIndex(std::vector<std::string>& valueVec, const t_config_map* targetLocationBLock);
+	void	checkDirectiveReturn(std::vector<std::string>& valueVec, const t_config_map* targetLocationBLock);
+	void	checkDirectiveCGIpass(std::vector<std::string>& valueVec, const t_config_map* targetLocationBLock);
+	void	checkDirectiveHost(std::vector<std::string>& valueVec, const t_config_map* targetLocationBLock);
 
 public:
 	ServerConfig();

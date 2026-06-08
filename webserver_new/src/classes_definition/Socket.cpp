@@ -3,10 +3,11 @@
 
 Socket::Socket() :
 _socketType(NO_TYPE),
-_server_listen_port(-1),
-_socketMap(NULL),
 _serversConfig(NULL),
+_server_listen_port(-1),
 handleEventPtr(NULL),
+_socketMap(NULL),
+_client_addr_in(0),
 timeOutMarked(false)
 {
 	Logger::log(LC_DEBUG, "socket default construct called!;");
@@ -14,14 +15,14 @@ timeOutMarked(false)
 	_lastEventTime = std::time(NULL);
 }
 Socket::Socket(const Socket &obj) :
-_socketFD(obj._socketFD),
 _eventController(obj._eventController),
+_socketFD(obj._socketFD),
 _socketType(obj._socketType),
 _serversConfig(obj._serversConfig),
 _server_listen_port(obj._server_listen_port),
-_socketMap(obj._socketMap),
 _server_ip_host(obj._server_ip_host),
 handleEventPtr(obj.handleEventPtr),
+_socketMap(obj._socketMap),
 timeOutMarked(obj.timeOutMarked)
 {
 	_lastEventTime = std::time(NULL);
@@ -29,10 +30,10 @@ timeOutMarked(obj.timeOutMarked)
 Socket::Socket(int fd) :
 _socketFD(fd),
 _socketType(NO_TYPE),
-_server_listen_port(-1),
-_socketMap(NULL),
 _serversConfig(NULL),
+_server_listen_port(-1),
 handleEventPtr(NULL),
+_socketMap(NULL),
 timeOutMarked(false)
 {
 	_lastEventTime = std::time(NULL);
@@ -41,10 +42,10 @@ timeOutMarked(false)
 Socket::Socket(const FileDescriptor& fd) :
 _socketFD(fd),
 _socketType(NO_TYPE),
-_server_listen_port(-1),
-_socketMap(NULL),
 _serversConfig(NULL),
+_server_listen_port(-1),
 handleEventPtr(NULL),
+_socketMap(NULL),
 timeOutMarked(false)
 {
 	_lastEventTime = std::time(NULL);

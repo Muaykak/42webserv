@@ -36,7 +36,6 @@ static std::string max_size_t_string()
 // 64 bit size_t
 bool string_to_size_t(const std::string& toConvert, size_t& returnValue)
 {
-	static size_t max_size_t = (size_t) - 1;
 	static size_t max_digits = size_t_digits();
 	static std::string max_size_str = max_size_t_string();
 
