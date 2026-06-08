@@ -255,6 +255,8 @@ void ServerConfig::checkDirectiveHost(std::vector<std::string>& valueVec, const 
 	in_addr_t	temp_in_addr_t;
 	for (size_t i = 0; i < valueVec.size(); i++)
 	{
+		if (valueVec[i] == "localhost")
+			valueVec[i] = "127.0.0.1";
 		// convert the ip strings into in_addr_t)
 		// if converrsion failed should throw back errors
 		if (string_to_in_addr_t(valueVec[i], temp_in_addr_t) == false)
@@ -382,8 +384,9 @@ void ServerConfig::checkDirectiveClientMaxBodySize(std::vector<std::string>& val
 		}
 		else if (backStr != "b")
 			throw WebservException("ServerConfig::server block::client_max_body_size::Invalid Value");
-
 		valueVec[0]	= toString(convertSize);
+
+		std::cout << "byteSIze: " << valueVec[0] << "\n";
 	}
 }
 
