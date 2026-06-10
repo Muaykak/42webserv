@@ -11,8 +11,9 @@ TEMP_RES_FILE="/tmp/webserv_res.txt"
 TIMEOUT_SEC=0.3
 
 # Toggles for Verbose Output & Debugging
-DEBUG_MODE=0          # Set to 1 to view Raw Headers ONLY on failures
-SHOW_ALL_RESPONSES=1  # Set to 1 to print the COMPLETE raw response & body for ALL tests (pass or fail)
+DEBUG_MODE=${DEBUG_MODE:-1}          # Set to 1 to view Raw Headers ONLY on failures
+SHOW_ALL_RESPONSES=${SHOW_ALL_RESPONSES:-1}  # Set to 1 to print the COMPLETE raw response & body for ALL tests (pass or fail)
+SHOW_PASSED=${SHOW_PASSED:-0}         # Set to 0 to hide successful tests from output (failures only)
 
 # Temp files for validation
 HEADERS_FILE="/tmp/webserv_headers_parsed.txt"
@@ -174,7 +175,7 @@ validate_response() {
             checked_list+=("$expected_key (Value Match)")
 
             # Retrieve the actual header value (case-insensitive key match)
-            local actual_val=$(grep -i "^${expected_key}:" "$HEADERS_FILE" | awk -F: '{print $2}' | xargs)
+            local actual_val=$(grep -i "^${expected_key}:" "$HEADERS_FILE" | cut -d':' -f2- | xargs)
             
             if [ -z "$actual_val" ]; then
                 errors+=("Assertion Failed: Expected header '${expected_key}' was not returned by the server")
@@ -259,9 +260,11 @@ run_test() {
     local test_res=$?
 
     if [ $test_res -eq 0 ]; then
-        echo -e "  ${GREEN}[OK] ${test_name}${RESET}"
-        echo -e "       ${GRAY}↳ Status Code : ${CYAN}${CHECKED_STATUS_INFO}${RESET}"
-        echo -e "       ${GRAY}↳ Verifications: ${YELLOW}${CHECKED_HEADERS_INFO}${RESET}"
+        if [ $SHOW_PASSED -eq 1 ]; then
+            echo -e "  ${GREEN}[OK] ${test_name}${RESET}"
+            echo -e "       ${GRAY}↳ Status Code : ${CYAN}${CHECKED_STATUS_INFO}${RESET}"
+            echo -e "       ${GRAY}↳ Verifications: ${YELLOW}${CHECKED_HEADERS_INFO}${RESET}"
+        fi
         PASSED=$((PASSED + 1))
     else
         echo -e "  ${RED}[KO] ${test_name} -> Validation checks failed!${RESET}"
@@ -285,7 +288,7 @@ run_test() {
     fi
 
     # Global Toggle Block: Displays the FULL raw response if SHOW_ALL_RESPONSES=1
-    if [ $SHOW_ALL_RESPONSES -eq 1 ]; then
+    if [ $SHOW_ALL_RESPONSES -eq 1 ] && { [ $test_res -ne 0 ] || [ $SHOW_PASSED -eq 1 ]; }; then
         echo -e "      ${GRAY}┌─── RAW HTTP RESPONSE STREAM ──────────────────────────────────────────┐${RESET}"
         if [ -s "$TEMP_RES_FILE" ]; then
             # Uses sed to safely prefix raw data lines, preserving carriage returns and non-ASCII chars

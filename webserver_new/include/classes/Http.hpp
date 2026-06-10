@@ -72,6 +72,7 @@ class Http {
 
 		void		validateRequestData(HttpRequest& requestData, const Socket& clientSocket, std::map<int, Socket>& socketMap);
 		void			validateRequestBufferSelectServer(HttpRequest& requestData, const Socket& clientSocket, const std::string& authStr);
+		void				checkHost(HttpRequest& requestData, std::string& hoststr);
 		void			requestLineCheck(HttpRequest& requestData, const Socket& clientSocket);
 		void				requestLineCheckProtocolVersion(HttpRequest& requestData);
 		void				requestLineCheckRequestTarget(HttpRequest& requestData, const Socket& clientSocket);
@@ -79,6 +80,7 @@ class Http {
 		void					requestLineCheckRequestTargetPathCheck(HttpRequest& requestData);
 		void			targetLocationBlockGet(HttpRequest& requestData);
 		void			checkRequestBodyType(HttpRequest& requestData);
+		void				checkExpectBody(HttpRequest& requestData);
 		bool			checkRedirection(HttpRequest& requestData);
 		void			checkConnectionHeader(HttpRequest& requestData);
 		void			checkMethod(HttpRequest& requestData);
@@ -91,8 +93,9 @@ class Http {
 		void			handlePostRequest(HttpRequest& requestData);
 		void				handleUploadPostRequest(HttpRequest& requestData);
 		void					handleRequestMultipart(HttpRequest& requestData, std::pair<std::string, std::vector<std::pair<std::string, std::string> > >& outPair);
-		void					handleUploadOctetStream(HttpRequest& requestData);
-		void					handleUploadFoundType(HttpRequest& requestData, std::pair<std::string, std::vector<std::pair<std::string, std::string> > >& outPair);
+		// void					handleUploadOctetStream(HttpRequest& requestData);
+		// void					handleUploadFoundType(HttpRequest& requestData, std::pair<std::string, std::vector<std::pair<std::string, std::string> > >& outPair);
+		void					handleNormalUpload(HttpRequest &requestData, std::pair<std::string, std::vector<std::pair<std::string, std::string> > >& outPair);
 		void			handlePostCgiRequest(HttpRequest& requestData);
 
 		void		readingRequestBody(HttpRequest& requestData);

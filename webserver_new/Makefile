@@ -80,7 +80,8 @@ SRC_FUNC_FILE = chartables.cpp \
 				tempFileManager.cpp \
 				stringCapital.cpp \
 				my_find.cpp \
-				getStatusCodeMessage.cpp
+				getStatusCodeMessage.cpp \
+				findNextCRLF.cpp
 
 				
 

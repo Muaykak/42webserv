@@ -284,7 +284,7 @@ void ServerConfig::checkDirectiveServerName(std::vector<std::string>& valueVec, 
 		bool lastCharWasDot = true;
 		size_t labelLength = 0;
 
-		for (size_t j = 0; j < valueVec[i].length(); ++j)
+		for (size_t j = 0; j < valueVec[j].length(); ++j)
 		{
 			char c = valueVec[i][j];
 
@@ -629,6 +629,7 @@ void ServerConfig::checkDirectiveAutoIndex(std::vector<std::string>& valueVec, c
 
 void ServerConfig::checkDirectiveReturn(std::vector<std::string>& valueVec, const t_config_map *targetLocationBlock)
 {
+	(void)targetLocationBlock;
 	if (valueVec.size() != 2)
 		throw WebservException("ServerConfig::\"return\"::invalid value");
 
@@ -636,7 +637,6 @@ void ServerConfig::checkDirectiveReturn(std::vector<std::string>& valueVec, cons
 	if (string_to_size_t(valueVec[0], convertNum) == false || (convertNum >= 400 || convertNum < 300))
 		throw WebservException("ServerConfig::\"return\"::invalid value");
 
-	(void)targetLocationBlock;
 	// checkIfPathIsDirectory(valueVec[1], targetLocationBlock);
 }
 

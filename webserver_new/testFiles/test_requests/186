@@ -1,0 +1,5 @@
+GET / HTTP/1.1
+Host: localhost:4343
+Custom-Header: value1
+ value2
+

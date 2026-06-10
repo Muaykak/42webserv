@@ -1,0 +1,3 @@
+GET / HTTP/a.b
+Host: localhost:4343
+
