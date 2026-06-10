@@ -3,9 +3,13 @@
 # Description
 
 # Instructions
-
+	How to run
+	-makefile
+	-usage
+	-config
+	-how to test
 # Resources
-
+	-RFC 9110, 9112, 3875{+request_uri ,redirect status}
 ### Refereced Sites
 
 ### How AI was used in this project

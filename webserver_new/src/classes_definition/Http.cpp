@@ -2121,7 +2121,8 @@ void	Http::handleGetRequest(HttpRequest& requestData, bool isEndWithSlash, const
 						"h1{text-align: center;}\r\n"
 						"body{margin: 0; background-color: #0d1117; display: flex; color: #c9d1d9; align-items: center; justify-content: center; margin-top: 10px}\r\n"
 						"div{background-color: #21262d; border: 1px solid #4ab9e9; border-top: 4px solid #4ab9e9; border-radius: 12px; padding: 30px 40px;"
-        				"width: 100%; max-width: 600px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);}"
+        				"width: 100%; max-width: 600px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);}\r\n"
+						"a{text-decoration: none; text-align: center; color: inherit; box-sizing: border-box;}\r\n"
 						"</style>\r\n"
 						"<body>\r\n"
 						"<div><title>Index of ";
