@@ -2,7 +2,7 @@
 
 Request Line #1 basic valid; 01; 200; localhost; 4343;
 Request Line #2 unknown method; 02; 501; localhost; 4343;
-Request Line #3 method with small letter; 03; 400; localhost; 4343;
+Request Line #3 method with small letter; 03; 501; localhost; 4343;
 Request Line #4 looong method; 04; 414; localhost; 4343;
 Request Line #5 wrong format space#1 ; 05; 400; localhost; 4343;
 Request Line #6 wrong format space#2 ; 06; 400; localhost; 4343;
@@ -26,6 +26,211 @@ Request Line #23 Wrong authority part URI ; 23; 400; localhost; 4343;
 Request Line #24 Wrong authority part URI ; 24; 400; localhost; 4343;
 Request Line #25 Wrong authority part URI ; 25; 400; localhost; 4343;
 Request Line #26 Wrong authority part URI ; 26; 400; localhost; 4343;
-Request Line #27 Wrong authority part URI ; 27; 403; localhost; 4343;
+Request Line #27 Wrong authority part URI ; 27; 400; localhost; 4343;
 Request Line #28 Wrong authority part URI ; 28; 400; localhost; 4343;
 Request Line #29 Wrong authority part URI ; 29; 400; localhost; 4343;
+GET method valid uppercase; 30; 200; localhost; 4343; Content-Type: text/html; charset=UTF-8
+POST method valid uppercase; 31; 201; localhost; 4343; 
+DELETE method valid but not allowed on root; 32; 405; localhost; 4343; Connection: close
+HEAD method valid but not allowed; 33; 501; localhost; 4343; Connection: close
+PUT method valid but not allowed; 34; 501; localhost; 4343; Connection: close
+OPTIONS method valid but not allowed; 35; 501; localhost; 4343; Connection: close
+PATCH method valid but not allowed; 36; 501; localhost; 4343; Connection: close
+TRACE method valid but not allowed; 37; 501; localhost; 4343; Connection: close
+CONNECT method valid but not allowed; 38; 501; localhost; 4343; Connection: close
+Lowercase method get; 39; 501; localhost; 4343; Connection: close
+Lowercase method post; 40; 501; localhost; 4343; Connection: close
+Lowercase method delete; 41; 501; localhost; 4343; Connection: close
+Mixed case method Get; 42; 501; localhost; 4343; Connection: close
+Mixed case method POST; 43; 501; localhost; 4343; Connection: close
+Invalid method containing digit; 44; 501; localhost; 4343; Connection: close
+Invalid method containing special char; 45; 501; localhost; 4343; Connection: close
+Invalid method name wildcard; 46; 501; localhost; 4343; Connection: close
+Invalid method name too long; 47; 501; localhost; 4343; Connection: close
+Empty method name; 48; 400; localhost; 4343; Connection: close
+Request line space multiple middle; 49; 400; localhost; 4343; Connection: close
+Request line space multiple method uri; 50; 400; localhost; 4343; Connection: close
+Request line space multiple uri version; 51; 400; localhost; 4343; Connection: close
+Request line tab separator #1; 52; 400; localhost; 4343; Connection: close
+Request line tab separator #2; 53; 400; localhost; 4343; Connection: close
+Request line tab separator #3; 54; 400; localhost; 4343; Connection: close
+Request line leading tab; 55; 400; localhost; 4343; Connection: close
+Request line leading space; 56; 400; localhost; 4343; Connection: close
+Request line no space method uri; 57; 400; localhost; 4343; Connection: close
+Request line no space uri version; 58; 400; localhost; 4343; Connection: close
+Request line missing version; 59; 400; localhost; 4343; Connection: close
+Request line too many parts; 60; 400; localhost; 4343; Connection: close
+Request line line feeding CR only; 61; 400; localhost; 4343; Connection: close
+Request line line feeding LF only; 62; 400; localhost; 4343; 
+Request line null byte inside; 63; 400; localhost; 4343; Connection: close
+Request line control char inside method; 64; 400; localhost; 4343; Connection: close
+HTTP version 1.0 valid; 65; 400; localhost; 4343; Connection: close
+HTTP version 0.9 invalid/legacy; 66; 400; localhost; 4343; Connection: close
+HTTP version 2.0 unsupported; 67; 505; localhost; 4343; Connection: close
+HTTP version 3.0 unsupported; 68; 505; localhost; 4343; Connection: close
+HTTP version invalid string; 69; 400; localhost; 4343; Connection: close
+HTTP version missing slash; 70; 400; localhost; 4343; Connection: close
+HTTP version lowercase http; 71; 400; localhost; 4343; Connection: close
+HTTP version wrong format decimal; 72; 400; localhost; 4343; Connection: close
+HTTP version minor version high; 73; 400; localhost; 4343; 
+HTTP version major version high; 74; 505; localhost; 4343; Connection: close
+HTTP version invalid chars; 75; 400; localhost; 4343; Connection: close
+URI absolute http localhost; 76; 200; localhost; 4343; 
+URI absolute http 127.0.0.1; 77; 200; localhost; 4343; 
+URI absolute wrong port; 78; 403; localhost; 4343; Connection: close
+URI absolute wrong host; 79; 403; localhost; 4343; Connection: close
+URI absolute missing scheme slash; 80; 400; localhost; 4343; Connection: close
+URI absolute ftp scheme; 81; 400; localhost; 4343; Connection: close
+URI path traversal simple parent; 82; 303; localhost; 4343;
+URI path traversal root escape; 83; 303; localhost; 4343;
+URI path traversal nested escape; 84; 303; localhost; 4343;
+URI path traversal valid parent in folder; 85; 303; localhost; 4343; 
+URI path traversal file escape; 86; 303; localhost; 4343; 
+URI query parameters single; 87; 200; localhost; 4343; 
+URI query parameters multiple; 88; 200; localhost; 4343; 
+URI query empty value; 89; 200; localhost; 4343; 
+URI query no name; 90; 200; localhost; 4343; 
+URI fragment simple; 91; 400; localhost; 4343; 
+URI query and fragment; 92; 400; localhost; 4343; 
+URI percent encoded space; 93; 404; localhost; 4343; 
+URI percent encoded slash; 94; 400; localhost; 4343; 
+URI percent encoded dot; 95; 400; localhost; 4343; Connection: close
+URI percent encoded invalid hex; 96; 400; localhost; 4343; Connection: close
+URI percent encoded incomplete; 97; 400; localhost; 4343; Connection: close
+URI percent encoded lowercase; 98; 404; localhost; 4343; 
+URI containing backslash; 99; 400; localhost; 4343; Connection: close
+URI containing asterisk; 100; 404; localhost; 4343;
+URI containing colon; 101; 404; localhost; 4343;
+URI containing semicolon; 102; 404; localhost; 4343;
+URI containing comma; 103; 404; localhost; 4343; 
+URI containing plus; 104; 404; localhost; 4343; 
+Host header missing; 105; 400; localhost; 4343; Connection: close
+Host header duplicate; 106; 400; localhost; 4343; Connection: close
+Host header empty value; 107; 400; localhost; 4343; Connection: close
+Host header empty value space; 108; 400; localhost; 4343; Connection: close
+Host header whitespace before colon; 109; 400; localhost; 4343; Connection: close
+Host header casing host; 110; 200; localhost; 4343; 
+Host header casing HOST; 111; 200; localhost; 4343; 
+Host header casing HoSt; 112; 200; localhost; 4343; 
+Host header spaces around value; 113; 200; localhost; 4343; 
+Host header invalid chars; 114; 400; localhost; 4343; Connection: close
+Host header mismatch server name; 115; 200; localhost; 4343; 
+Host header IP representation; 116; 200; localhost; 4343; 
+Host header IPv6 format; 117; 400; localhost; 4343; 
+Host header no port (default port 80); 118; 403; localhost; 4343; 
+Host header port mismatch; 119; 403; localhost; 4343; Connection: close
+Content-Length on GET valid zero; 120; 200; localhost; 4343; 
+Content-Length on GET with value; 121; 400; localhost; 4343; 
+Content-Length negative; 122; 400; localhost; 4343; Connection: close
+Content-Length non-digit; 123; 400; localhost; 4343; Connection: close
+Content-Length empty value; 124; 400; localhost; 4343; Connection: close
+Content-Length duplicate; 125; 400; localhost; 4343; Connection: close
+Content-Length duplicate different; 126; 400; localhost; 4343; Connection: close
+Content-Length leading zeros; 127; 201; localhost; 4343; 
+Content-Length extremely large; 128; 413; localhost; 4343; Connection: close
+Content-Length body shorter than CL; 129; 400; localhost; 4343; Connection: close
+Content-Length body longer than CL; 130; 201; localhost; 4343; 
+Transfer-Encoding chunked basic; 131; 201; localhost; 4343; 
+Transfer-Encoding chunked casing; 132; 201; localhost; 4343; 
+Transfer-Encoding chunked value casing; 133; 201; localhost; 4343; 
+Transfer-Encoding chunked multiple chunks; 134; 201; localhost; 4343; 
+Transfer-Encoding chunked extension; 135; 400; localhost; 4343; 
+Transfer-Encoding chunked non-hex size; 136; 400; localhost; 4343; Connection: close
+Transfer-Encoding chunked missing final zero; 137; 400; localhost; 4343; Connection: close
+Transfer-Encoding chunked invalid chunk CRLF; 138; 400; localhost; 4343; Connection: close
+Transfer-Encoding chunked and Content-Length duplicate; 139; 400; localhost; 4343; Connection: close
+Transfer-Encoding gzip unsupported; 140; 400; localhost; 4343; Connection: close
+Transfer-Encoding chunked duplicate; 141; 201; localhost; 4343; 
+Connection close; 142; 200; localhost; 4343; Connection: close
+Connection keep-alive; 143; 200; localhost; 4343; Connection: keep-alive
+Connection duplicate; 144; 400; localhost; 4343; 
+Connection custom token; 145; 400; localhost; 4343; 
+Header space before colon custom; 146; 400; localhost; 4343; Connection: close
+Header space before colon standard; 147; 400; localhost; 4343; Connection: close
+Header missing colon; 148; 400; localhost; 4343; Connection: close
+Header empty name; 149; 400; localhost; 4343; Connection: close
+Header invalid characters in name; 150; 400; localhost; 4343; Connection: close
+Header empty value valid; 151; 200; localhost; 4343; 
+Header empty value with space valid; 152; 200; localhost; 4343; 
+Header field folding disallowed; 153; 400; localhost; 4343; Connection: close
+Header extremely long key; 154; 400; localhost; 4343; Connection: close
+Header extremely long value; 155; 400; localhost; 4343; Connection: close
+Header giant list; 156; 400; localhost; 4343; Connection: close
+GET on root slash; 157; 200; localhost; 4343; Content-Type: text/html; charset=UTF-8
+POST on root slash; 158; 201; localhost; 4343; 
+DELETE on root slash method not allowed; 159; 405; localhost; 4343; Connection: close
+GET on upload directory; 160; 301; localhost; 4343; Location: http://localhost:4343/upload/
+GET on upload directory trailing slash; 161; 200; localhost; 4343; 
+POST on upload directory allowed; 162; 201; localhost; 4343; 
+POST on upload directory trailing slash; 163; 201; localhost; 4343; 
+DELETE on upload directory not allowed; 164; 405; localhost; 4343; Connection: close
+GET on test redirect route; 165; 301; localhost; 4343; Location: http://localhost:4343/
+GET on test redirect route subpath; 166; 301; localhost; 4343; Location: http://localhost:4343/
+GET nonexistent file; 167; 404; localhost; 4343; Content-Type: text/html
+GET nonexistent directory; 168; 404; localhost; 4343; Content-Type: text/html
+Trigger 400 bad request returns error400 html; 169; 400; localhost; 4343; Content-Type: text/html
+GET index cgi script directly; 170; 200; localhost; 4343; Content-Type: text/html; charset=UTF-8
+GET index html file directly; 171; 200; localhost; 4343; Content-Type: text/html
+POST with normal body; 172; 201; localhost; 4343; 
+POST with empty body CL zero; 173; 201; localhost; 4343; 
+POST with binary payload null bytes; 174; 201; localhost; 4343; 
+POST oversized body Content-Length; 175; 413; localhost; 4343; Connection: close
+POST multipart form-data valid; 176; 201; localhost; 4343; 
+POST multipart form-data missing boundary parameter; 177; 400; localhost; 4343; Connection: close
+POST chunked body valid; 178; 201; localhost; 4343; 
+CGI GET with query parameters; 179; 200; localhost; 4343; Content-Type: text/html; charset=UTF-8
+CGI POST with query parameters and body; 180; 200; localhost; 4343; Content-Type: text/html; charset=UTF-8
+CGI GET cgiTest.php; 181; 200; localhost; 4343; Content-Type: text/html; charset=UTF-8
+CGI POST cgiTest.php; 182; 200; localhost; 4343; Content-Type: text/html; charset=UTF-8
+CGI with headers containing underscore; 183; 200; localhost; 4343; Content-Type: text/html; charset=UTF-8
+CGI with cookie header; 184; 200; localhost; 4343; Content-Type: text/html; charset=UTF-8
+CRLF obsolete line folding tab; 185; 400; localhost; 4343; Connection: close
+CRLF obsolete line folding space; 186; 400; localhost; 4343; Connection: close
+Bare LF inside header value; 187; 400; localhost; 4343; Connection: close
+Bare CR inside header value; 188; 400; localhost; 4343; Connection: close
+Multiple CRs before LF request line; 189; 400; localhost; 4343; Connection: close
+Empty line before request line LF only; 190; 200; localhost; 4343; 
+Empty line before request line CRLF; 191; 200; localhost; 4343; 
+Multiple empty lines before request line; 192; 200; localhost; 4343; 
+Empty line with space before request line; 193; 400; localhost; 4343; Connection: close
+LF-only request line; 194; 200; localhost; 4343; 
+LF-only headers; 195; 200; localhost; 4343; 
+CR-only line endings; 196; 400; localhost; 4343; Connection: close
+Null byte in header field name; 197; 400; localhost; 4343; Connection: close
+Null byte in header field value; 198; 400; localhost; 4343; Connection: close
+Control character HTAB in header name; 199; 400; localhost; 4343; Connection: close
+Control character Form Feed in header name; 200; 400; localhost; 4343; Connection: close
+Control character Vertical Tab in header value; 201; 400; localhost; 4343; Connection: close
+Non-ASCII character in header name; 202; 400; localhost; 4343; Connection: close
+Non-ASCII character in header value; 203; 200; localhost; 4343; 
+Multiple spaces before method name; 204; 400; localhost; 4343; Connection: close
+No space between method and target; 205; 400; localhost; 4343; Connection: close
+No space between target and version; 206; 400; localhost; 4343; Connection: close
+Space at the end of HTTP version line; 207; 400; localhost; 4343; Connection: close
+Space after colon in header empty value; 208; 200; localhost; 4343; 
+Multiple tabs after colon; 209; 200; localhost; 4343; 
+No space after colon; 210; 200; localhost; 4343; 
+URI containing control character 0x01; 211; 400; localhost; 4343; Connection: close
+URI containing DEL character 0x7F; 212; 400; localhost; 4343; Connection: close
+URI containing double slash; 213; 404; localhost; 4343; 
+URI containing triple slash; 214; 404; localhost; 4343; 
+URI path traversal double dot slash encoded; 215; 200; localhost; 4343; 
+Percent-encoding uppercase hex; 216; 404; localhost; 4343; 
+Percent-encoding invalid character; 217; 400; localhost; 4343; Connection: close
+Percent-encoding raw percent sign; 218; 400; localhost; 4343; Connection: close
+Double percent-encoding; 219; 404; localhost; 4343; 
+Percent-encoding null byte; 220; 400; localhost; 4343; Connection: close
+Percent-encoding CR character; 221; 400; localhost; 4343; Connection: close
+Percent-encoding LF character; 222; 400; localhost; 4343; Connection: close
+Percent-encoding hash character; 223; 400; localhost; 4343; Connection: close
+Percent-encoding question mark; 224; 200; localhost; 4343; 
+Percent-encoding overlong UTF-8; 225; 400; localhost; 4343; Connection: close
+Chunked size leading space; 226; 400; localhost; 4343; Connection: close
+Chunked size trailing space; 227; 201; localhost; 4343; 
+Chunked size invalid hex character; 228; 400; localhost; 4343; Connection: close
+Chunked body missing CRLF; 229; 400; localhost; 4343; Connection: close
+Chunked size overflow; 230; 400; localhost; 4343; Connection: close
+Chunked empty size line; 231; 400; localhost; 4343; Connection: close
+Chunked missing final zero chunk; 232; 400; localhost; 4343; Connection: close
+Chunked invalid trailer headers; 233; 400; localhost; 4343; Connection: close
+Chunked valid trailer headers; 234; 201; localhost; 4343; 

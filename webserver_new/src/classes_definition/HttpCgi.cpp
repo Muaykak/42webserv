@@ -794,7 +794,9 @@ void HttpCgi::sendToResponseBuffer()
 
 				if (_bodyData->curr_body_read >= _bodyData->bodySize)
 				{
-					endLinePos = _responseBuffer.find("\r\n");
+					//endLinePos = _responseBuffer.find("\r\n");
+					if (findNextCRLF(_responseBuffer, endLinePos) == false)
+						generate5xxCGIOUTresponseError(400, "the \'\\r\' must always followed by \'\\n\'");
 
 					if (endLinePos == std::string::npos)
 					{

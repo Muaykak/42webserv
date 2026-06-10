@@ -22,6 +22,9 @@ std::string toString(const T &value)
 	return (ss.str());
 }
 
+bool findNextCRLF(const std::string& str, size_t& outPos);
+bool findNextCRLF(const std::string& str, size_t& outPos, size_t startIndex);
+
 const std::string& getStatusCodeMessage(unsigned int statusCode);
 const ContentTypeTable& contentTypeTable();
 TempFileManager& tempFileManager();
