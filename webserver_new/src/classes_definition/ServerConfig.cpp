@@ -251,7 +251,7 @@ void	ServerConfig::checkMustExistDirective(const std::vector<std::string>& direc
 
 void ServerConfig::checkDirectiveHost(std::vector<std::string>& valueVec, const t_config_map* targetLocationBlock)
 {
-	(void)targetLocationBlock;
+		(void)targetLocationBlock;
 	in_addr_t	temp_in_addr_t;
 	for (size_t i = 0; i < valueVec.size(); i++)
 	{
@@ -275,7 +275,8 @@ void ServerConfig::checkDirectiveHost(std::vector<std::string>& valueVec, const 
 
 void ServerConfig::checkDirectiveServerName(std::vector<std::string>& valueVec, const t_config_map* targetLocationBlock)
 {
-	(void)targetLocationBlock;
+	if (targetLocationBlock)
+		(void)targetLocationBlock;
 	for (size_t i = 0; i < valueVec.size(); i++)
 	{
 		if (valueVec[i].empty() || valueVec[i].size() > 255)
@@ -283,16 +284,16 @@ void ServerConfig::checkDirectiveServerName(std::vector<std::string>& valueVec, 
 		bool lastCharWasDot = true;
 		size_t labelLength = 0;
 
-		for (size_t i = 0; i < valueVec[i].length(); ++i)
+		for (size_t j = 0; j < valueVec[i].length(); ++j)
 		{
-			char c = valueVec[i][i];
+			char c = valueVec[i][j];
 
 			if (c == ';')
 				throw WebservException("ServerConfig::ServerName::error");
 
 			if (c == '.')
 			{
-				if (lastCharWasDot || (i > 0 && valueVec[i][i - 1] == '-'))
+				if (lastCharWasDot || (j > 0 && valueVec[i][j - 1] == '-'))
 					throw WebservException("ServerConfig::ServerName::error");
 				lastCharWasDot = true;
 				labelLength = 0;
@@ -635,7 +636,8 @@ void ServerConfig::checkDirectiveReturn(std::vector<std::string>& valueVec, cons
 	if (string_to_size_t(valueVec[0], convertNum) == false || (convertNum >= 400 || convertNum < 300))
 		throw WebservException("ServerConfig::\"return\"::invalid value");
 
-	checkIfPathIsDirectory(valueVec[1], targetLocationBlock);
+	(void)targetLocationBlock;
+	// checkIfPathIsDirectory(valueVec[1], targetLocationBlock);
 }
 
 void ServerConfig::checkDirectiveCGIpass(std::vector<std::string>& valueVec, const t_config_map *targetLocationBlock)

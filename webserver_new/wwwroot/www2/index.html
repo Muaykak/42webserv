@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>42Webserv</title>
+    <link href="styles.css" rel="stylesheet" />
+  </head>
+  <body>
+    <header>
+      <h1>42<span>Webserv</span></h1>
+    </header>
+
+    <nav class="nav-container">
+      <a href="/"><button class="nav-btn btn-home">Home</button></a>
+      <a href="/upload.html"
+        ><button class="nav-btn btn-post">POST / Upload</button></a
+      >
+      <a href="/uploads/"
+        ><button class="nav-btn btn-folder">Upload Folder</button></a
+      >
+      <a href="/delete/"
+        ><button class="nav-btn btn-delete">DELETE</button></a
+      >
+      <a href="/cgi-bin"><button class="nav-btn btn-cgi">CGI</button></a>
+      <a href="/dead-link" target="_blank"
+        ><button class="nav-btn btn-dead">Dead-link</button></a
+      >
+      <a href="/redirect"
+        ><button class="nav-btn btn-redirect">Redirection</button></a
+      >
+    </nav>
+    <canvas id="starfield"></canvas>
+    <script src="starbg.js"></script>
+  </body>
+</html>

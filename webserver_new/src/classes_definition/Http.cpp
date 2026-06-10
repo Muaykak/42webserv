@@ -2028,14 +2028,20 @@ void	Http::handleGetRequest(HttpRequest& requestData, bool isEndWithSlash, const
 						tempBodyString = "<!DOCTYPE html>\r\n"
 						"<html>\r\n"
 						"<head>\r\n"
-						"	<title>Index of ";
+						"<style>\r\n"
+						"h1{text-align: center;}\r\n"
+						"body{margin: 0; background-color: #0d1117; display: flex; color: #c9d1d9; align-items: center; justify-content: center; margin-top: 10px}\r\n"
+						"div{background-color: #21262d; border: 1px solid #4ab9e9; border-top: 4px solid #4ab9e9; border-radius: 12px; padding: 30px 40px;"
+        				"width: 100%; max-width: 600px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);}"
+						"</style>\r\n"
+						"<body>\r\n"
+						"<div><title>Index of ";
 						tempBodyString += requestData.targetData.targetPath;
 						tempBodyString += "</title>\r\n"
 						"</head>\r\n"
-						"<body>\r\n"
-						"	<h1>Index of ";
+						"<h1>";
 						tempBodyString += requestData.targetData.targetPath;
-						tempBodyString += "</h1>\r\n";
+						tempBodyString += " folder</h1>\r\n";
 
 						if (directoryNameList.empty())
 						{
@@ -2043,7 +2049,7 @@ void	Http::handleGetRequest(HttpRequest& requestData, bool isEndWithSlash, const
 						}
 						else
 						{
-							tempBodyString += "<hr>\r\n"
+							tempBodyString += 
 							"<ul>\r\n";
 
 							std::list<std::string>::const_iterator listIt = directoryNameList.begin();
@@ -2059,7 +2065,7 @@ void	Http::handleGetRequest(HttpRequest& requestData, bool isEndWithSlash, const
 							}
 
 							tempBodyString += "</ul>\r\n"
-							"</hr>\r\n";
+							"</div></hr>\r\n";
 						}
 
 						tempBodyString += "</body>\r\n</html>\r\n";
