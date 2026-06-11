@@ -47,7 +47,7 @@ const CharTable& allAlphaChar()
 
 const CharTable& httpFieldNameChar()
 {
-	static const CharTable table("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-", true);
+	static const CharTable table("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_", true);
 	return (table);
 }
 

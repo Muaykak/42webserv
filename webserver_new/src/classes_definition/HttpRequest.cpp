@@ -9,6 +9,8 @@ responseTargetPtr(NULL)
 	serverData.targetServerPtr = NULL;
 	serverData.targetLocationBlockPtr = NULL;
 
+	requestData.headerBufferCount = 0;
+
 	bodyData.body_size = 0;
 	bodyData.readingRequestBodyPtr = NULL;
 	// bodyData.body_type = 0;
@@ -21,6 +23,7 @@ responseTargetPtr(NULL)
 	bodyData.readBody = false;
 	bodyData.isUseTempFile = false;
 	bodyData.tempRequestBodyFileNum = 0;
+	bodyData.skipCRLFtranferencoding = false;
 	localRedirectCount = 0;
 }
 
@@ -80,6 +83,7 @@ void HttpRequest::clear()
 	requestData.method.clear();
 	requestData.protocol.clear();
 	requestData.requestTarget.clear();
+	requestData.headerBufferCount = 0;
 
 	serverData.portName.clear();
 	serverData.serverName.clear();
@@ -115,6 +119,7 @@ void HttpRequest::clear()
 	bodyData.isUseTempFile = false;
 	bodyData.readBody = false;
 	bodyData.tempRequestBodyFileNum = 0;
+	bodyData.skipCRLFtranferencoding = false;
 
 	localRedirectCount = 0;
 }

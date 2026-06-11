@@ -12,6 +12,7 @@ struct s_http_request_header_data {
 	std::string	requestTarget;
 	std::string	protocol;
 	std::map<std::string, std::string> headerField;
+	size_t headerBufferCount;
 
 	/* because of local redirection, maybe i should 
 	treat http request as list but idk, let's try to preocess
@@ -77,6 +78,8 @@ struct s_http_request_body_data
 	std::set<std::string> trailerHeader;
 	size_t			client_max_body_size;
 	size_t			curr_body_read;
+
+	bool			skipCRLFtranferencoding;
 };
 
 struct s_http_request_cgi_data

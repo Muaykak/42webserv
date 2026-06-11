@@ -278,6 +278,19 @@ void HttpCgi::parsingCGIOUTresponseHeader()
 			but how about the CRLF ?? simple, the endlinePos is need
 			to be at currIndex + 1 and currIndex needs to be '\r' */
 
+			//{
+			//	std::map<std::string, std::string>::iterator it = _responseHeaderCGIOUT.begin();
+
+			//	std::cout << "======================== CGI HEADER OUT ========================\n";
+			//	while (it != _responseHeaderCGIOUT.end())
+			//	{
+			//		std::cout << it->first << ": " << it->second << std::endl;
+			//		++it;
+			//	}
+			//	std::cout << "================================================================\n";
+
+			//}
+
 			httpCgiStatus = HTTPCGI_VALIDATING_RESPONSE;
 			if (currIndex + 2 >= responseBuffSize)
 				_responseBuffer.clear();
@@ -1024,9 +1037,9 @@ void HttpCgi::readFromCGI(Socket* currentSocket, const epoll_event& epollEvent)
 			}
 			else
 			{
-				//std::cout << "======== READ FROMC CGI RAW BUFFER READ FROM  =========" << '\n';
-				//std::cout << std::string(_readCgiBuffer.data(), readAmount) << '\n';
-				//std::cout << "=========================" << '\n';
+				// std::cout << "======== READ FROMC CGI RAW BUFFER READ FROM  =========" << '\n';
+				// std::cout << std::string(_readCgiBuffer.data(), readAmount) << '\n';
+				// std::cout << "=========================" << '\n';
 
 				_responseBuffer.append(_readCgiBuffer.data(), readAmount);
 				/* we can try the same method from http here. but the implementation
@@ -1146,7 +1159,7 @@ void HttpCgi::sendToCGI(Socket* currentSocket, const epoll_event& epollEvent)
 				else
 				{
 					/* */
-					_writeCgiBuffer.insert(_writeCgiBuffer.end(), temp.begin(), temp.end());
+					_writeCgiBuffer.insert(_writeCgiBuffer.end(), temp.begin(), temp.begin() + readAmount);
 
 					/* deduct the needToAppenSize */
 					if (needToAppendSize <= static_cast<size_t>(readAmount))
@@ -1161,7 +1174,7 @@ void HttpCgi::sendToCGI(Socket* currentSocket, const epoll_event& epollEvent)
 
 
 		/* here we read from the tempFd that we used */
-		ssize_t	writeAmount = write(_cgiInSocket->getSocketFD().getFd(), &_writeCgiBuffer[0], HTTP_WRITE_TO_CGI_BUFFER_SIZE);
+		ssize_t	writeAmount = write(_cgiInSocket->getSocketFD().getFd(), &_writeCgiBuffer[0], _writeCgiBuffer.size());
 
 		//static size_t count = 0;
 

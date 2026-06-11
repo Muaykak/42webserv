@@ -195,7 +195,7 @@ const t_config_map *ServerConfig::findLocationBlock(std::string locationPath) co
 		it = _locationsConfig.find(tempPath);
 		if (it != _locationsConfig.end())
 		{
-			 std::cout << "find location block: " << tempPath << std::endl;
+			// std::cout << "find location block: " << tempPath << std::endl;
 			return (&it->second);
 		}
 		if (tempPath.size() > 0) {
@@ -206,7 +206,7 @@ const t_config_map *ServerConfig::findLocationBlock(std::string locationPath) co
 				it = _locationsConfig.find(tempPath);
 				if (it != _locationsConfig.end())
 				{
-					std::cout << "find location block: " << tempPath << std::endl;
+					//std::cout << "find location block: " << tempPath << std::endl;
 					return (&it->second);
 				}
 			}
@@ -215,7 +215,7 @@ const t_config_map *ServerConfig::findLocationBlock(std::string locationPath) co
 				it = _locationsConfig.find(tempPath + "/");
 				if (it != _locationsConfig.end())
 				{
-					std::cout << "find location block: " << tempPath + "/" << std::endl;
+					//std::cout << "find location block: " << tempPath + "/" << std::endl;
 					return (&it->second);
 				}
 			}
@@ -251,7 +251,7 @@ void	ServerConfig::checkMustExistDirective(const std::vector<std::string>& direc
 
 void ServerConfig::checkDirectiveHost(std::vector<std::string>& valueVec, const t_config_map* targetLocationBlock)
 {
-	(void)targetLocationBlock;
+		(void)targetLocationBlock;
 	in_addr_t	temp_in_addr_t;
 	for (size_t i = 0; i < valueVec.size(); i++)
 	{
@@ -275,7 +275,8 @@ void ServerConfig::checkDirectiveHost(std::vector<std::string>& valueVec, const 
 
 void ServerConfig::checkDirectiveServerName(std::vector<std::string>& valueVec, const t_config_map* targetLocationBlock)
 {
-	(void)targetLocationBlock;
+	if (targetLocationBlock)
+		(void)targetLocationBlock;
 	for (size_t i = 0; i < valueVec.size(); i++)
 	{
 		if (valueVec[i].empty() || valueVec[i].size() > 255)

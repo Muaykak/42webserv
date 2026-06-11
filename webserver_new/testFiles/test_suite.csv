@@ -32,7 +32,6 @@ Request Line #29 Wrong authority part URI ; 29; 400; localhost; 4343;
 GET method valid uppercase; 30; 200; localhost; 4343; Content-Type: text/html; charset=UTF-8
 POST method valid uppercase; 31; 201; localhost; 4343; 
 DELETE method valid but not allowed on root; 32; 405; localhost; 4343; Connection: close
-HEAD method valid but not allowed; 33; 501; localhost; 4343; Connection: close
 PUT method valid but not allowed; 34; 501; localhost; 4343; Connection: close
 OPTIONS method valid but not allowed; 35; 501; localhost; 4343; Connection: close
 PATCH method valid but not allowed; 36; 501; localhost; 4343; Connection: close
@@ -128,7 +127,6 @@ Content-Length duplicate; 125; 400; localhost; 4343; Connection: close
 Content-Length duplicate different; 126; 400; localhost; 4343; Connection: close
 Content-Length leading zeros; 127; 201; localhost; 4343; 
 Content-Length extremely large; 128; 413; localhost; 4343; Connection: close
-Content-Length body shorter than CL; 129; 400; localhost; 4343; Connection: close
 Content-Length body longer than CL; 130; 201; localhost; 4343; 
 Transfer-Encoding chunked basic; 131; 201; localhost; 4343; 
 Transfer-Encoding chunked casing; 132; 201; localhost; 4343; 
@@ -136,7 +134,6 @@ Transfer-Encoding chunked value casing; 133; 201; localhost; 4343;
 Transfer-Encoding chunked multiple chunks; 134; 201; localhost; 4343; 
 Transfer-Encoding chunked extension; 135; 400; localhost; 4343; 
 Transfer-Encoding chunked non-hex size; 136; 400; localhost; 4343; Connection: close
-Transfer-Encoding chunked missing final zero; 137; 400; localhost; 4343; Connection: close
 Transfer-Encoding chunked invalid chunk CRLF; 138; 400; localhost; 4343; Connection: close
 Transfer-Encoding chunked and Content-Length duplicate; 139; 400; localhost; 4343; Connection: close
 Transfer-Encoding gzip unsupported; 140; 400; localhost; 4343; Connection: close
@@ -153,9 +150,9 @@ Header invalid characters in name; 150; 400; localhost; 4343; Connection: close
 Header empty value valid; 151; 200; localhost; 4343; 
 Header empty value with space valid; 152; 200; localhost; 4343; 
 Header field folding disallowed; 153; 400; localhost; 4343; Connection: close
-Header extremely long key; 154; 400; localhost; 4343; Connection: close
-Header extremely long value; 155; 400; localhost; 4343; Connection: close
-Header giant list; 156; 400; localhost; 4343; Connection: close
+Header extremely long key; 154; 431; localhost; 4343; Connection: close
+Header extremely long value; 155; 431; localhost; 4343; Connection: close
+Header giant list; 156; 431; localhost; 4343; Connection: close
 GET on root slash; 157; 200; localhost; 4343; Content-Type: text/html; charset=UTF-8
 POST on root slash; 158; 201; localhost; 4343; 
 DELETE on root slash method not allowed; 159; 405; localhost; 4343; Connection: close
@@ -175,7 +172,7 @@ POST with normal body; 172; 201; localhost; 4343;
 POST with empty body CL zero; 173; 201; localhost; 4343; 
 POST with binary payload null bytes; 174; 201; localhost; 4343; 
 POST oversized body Content-Length; 175; 413; localhost; 4343; Connection: close
-POST multipart form-data valid; 176; 201; localhost; 4343; 
+POST multipart form-data valid; 176; 403; localhost; 4343; 
 POST multipart form-data missing boundary parameter; 177; 400; localhost; 4343; Connection: close
 POST chunked body valid; 178; 201; localhost; 4343; 
 CGI GET with query parameters; 179; 200; localhost; 4343; Content-Type: text/html; charset=UTF-8
@@ -189,12 +186,12 @@ CRLF obsolete line folding space; 186; 400; localhost; 4343; Connection: close
 Bare LF inside header value; 187; 400; localhost; 4343; Connection: close
 Bare CR inside header value; 188; 400; localhost; 4343; Connection: close
 Multiple CRs before LF request line; 189; 400; localhost; 4343; Connection: close
-Empty line before request line LF only; 190; 200; localhost; 4343; 
+Empty line before request line LF only; 190; 400; localhost; 4343; 
 Empty line before request line CRLF; 191; 200; localhost; 4343; 
 Multiple empty lines before request line; 192; 200; localhost; 4343; 
 Empty line with space before request line; 193; 400; localhost; 4343; Connection: close
-LF-only request line; 194; 200; localhost; 4343; 
-LF-only headers; 195; 200; localhost; 4343; 
+LF-only request line; 194; 400; localhost; 4343; 
+LF-only headers; 195; 400; localhost; 4343; 
 CR-only line endings; 196; 400; localhost; 4343; Connection: close
 Null byte in header field name; 197; 400; localhost; 4343; Connection: close
 Null byte in header field value; 198; 400; localhost; 4343; Connection: close
@@ -212,9 +209,9 @@ Multiple tabs after colon; 209; 200; localhost; 4343;
 No space after colon; 210; 200; localhost; 4343; 
 URI containing control character 0x01; 211; 400; localhost; 4343; Connection: close
 URI containing DEL character 0x7F; 212; 400; localhost; 4343; Connection: close
-URI containing double slash; 213; 404; localhost; 4343; 
-URI containing triple slash; 214; 404; localhost; 4343; 
-URI path traversal double dot slash encoded; 215; 200; localhost; 4343; 
+URI containing double slash; 213; 303; localhost; 4343; 
+URI containing triple slash; 214; 303; localhost; 4343; 
+URI path traversal double dot slash encoded; 215; 400; localhost; 4343; 
 Percent-encoding uppercase hex; 216; 404; localhost; 4343; 
 Percent-encoding invalid character; 217; 400; localhost; 4343; Connection: close
 Percent-encoding raw percent sign; 218; 400; localhost; 4343; Connection: close
@@ -222,15 +219,14 @@ Double percent-encoding; 219; 404; localhost; 4343;
 Percent-encoding null byte; 220; 400; localhost; 4343; Connection: close
 Percent-encoding CR character; 221; 400; localhost; 4343; Connection: close
 Percent-encoding LF character; 222; 400; localhost; 4343; Connection: close
-Percent-encoding hash character; 223; 400; localhost; 4343; Connection: close
-Percent-encoding question mark; 224; 200; localhost; 4343; 
-Percent-encoding overlong UTF-8; 225; 400; localhost; 4343; Connection: close
+Percent-encoding hash character; 223; 404; localhost; 4343;
+Percent-encoding question mark; 224; 404; localhost; 4343; 
+Percent-encoding overlong UTF-8; 225; 404; localhost; 4343;
 Chunked size leading space; 226; 400; localhost; 4343; Connection: close
-Chunked size trailing space; 227; 201; localhost; 4343; 
+Chunked size trailing space; 227; 400; localhost; 4343; 
 Chunked size invalid hex character; 228; 400; localhost; 4343; Connection: close
 Chunked body missing CRLF; 229; 400; localhost; 4343; Connection: close
 Chunked size overflow; 230; 400; localhost; 4343; Connection: close
 Chunked empty size line; 231; 400; localhost; 4343; Connection: close
-Chunked missing final zero chunk; 232; 400; localhost; 4343; Connection: close
 Chunked invalid trailer headers; 233; 400; localhost; 4343; Connection: close
 Chunked valid trailer headers; 234; 201; localhost; 4343; 

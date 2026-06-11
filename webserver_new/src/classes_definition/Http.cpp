@@ -74,6 +74,11 @@ void Http::printHeaderField(HttpRequest& requestData) const
 	}
 }
 
+bool Http::hasResponseList() const
+{
+	return (!_httpResponseList.empty());
+}
+
 bool Http::isKeepConnection() const
 {
 	return _keepConnection;
@@ -482,6 +487,11 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 			break ;
 		}
 
+		httpRequest.requestData.headerBufferCount += endLinePos - currIndex;
+
+		if (httpRequest.requestData.headerBufferCount > MAX_HTTP_HEADER_BUFFER_LIMIT)
+			generate4xx5xxErrorReponse(httpRequest, 431, false, "name in header field too long");
+
 
 		// we found end line pos
 
@@ -500,6 +510,8 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 		// We can check field name length here
 
 		/* header name must not too long */
+		if (tempFieldName.size() > MAX_HTTP_HEADER_LINE_LENGTH)
+			generate4xx5xxErrorReponse(httpRequest, 431, false, "name in header is too long");
 
 		// simple checking that it must not contain any forbidden char
 		{
@@ -513,6 +525,10 @@ void	Http::parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize)
 
 		// now we got field name, next we want field value
 		currIndex = colonPos + 1;
+
+		if ((endLinePos - currIndex) > MAX_HTTP_HEADER_LINE_LENGTH)
+				generate4xx5xxErrorReponse(httpRequest, 431, false, "value in header is too long");
+
 		tempSep = _requestBuffer.substr(currIndex, endLinePos - currIndex);
 		tempSep = my_ft_trim(tempSep, " \t");
 
@@ -579,7 +595,7 @@ static bool	pathDecoding(std::string& pathStr)
 		//pathStr = returnStr;
 	}
 	pathStr = returnStr;
-	std::cout << "decodestr: \"" << pathStr << "\"\n";
+	//std::cout << "decodestr: \"" << pathStr << "\"\n";
 	return true;
 }
 
@@ -894,7 +910,7 @@ void	Http::generate4xx5xxErrorReponse(HttpRequest& requestData, unsigned int err
 
 	HttpResponse& targetResponse = *requestData.responseTargetPtr;
 
-	if (errorStatusCode == 405)
+	if (errorStatusCode == 405 && requestData.serverData.targetServerPtr && requestData.serverData.targetLocationBlockPtr)
 	{
 		const std::vector<std::string>* foundAllowedMethodPtr = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "allowed_methods");
 
@@ -1509,7 +1525,12 @@ void	Http::requestLineCheck(HttpRequest& requestData, const Socket& clientSocket
 	// rough check for method first
 	/* method wrong should response 400 first */
 	if (requestData.requestData.method != "GET" && requestData.requestData.method != "POST" && requestData.requestData.method != "DELETE")
+	{
+		if (requestData.requestData.method == "HEAD")
+			generate4xx5xxErrorReponse(requestData, 405, false, "Http::Method not implemented: " + requestData.requestData.method);
+
 		generate4xx5xxErrorReponse(requestData, 501, false, "Http::Method not implemented: " + requestData.requestData.method);
+	}
 
 	// before anything, we check the protocol version first
 	requestLineCheckProtocolVersion(requestData);
@@ -1632,7 +1653,7 @@ void	Http::checkRequestBodyType(HttpRequest& requestData)
 		bool isFoundChunked = false;
 		for (size_t i = 0; i < valueVec.size(); i++)
 		{
-			std::cout << "valueVec[" << i << "]: \"" << valueVec[i] << "\"\n";
+			//std::cout << "valueVec[" << i << "]: \"" << valueVec[i] << "\"\n";
 			if (stringToLower(valueVec[i]) == "chunked")
 				isFoundChunked = true;
 		}
@@ -1708,7 +1729,7 @@ void	Http::checkRequestBodyType(HttpRequest& requestData)
 	if (requestData.bodyData.client_max_body_size == 0)
 		requestData.bodyData.client_max_body_size = std::numeric_limits<size_t>::max();
 
-	std::cout << "CLIENT MAX BODY: " << requestData.bodyData.client_max_body_size << std::endl;
+	//std::cout << "CLIENT MAX BODY: " << requestData.bodyData.client_max_body_size << std::endl;
 
 	if (content_length != target.end() && requestData.bodyData.body_size > requestData.bodyData.client_max_body_size)
 		generate4xx5xxErrorReponse(requestData, 413, false, "HTTP::request Content-Length is Larger than client_max_body_size");
@@ -1815,7 +1836,7 @@ void	Http::checkCgiPath(HttpRequest& requestData)
 		// devide into segment
 
 		std::string tempTofil = requestData.targetData.targetPath.substr(tempPath.size() > requestData.targetData.targetPath.size() ? requestData.targetData.targetPath.size() : tempPath.size());
-		std::cout << "tempToFill: " << tempTofil << std::endl;
+		//std::cout << "tempToFill: " << tempTofil << std::endl;
 		size_t	slashPos;
 		size_t	dotPos;
 		std::string tempExtensionStr;
@@ -1927,10 +1948,8 @@ void	Http::checkCgiPath(HttpRequest& requestData)
 
 void Http::createSystemPath(HttpRequest& requestData, std::string& systemPath)
 {
-	if (requestData.requestData.method == "POST" && requestData.cgiData.cgiPath.empty())
+	if (requestData.requestData.method == "POST" && requestData.cgiData.cgiPath.empty() && requestData.bodyData.discardBody == false)
 	{
-
-
 
 		// should use 'upload_store' may be we can give this as a must in configuration file ??
 		// try with this method first
@@ -2117,14 +2136,21 @@ void	Http::handleGetRequest(HttpRequest& requestData, bool isEndWithSlash, const
 						tempBodyString = "<!DOCTYPE html>\r\n"
 						"<html>\r\n"
 						"<head>\r\n"
-						"	<title>Index of ";
+						"<style>\r\n"
+						"h1{text-align: center;}\r\n"
+						"body{margin: 0; background-color: #0d1117; display: flex; color: #c9d1d9; align-items: center; justify-content: center; margin-top: 10px}\r\n"
+						"div{background-color: #21262d; border: 1px solid #4ab9e9; border-top: 4px solid #4ab9e9; border-radius: 12px; padding: 30px 40px;"
+        				"width: 100%; max-width: 600px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);}\r\n"
+						"a{text-decoration: none; text-align: center; color: inherit; box-sizing: border-box;}\r\n"
+						"</style>\r\n"
+						"<body>\r\n"
+						"<div><title>Index of ";
 						tempBodyString += requestData.targetData.targetPath;
 						tempBodyString += "</title>\r\n"
 						"</head>\r\n"
-						"<body>\r\n"
-						"	<h1>Index of ";
+						"<h1>";
 						tempBodyString += requestData.targetData.targetPath;
-						tempBodyString += "</h1>\r\n";
+						tempBodyString += " folder</h1>\r\n";
 
 						if (directoryNameList.empty())
 						{
@@ -2132,7 +2158,7 @@ void	Http::handleGetRequest(HttpRequest& requestData, bool isEndWithSlash, const
 						}
 						else
 						{
-							tempBodyString += "<hr>\r\n"
+							tempBodyString += 
 							"<ul>\r\n";
 
 							std::list<std::string>::const_iterator listIt = directoryNameList.begin();
@@ -2148,7 +2174,7 @@ void	Http::handleGetRequest(HttpRequest& requestData, bool isEndWithSlash, const
 							}
 
 							tempBodyString += "</ul>\r\n"
-							"</hr>\r\n";
+							"</div></hr>\r\n";
 						}
 
 						tempBodyString += "</body>\r\n</html>\r\n";
@@ -2451,10 +2477,10 @@ void	Http::buildCombinedPath(HttpRequest& requestData)
 			if (!requestData.cgiData.cgiVirtualPath.empty())
 				requestData.cgiData.cgiPathTranslated = systemPath + requestData.cgiData.cgiVirtualPath;
 			requestData.targetData.combinedPath = systemPath + requestData.targetData.cutPath;
-			std::cout << "cgi path: " << requestData.cgiData.cgiPath << std::endl;
-			std::cout << "cgiVirtualPath: " << requestData.cgiData.cgiVirtualPath << std::endl;
-			std::cout << "cgiScriptPath: " << requestData.cgiData.cgiScriptPath << std::endl;
-			std::cout << "cgiPathTranslated: " << requestData.cgiData.cgiPathTranslated << std::endl;
+			//std::cout << "cgi path: " << requestData.cgiData.cgiPath << std::endl;
+			//std::cout << "cgiVirtualPath: " << requestData.cgiData.cgiVirtualPath << std::endl;
+			//std::cout << "cgiScriptPath: " << requestData.cgiData.cgiScriptPath << std::endl;
+			//std::cout << "cgiPathTranslated: " << requestData.cgiData.cgiPathTranslated << std::endl;
 		}
 		else
 		{
@@ -2466,7 +2492,7 @@ void	Http::buildCombinedPath(HttpRequest& requestData)
 		}
 
 	}
-	std::cout << "combined path: \"" << requestData.targetData.combinedPath << '\"' << std::endl;
+	//std::cout << "combined path: \"" << requestData.targetData.combinedPath << '\"' << std::endl;
 }
 
 void Http::handleRequestMultipart(HttpRequest& requestData, std::pair<std::string, std::vector<std::pair<std::string, std::string> > >& outPair)
@@ -2544,7 +2570,7 @@ void Http::handleRequestMultipart(HttpRequest& requestData, std::pair<std::strin
 
 		if (fd < 0)
 		{
-			generate4xx5xxErrorReponse(requestData, 500, false, "POST method to non-cgi with Content-Type: multipart/form-data::open() error");
+			generate4xx5xxErrorReponse(requestData, 500, false, "POST method to non-cgi with Content-Type: multipart/form-data::open() error::" + std::string(std::strerror(errno)));
 		}
 
 		FileDescriptor tempFd(fd);
@@ -3005,6 +3031,12 @@ void Http::handleUploadPostRequest(HttpRequest& requestData)
 
 void Http::handlePostCgiRequest(HttpRequest& requestData)
 {
+	/* post method can be empty so what can we do here */
+	if (requestData.bodyData.readingRequestBodyPtr == NULL)
+	{
+		requestData.setProcessStatus(FINISHED_READ_BODY);
+		return ;
+	}
 
 	//struct stat fileStat;
 	//std::memset(&fileStat, 0, sizeof(fileStat));
@@ -3038,6 +3070,11 @@ void Http::handlePostCgiRequest(HttpRequest& requestData)
 	//}
 
 	/* now we can do the thing*/
+	std::map<std::string, std::string>::iterator content_type = requestData.requestData.headerField.find("content-type");
+	if (content_type == requestData.requestData.headerField.end())
+	{
+		requestData.requestData.headerField["content-type"] = "application/octet-stream";
+	}
 
 	requestData.bodyData.tempRequestBodyFileNum = tempFileManager().generateNewTempFile();
 
@@ -3286,6 +3323,9 @@ int Http::readTransferEncodingChunkFinished(HttpRequest& requestData, size_t& en
 			*/
 			if (availableSize > MAX_HTTP_HEADER_LINE_LENGTH + 1)
 			{
+				if(requestData.bodyData.discardBody)
+					generate4xx5xxErrorReponse(requestData, 403, false, "Reading request body::chunked::trailer header:: line too long");
+
 				requestData.bodyData.writeBodyFile.clear();
 				if (requestData.bodyData.isUseTempFile)
 					tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
@@ -3312,6 +3352,9 @@ int Http::readTransferEncodingChunkFinished(HttpRequest& requestData, size_t& en
 
 			if (availableSize >= 2)
 			{
+				if(requestData.bodyData.discardBody)
+					generate4xx5xxErrorReponse(requestData, 400, false, "Reading request body::chunked::no trailer header::i would say wrong ending for this chunked request. It should be \"0\\r\\n\\r\\n\"");
+
 				requestData.bodyData.writeBodyFile.clear();
 				if (requestData.bodyData.isUseTempFile)
 					tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
@@ -3348,6 +3391,9 @@ int Http::readTransferEncodingChunkFinished(HttpRequest& requestData, size_t& en
 				// check the limit
 				if (headerLineStr.empty() || headerLineStr.size() > MAX_HTTP_HEADER_LINE_LENGTH)
 				{
+					if(requestData.bodyData.discardBody)
+						generate4xx5xxErrorReponse(requestData, 400, false, "Reading request body::chunked::trailer header line size wrong");
+
 					requestData.bodyData.writeBodyFile.clear();
 					if (requestData.bodyData.isUseTempFile)
 						tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
@@ -3360,6 +3406,8 @@ int Http::readTransferEncodingChunkFinished(HttpRequest& requestData, size_t& en
 				size_t colonPos = headerLineStr.find_first_of(':');
 				if (colonPos == std::string::npos)
 				{
+					if(requestData.bodyData.discardBody)
+						generate4xx5xxErrorReponse(requestData, 400, false, "chunked trailer header::name and value in the header field must seperated by \':\'");
 					requestData.bodyData.writeBodyFile.clear();
 					if (requestData.bodyData.isUseTempFile)
 						tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
@@ -3373,6 +3421,8 @@ int Http::readTransferEncodingChunkFinished(HttpRequest& requestData, size_t& en
 
 				if (tempFieldName.empty())
 				{
+					if(requestData.bodyData.discardBody)
+						generate4xx5xxErrorReponse(requestData, 400, false, "chunked trailer header::name in header field must not empty string");
 					requestData.bodyData.writeBodyFile.clear();
 					if (requestData.bodyData.isUseTempFile)
 						tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
@@ -3390,6 +3440,8 @@ int Http::readTransferEncodingChunkFinished(HttpRequest& requestData, size_t& en
 					std::set<std::string>::const_iterator foundHeader = requestData.bodyData.trailerHeader.find(stringToLower(tempFieldName));
 					if (foundHeader == requestData.bodyData.trailerHeader.end())
 					{
+						if(requestData.bodyData.discardBody)
+							generate4xx5xxErrorReponse(requestData, 400, false, "chunked trailer header::the header is not matched");
 						// if not match then would error
 						requestData.bodyData.writeBodyFile.clear();
 						if (requestData.bodyData.isUseTempFile)
@@ -3407,7 +3459,18 @@ int Http::readTransferEncodingChunkFinished(HttpRequest& requestData, size_t& en
 				if (!tempSep.empty())
 				{
 					if (forbiddenFieldValueChar().isNotMatch(tempSep) == false)
+					{
+						if(requestData.bodyData.discardBody)
+							generate4xx5xxErrorReponse(httpRequest, 400, false, "value in trailer header field must not contain any forbidden char");
+
+						requestData.bodyData.writeBodyFile.clear();
+						if (requestData.bodyData.isUseTempFile)
+							tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+						else
+							std::remove(requestData.targetData.combinedPath.c_str());
+
 						generate4xx5xxErrorReponse(httpRequest, 400, false, "value in trailer header field must not contain any forbidden char");
+					}
 				}
 
 
@@ -3432,6 +3495,8 @@ int Http::readTransferEncodingChunkFinished(HttpRequest& requestData, size_t& en
 					if we found the \r\n, for no trailer chunked request.
 					it must be on position 0	
 				*/
+				if(requestData.bodyData.discardBody)
+					generate4xx5xxErrorReponse(requestData, 400, false, "Reading request body::chunked::no trailer header::i would say wrong ending for this chunked request. It should be \"0\\r\\n\\r\\n\"");
 				requestData.bodyData.writeBodyFile.clear();
 				if (requestData.bodyData.isUseTempFile)
 					tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
@@ -3454,8 +3519,26 @@ int	Http::readTransferEncodingChunk(HttpRequest& requestData, size_t& endLinePos
 		if (requestData.bodyData.curr_body_read > 0)
 		{
 			size_t availablesize = _requestBuffer.size() - _requestBufferOffset;
-			if (availablesize >= 2 && _requestBuffer.compare(_requestBufferOffset, 2, "\r\n") == 0)
-				_requestBuffer.erase(0, 2);
+			if (availablesize >= 2 && requestData.bodyData.skipCRLFtranferencoding == false)
+			{
+				if (_requestBuffer.compare(_requestBufferOffset, 2, "\r\n") == 0)
+				{
+					_requestBuffer.erase(0, 2);
+					requestData.bodyData.skipCRLFtranferencoding = true;
+				}
+				else
+				{
+					if(requestData.bodyData.discardBody)
+						generate4xx5xxErrorReponse(requestData, 400, false, "Request Body Chunked::missing CRLF");
+		
+					requestData.bodyData.writeBodyFile.clear();
+					if (requestData.bodyData.isUseTempFile)
+						tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+					else
+						std::remove(requestData.targetData.combinedPath.c_str());
+					generate4xx5xxErrorReponse(requestData, 400, false, "Request Body Chunked::missing CRLF");
+				}
+			}
 			else if (availablesize == 1 && _requestBuffer[_requestBufferOffset] == '\r')
 				return (1);
 			else if (availablesize == 0)
@@ -3470,7 +3553,23 @@ int	Http::readTransferEncodingChunk(HttpRequest& requestData, size_t& endLinePos
 			return (1);
 		}
 
+		requestData.bodyData.skipCRLFtranferencoding = false;
+
 		std::string hexString = _requestBuffer.substr(_requestBufferOffset, endLinePos - _requestBufferOffset);
+
+		// if (hexString.empty() || hexChar()[hexString[0]] == false)
+		// {
+		// 	if(requestData.bodyData.discardBody)
+		// 		generate4xx5xxErrorReponse(requestData, 400, false, "Request Body Chunked::invalid transfer-encoding");
+		
+		// 	requestData.bodyData.writeBodyFile.clear();
+		// 	if (requestData.bodyData.isUseTempFile)
+		// 		tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+		// 	else
+		// 		std::remove(requestData.targetData.combinedPath.c_str());
+		// 	generate4xx5xxErrorReponse(requestData, 400, false, "Request Body Chunked::invalid transfer-encoding");
+		// }
+
 
 		//std::cout << "Hexstring: \"" << hexString << "\"\n";
 			
@@ -3480,6 +3579,8 @@ int	Http::readTransferEncodingChunk(HttpRequest& requestData, size_t& endLinePos
 		if (hex_to_size_t(hexString, hexNum) == false)
 		{
 			// wrong chunked format, blame the client with 4xx error
+			if(requestData.bodyData.discardBody)
+				generate4xx5xxErrorReponse(requestData, 400, false, "Request Body Chunked::wrong hex format::" + toString(hexNum));
 		
 			requestData.bodyData.writeBodyFile.clear();
 			if (requestData.bodyData.isUseTempFile)
@@ -3500,6 +3601,8 @@ int	Http::readTransferEncodingChunk(HttpRequest& requestData, size_t& endLinePos
 			// both number must not exceed the _client_max_body_size
 			if (requestData.bodyData.body_size > requestData.bodyData.client_max_body_size || hexNum > requestData.bodyData.client_max_body_size)
 			{
+				if(requestData.bodyData.discardBody)
+					generate4xx5xxErrorReponse(requestData, 413, false, "Request Body Chunked::Too large::" + toString(hexNum));
 				requestData.bodyData.writeBodyFile.clear();
 				if (requestData.bodyData.isUseTempFile)
 					tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
@@ -3517,6 +3620,8 @@ int	Http::readTransferEncodingChunk(HttpRequest& requestData, size_t& endLinePos
 			*/
 			if (hexNum > requestData.bodyData.client_max_body_size - requestData.bodyData.body_size)
 			{
+				if(requestData.bodyData.discardBody)
+					generate4xx5xxErrorReponse(requestData, 413, false, "Request Body Chunked::Content Too Large");
 				requestData.bodyData.writeBodyFile.clear();
 				if (requestData.bodyData.isUseTempFile)
 					tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
@@ -3525,7 +3630,7 @@ int	Http::readTransferEncodingChunk(HttpRequest& requestData, size_t& endLinePos
 			
 				generate4xx5xxErrorReponse(requestData, 413, false, "Request Body Chunked::Content Too Large");
 			}
-		
+
 			// 
 			if (hexNum == 0)
 			{
@@ -3645,20 +3750,20 @@ void Http::readingRequestBody(HttpRequest& requestData)
 	if (requestData.getProcessStatus() != READ_BODY)
 		return ;
 
-	{
-		char buffer[80];
-		std::time_t currentTime = std::time(NULL);
-		std::tm* localTime = std::localtime(&currentTime);
+	// {
+	// 	char buffer[80];
+	// 	std::time_t currentTime = std::time(NULL);
+	// 	std::tm* localTime = std::localtime(&currentTime);
 
-		std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", localTime);
-		std::cout << "currentTime: " << buffer << '\n';
-		std::time_t stamp = requestData.getStateTimeStamp();
-		localTime = std::localtime(&stamp);
-		std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", localTime);
-		std::cout << "state Time Stamp: " << buffer << '\n';
-		if (std::difftime(currentTime, httpRequest.getStateTimeStamp()) >= WEBSERV_HTTP_REQUEST_TIMEOUT_SECOND)
-			generate4xx5xxErrorReponse(httpRequest, 408, false, "Http::Request Timeout::took too much time to send the request header");
-	}
+	// 	std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", localTime);
+	// 	// std::cout << "currentTime: " << buffer << '\n';
+	// 	std::time_t stamp = requestData.getStateTimeStamp();
+	// 	localTime = std::localtime(&stamp);
+	// 	std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", localTime);
+	// 	// std::cout << "state Time Stamp: " << buffer << '\n';
+	// 	if (std::difftime(currentTime, httpRequest.getStateTimeStamp()) >= WEBSERV_HTTP_REQUEST_TIMEOUT_SECOND)
+	// 		generate4xx5xxErrorReponse(httpRequest, 408, false, "Http::Request Timeout::took too much time to send the request header");
+	// }
 
 	if (requestData.bodyData.readingRequestBodyPtr)
 		(this->*requestData.bodyData.readingRequestBodyPtr)(requestData);
@@ -3754,10 +3859,13 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 			}
 			else
 			{
-				std::cout << "Spawning CGI!\n";
-				int fd;
+				//std::cout << "Total Size: " << requestData.bodyData.body_size << '\n';
+				//std::cout << "ptr = " << (requestData.bodyData.readingRequestBodyPtr == NULL ? "NULL" : "has PTR") << "\n";
 
+				//std::cout << "Spawning CGI!\n";
+				int fd = 0;
 				/* we need to re open this temporary file so we can send it so cgi*/			
+				if (requestData.bodyData.readingRequestBodyPtr)
 				{
 					requestData.bodyData.writeBodyFile.clear();
 					std::string tempFilePath = TEMP_FILE_DIR + toString(requestData.bodyData.tempRequestBodyFileNum);
@@ -3774,20 +3882,26 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 
 				}
 
-				FileDescriptor fdFile(fd);
+				FileDescriptor fdFile;
 
 				int pipe_in[2];
 				int pipe_out[2];
 
-				if (pipe(pipe_in) != 0)
+				if (requestData.bodyData.readingRequestBodyPtr)
 				{
-					tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
-					generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI:: pipe() failed::" + std::string(std::strerror(errno)));
+					if (pipe(pipe_in) != 0)
+					{
+						tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+						generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI:: pipe() failed::" + std::string(std::strerror(errno)));
+					}
 				}
 				if (pipe(pipe_out) != 0)
 				{
-					close(pipe_in[0]);
-					close(pipe_in[1]);
+					if (requestData.bodyData.readingRequestBodyPtr)
+					{
+						close(pipe_in[0]);
+						close(pipe_in[1]);
+					}
 					tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 					generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI:: pipe() failed::" + std::string(std::strerror(errno)));
 				}
@@ -3796,8 +3910,11 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 
 				if (pid < 0)
 				{
-					close(pipe_in[0]);
-					close(pipe_in[1]);
+					if (requestData.bodyData.readingRequestBodyPtr)
+					{
+						close(pipe_in[0]);
+						close(pipe_in[1]);
+					}
 					close(pipe_out[0]);
 					close(pipe_out[1]);
 					tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
@@ -3818,12 +3935,15 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 							throw(42);
 						}
 					
-						if (dup2(pipe_in[0], STDIN_FILENO) == -1)
+						if (requestData.bodyData.readingRequestBodyPtr)
 						{
-							for (int i = 3; i < MAX_FD; i++)
-								close(i);
+							if (dup2(pipe_in[0], STDIN_FILENO) == -1)
+							{
+								for (int i = 3; i < MAX_FD; i++)
+									close(i);
 						
-							generate4xx5xxErrorReponseChildProcess(requestData, 500, false, "Internal Error:: dup2 to stdin failed");
+								generate4xx5xxErrorReponseChildProcess(requestData, 500, false, "Internal Error:: dup2 to stdin failed");
+							}
 						}
 					
 						for (int i = 3; i < MAX_FD; i++)
@@ -3866,17 +3986,22 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 
 							/* here for post to CGI will be different from GET because it has body */
 
-							envData().assignEnv("CONTENT_LENGTH", toString(requestData.bodyData.body_size));
+							if (requestData.bodyData.readingRequestBodyPtr)
+								envData().assignEnv("CONTENT_LENGTH", toString(requestData.bodyData.body_size));
 
 							/* for the Content-Type, we can just trim the whitespaces*/
+							if (requestData.bodyData.readingRequestBodyPtr)
 							{
 								std::string temp;
-								if (httpFieldNormalSingletonTrim(requestData.requestData.headerField.find("content-type")->second, temp) == false)
+								std::map<std::string, std::string>::iterator content_type = requestData.requestData.headerField.find("content-type");
+								if (content_type != requestData.requestData.headerField.end())
 								{
-									generate4xx5xxErrorReponseChildProcess(requestData, 500, false, "Internal Error:: Post to CGI:: error occured when building env");
+									if (httpFieldNormalSingletonTrim(requestData.requestData.headerField.find("content-type")->second, temp) == false)
+									{
+										generate4xx5xxErrorReponseChildProcess(requestData, 500, false, "Internal Error:: Post to CGI:: error occured when building env");
+									}
+									envData().assignEnv("CONTENT_TYPE", temp);
 								}
-
-								envData().assignEnv("CONTENT_TYPE", temp);
 							}
 
 							envData().assignEnv("SCRIPT_NAME", requestData.cgiData.cgiScriptPath);
@@ -4021,7 +4146,8 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 				{
 					/* close unused end pipe */
 					close(pipe_out[1]);
-					close(pipe_in[0]);
+					if (requestData.bodyData.readingRequestBodyPtr)
+						close(pipe_in[0]);
 
 					/* fcntl to both pipe to set to nonblock stream */
 
@@ -4031,18 +4157,22 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 						kill(pid, SIGTERM);
 						waitpid(pid, NULL, 0);
 						close(pipe_out[0]);
-						close(pipe_in[1]);
+						if (requestData.bodyData.readingRequestBodyPtr)
+							close(pipe_in[1]);
 						generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI::fcntl() error to set O_NONBLOCK");
 					}
 
-					if (fcntl(pipe_in[1], F_SETFL, O_NONBLOCK) != 0)
+					if (requestData.bodyData.readingRequestBodyPtr)
 					{
-						tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
-						kill(pid, SIGTERM);
-						waitpid(pid, NULL, 0);
-						close(pipe_out[0]);
-						close(pipe_in[1]);
-						generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI::fcntl() error to set O_NONBLOCK");
+						if (fcntl(pipe_in[1], F_SETFL, O_NONBLOCK) != 0)
+						{
+							tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+							kill(pid, SIGTERM);
+							waitpid(pid, NULL, 0);
+							close(pipe_out[0]);
+							close(pipe_in[1]);
+							generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI::fcntl() error to set O_NONBLOCK");
+						}
 					}
 
 					try
@@ -4057,10 +4187,13 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 						clientSocket.getEventContoller(), &socketMap,
 						tempShareHttpCgi);
 
-						socketMap.insert(std::make_pair(pipe_in[1], Socket(pipe_in[1])));
-						socketMap[pipe_in[1]].setupCGIINSocket(clientSocket.getServersConfigPtr(),
-						clientSocket.getEventContoller(), &socketMap,
-						tempShareHttpCgi);
+						if (requestData.bodyData.readingRequestBodyPtr)
+						{
+							socketMap.insert(std::make_pair(pipe_in[1], Socket(pipe_in[1])));
+							socketMap[pipe_in[1]].setupCGIINSocket(clientSocket.getServersConfigPtr(),
+							clientSocket.getEventContoller(), &socketMap,
+							tempShareHttpCgi);
+						}
 
 						Shared<CgiProcess>	tempCgiData;
 
@@ -4071,18 +4204,28 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 						tempCgiData->socketMapPtr = &socketMap;
 						tempCgiData->clientSocketPtr = _clientSocketPtr;
 
-						s_http_cgi_temp_file_data tempFileData;
+						if (requestData.bodyData.readingRequestBodyPtr)
+						{
+							s_http_cgi_temp_file_data tempFileData;
 
-						tempFileData.tempReadFileFd = fdFile;
-						tempFileData.tempFileNum = requestData.bodyData.tempRequestBodyFileNum;
-						tempFileData.isReachEOF = false;
+							fdFile = fd;
+							tempFileData.tempReadFileFd = fdFile;
+							tempFileData.tempFileNum = requestData.bodyData.tempRequestBodyFileNum;
+							tempFileData.isReachEOF = false;
 						
-						tempShareHttpCgi->setHttpCgiHasCgiIn(&_httpResponseList,
-							httpRequest.responseTargetPtr,
-							&(socketMap[pipe_out[0]]),
-							&(socketMap[pipe_in[1]]),
-							tempFileData, tempCgiData);
-
+							tempShareHttpCgi->setHttpCgiHasCgiIn(&_httpResponseList,
+								httpRequest.responseTargetPtr,
+								&(socketMap[pipe_out[0]]),
+								&(socketMap[pipe_in[1]]),
+								tempFileData, tempCgiData);
+						}
+						else
+						{
+							tempShareHttpCgi->setHttpCgiNoCgiIn(&_httpResponseList,
+								httpRequest.responseTargetPtr,
+								&(socketMap[pipe_out[0]]),
+								tempCgiData);
+						}
 
 						targetResponse.cgiProcessData = tempCgiData;
 						targetResponse.socketMapPtr = &socketMap;
@@ -4090,11 +4233,13 @@ void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientS
 						targetResponse.targetLocationBlock = requestData.serverData.targetLocationBlockPtr;
 
 						targetResponse.httpRequestData = requestData;
+
 					}
 					catch (...)
 					{
 						tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
-						close(pipe_in[1]);
+						if (requestData.bodyData.readingRequestBodyPtr)
+							close(pipe_in[1]);
 						close(pipe_out[0]);
 						
 						throw;
@@ -4889,30 +5034,30 @@ void Http::readFromClient()
 	ssize_t	readAmount;
 
 	//static size_t count = 0;
-	std::cout << "CURR STATE: ";
-	switch (httpRequest.getProcessStatus())
-	{
-		case NO_STATUS:
-			std::cout << "NO_STATUS" << '\n';
-			break ;
-		case READING_REQUEST_LINE:
-			std::cout << "READING_REQUEST_LINE" << '\n';
-			break ;
-		case READING_HEADER:
-			std::cout << "READING_HEADER" << '\n';
-			break ;
-		case VALIDATING_REQUEST:
-			std::cout << "VALIDATING REQUEST" << '\n';
-			break ;
-		case READ_BODY:
-			std::cout << "READ_BODY" << '\n';
-			break ;
-		case FINISHED_READ_BODY:
-			std::cout << "FINISHED_READ_BODY" << '\n';
-			break ;
-		default:
-			std::cout << '\n';
-	}
+	// std::cout << "CURR STATE: ";
+	// switch (httpRequest.getProcessStatus())
+	// {
+	// 	case NO_STATUS:
+	// 		std::cout << "NO_STATUS" << '\n';
+	// 		break ;
+	// 	case READING_REQUEST_LINE:
+	// 		std::cout << "READING_REQUEST_LINE" << '\n';
+	// 		break ;
+	// 	case READING_HEADER:
+	// 		std::cout << "READING_HEADER" << '\n';
+	// 		break ;
+	// 	case VALIDATING_REQUEST:
+	// 		std::cout << "VALIDATING REQUEST" << '\n';
+	// 		break ;
+	// 	case READ_BODY:
+	// 		std::cout << "READ_BODY" << '\n';
+	// 		break ;
+	// 	case FINISHED_READ_BODY:
+	// 		std::cout << "FINISHED_READ_BODY" << '\n';
+	// 		break ;
+	// 	default:
+	// 		std::cout << '\n';
+	// }
 
 	readAmount = recv(_clientSocketPtr->getSocketFD().getFd(), _recvBuffer.data(), HTTP_RECV_BUFFER, 0);
 

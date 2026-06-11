@@ -144,23 +144,20 @@ void WebServ::checkSocketTimeOut()
 	std::map<int, Socket>::iterator socketIt = sockets.begin();
 	while (socketIt != sockets.end())
 	{
-		if (socketIt->second.getServerSockerType() == CLIENT_SOCKET)
+		if (socketIt->second.getServerSockerType() == CLIENT_SOCKET && socketIt->second.timeOutMarked == false && socketIt->second.waitingResponse() == false && (std::difftime(currentTime, socketIt->second.getLastEventTime()) >= WEBSERV_CLIENT_SOCKET_TIMEOUT_SECOND))
 		{
-			if (socketIt->second.timeOutMarked == false && std::difftime(currentTime, socketIt->second.getLastEventTime()) >= WEBSERV_CLIENT_SOCKET_TIMEOUT_SECOND)
-			{
-				std::map<int, s_webserv_custom_event>& customEventMap = _customEventMap;
-				s_webserv_custom_event& targetCustomEvent = customEventMap[socketIt->first];
-				targetCustomEvent.send408 = true;
-				socketIt->second.timeOutMarked = true;
+			std::map<int, s_webserv_custom_event>& customEventMap = _customEventMap;
+			s_webserv_custom_event& targetCustomEvent = customEventMap[socketIt->first];
+			targetCustomEvent.send408 = true;
+			socketIt->second.timeOutMarked = true;
 				
-				/* should not silently quit the working connection, need to send 408 back to client,
-				for this design we should be able to to that with sending custom event to client*/
-				//Logger::log(LC_INFO, "Closing Socket#%d due to timeout.", socketIt->first);
-				//sockets.erase(socketIt++);
-				//continue ;
-				++socketIt;
-				continue;
-			}
+			/* should not silently quit the working connection, need to send 408 back to client,
+			for this design we should be able to to that with sending custom event to client*/
+			//Logger::log(LC_INFO, "Closing Socket#%d due to timeout.", socketIt->first);
+			//sockets.erase(socketIt++);
+			//continue ;
+			++socketIt;
+			continue;
 		}
 		else if (socketIt->second.getServerSockerType() == CGI_FD_STDOUT)
 		{
@@ -200,7 +197,7 @@ void WebServ::run(){
 	//epoll loop
 	{
 		int returnEventsAmount;
-		int lastAmount = 0;
+		// int lastAmount = 0;
 		std::map<int, s_webserv_event>::const_iterator eventIt;
 		std::map<int, s_webserv_event> returnEvents;
 		Logger::log(LC_DEBUG, "Webserv is Waiting for connection!");
@@ -208,9 +205,9 @@ void WebServ::run(){
 
 			returnEventsAmount = webservCheckEvent(returnEvents);
 
-			if (lastAmount != returnEventsAmount && returnEventsAmount >= 0)
-				Logger::log(LC_CONN_LOG, "Epoll event!:%d Total_Socket: %zu", returnEventsAmount, sockets.size());
-			lastAmount = returnEventsAmount;
+			// if (lastAmount != returnEventsAmount && returnEventsAmount >= 0)
+				// Logger::log(LC_CONN_LOG, "Epoll event!:%d Total_Socket: %zu", returnEventsAmount, sockets.size());
+			// lastAmount = returnEventsAmount;
 
 			// ERROR but should retry if EINTR
 			if (returnEventsAmount < 0){

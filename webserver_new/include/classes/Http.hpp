@@ -133,6 +133,7 @@ class Http {
 		void	send408();
 
 		bool	isKeepConnection() const;
+		bool	hasResponseList() const;
 
 		static bool extractHttpFieldValueString(const std::string& toExtract, std::deque<s_http_field_value_token>& tokenList, const std::string& delimiterCharSet, const std::string& optionalSpaceCharSet);
 		static bool httpFieldNormalSingletonTrim(const std::string& toExtract, std::string& outString);

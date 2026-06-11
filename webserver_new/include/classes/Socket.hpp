@@ -98,6 +98,7 @@ public:
 
 	time_t	getLastEventTime() const;
 	e_socket_type	getServerSockerType() const;
+	bool	waitingResponse() const;
 
 	OptionalData<Shared<HttpCgi> >& getHttpCgi();
 };

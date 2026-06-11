@@ -3,7 +3,7 @@
 # ==============================================================================
 # Basic Configuration
 # ==============================================================================
-WEBSERV_BIN="./Webserv"
+WEBSERV_BIN="./webserv"
 DEFAULT_CONF="./testFiles/test_webserv.conf"
 TEST_SUITE_FILE="./testFiles/test_suite.csv"
 REQUESTS_DIR="./testFiles/test_requests"
@@ -12,8 +12,8 @@ TIMEOUT_SEC=0.3
 
 # Toggles for Verbose Output & Debugging
 DEBUG_MODE=${DEBUG_MODE:-1}          # Set to 1 to view Raw Headers ONLY on failures
-SHOW_ALL_RESPONSES=${SHOW_ALL_RESPONSES:-1}  # Set to 1 to print the COMPLETE raw response & body for ALL tests (pass or fail)
-SHOW_PASSED=${SHOW_PASSED:-0}         # Set to 0 to hide successful tests from output (failures only)
+SHOW_ALL_RESPONSES=${SHOW_ALL_RESPONSES:-0}  # Set to 1 to print the COMPLETE raw response & body for ALL tests (pass or fail)
+SHOW_PASSED=${SHOW_PASSED:-1}         # Set to 0 to hide successful tests from output (failures only)
 
 # Temp files for validation
 HEADERS_FILE="/tmp/webserv_headers_parsed.txt"

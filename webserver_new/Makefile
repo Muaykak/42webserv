@@ -100,7 +100,7 @@ CC = c++
 
 CFLAGS = -O3 -std=c++98 -pedantic-errors -I./${HEADERS_DIR} -DTEMP_FILE_DIR='"${TEMP_DIR}"' -Wall -Wextra -Werror
 
-NAME = Webserv
+NAME = webserv
 TEST_NAME = ${NAME}_unittest
 TESTER_NAME = WebservTester
 

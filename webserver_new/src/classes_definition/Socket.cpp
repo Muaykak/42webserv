@@ -620,6 +620,11 @@ int	Socket::getServerListenPort() const
 	return (_server_listen_port);
 }
 
+bool Socket::waitingResponse() const
+{
+	return (http.hasData() == true ? http->hasResponseList() : false);
+}
+
 time_t	Socket::getLastEventTime() const
 {
 	return (_lastEventTime);
