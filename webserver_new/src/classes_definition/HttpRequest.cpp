@@ -10,6 +10,8 @@ responseTargetPtr(NULL)
 	serverData.targetLocationBlockPtr = NULL;
 
 	requestData.headerBufferCount = 0;
+	targetData.isEndWithSlash = false;
+	targetData.isUseIndex = false;
 
 	bodyData.body_size = 0;
 	bodyData.readingRequestBodyPtr = NULL;
@@ -25,6 +27,8 @@ responseTargetPtr(NULL)
 	bodyData.tempRequestBodyFileNum = 0;
 	bodyData.skipCRLFtranferencoding = false;
 	localRedirectCount = 0;
+
+	methodExecuteFuncPtr = NULL;
 }
 
 HttpRequest::HttpRequest(const HttpRequest &obj)
@@ -36,6 +40,7 @@ serverData(obj.serverData),
 targetData(obj.targetData),
 cgiData(obj.cgiData),
 bodyData(obj.bodyData),
+methodExecuteFuncPtr(obj.methodExecuteFuncPtr),
 localRedirectCount(obj.localRedirectCount)
 {
 
@@ -56,6 +61,7 @@ HttpRequest& HttpRequest::operator=(const HttpRequest& obj)
 		targetData = obj.targetData;
 		cgiData = obj.cgiData;
 		bodyData = obj.bodyData;
+		methodExecuteFuncPtr = obj.methodExecuteFuncPtr;
 	}
 	return (*this);
 }
@@ -78,12 +84,15 @@ void HttpRequest::clear()
 	/* clean all and ready for the next request*/
 	processStatus = NO_STATUS;
 	responseTargetPtr = NULL;
+	methodExecuteFuncPtr = NULL;
 	
 	requestData.headerField.clear();
 	requestData.method.clear();
 	requestData.protocol.clear();
 	requestData.requestTarget.clear();
 	requestData.headerBufferCount = 0;
+	targetData.isEndWithSlash = false;
+	targetData.isUseIndex = false;
 
 	serverData.portName.clear();
 	serverData.serverName.clear();
@@ -97,6 +106,7 @@ void HttpRequest::clear()
 	targetData.redirectPath.clear();
 	targetData.targetPath.clear();
 	targetData.uploadStorePath.clear();
+	targetData.systemPath.clear();
 
 	cgiData.cgiPath.clear();
 	cgiData.cgiPathTranslated.clear();

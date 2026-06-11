@@ -328,6 +328,10 @@ ssize_t	HttpResponse::sendHttpResponse(const Socket& clientSocket)
 		}
 
 	}
+	else if (sendAmount < 0)
+	{
+		return (0);
+	}
 
 	// temporary
 	if (_sendBuffer.empty() && _bufferList.empty())

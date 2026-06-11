@@ -69,7 +69,7 @@ ServerConfig::ServerConfig(const t_config_map& serverConfig, const t_location_ma
 	bool haveBaseLocation = false;
 	while (it != _locationsConfig.end())
 	{
-		std::cout << "curr check block: \"" << it->first << "\"\n";
+		//std::cout << "curr check block: \"" << it->first << "\"\n";
 		if (it->first == "/")
 			haveBaseLocation = true;
 
@@ -284,7 +284,7 @@ void ServerConfig::checkDirectiveServerName(std::vector<std::string>& valueVec, 
 		bool lastCharWasDot = true;
 		size_t labelLength = 0;
 
-		for (size_t j = 0; j < valueVec[j].length(); ++j)
+		for (size_t j = 0; j < valueVec[i].length(); ++j)
 		{
 			char c = valueVec[i][j];
 
@@ -387,7 +387,7 @@ void ServerConfig::checkDirectiveClientMaxBodySize(std::vector<std::string>& val
 			throw WebservException("ServerConfig::server block::client_max_body_size::Invalid Value");
 		valueVec[0]	= toString(convertSize);
 
-		std::cout << "byteSIze: " << valueVec[0] << "\n";
+		//std::cout << "byteSIze: " << valueVec[0] << "\n";
 	}
 }
 

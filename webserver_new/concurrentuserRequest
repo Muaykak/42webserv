@@ -1,6 +1,0 @@
-POST /uploads/concurrent.txt HTTP/1.1
-Host: localhost:9081
-Content-type: text/plain
-Connection: keep-alive
-Content-Length: 11
-

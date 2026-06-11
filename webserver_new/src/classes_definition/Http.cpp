@@ -657,6 +657,8 @@ void	Http::generate3xxRedirectResponse(HttpRequest& requestData, unsigned int st
 	else
 		requestData.setProcessStatus(FINISHED_READ_BODY);
 
+	requestData.methodExecuteFuncPtr = getHttpRedirectFunc();
+
 	throw HttpThrowStatus(statusCode, absoluteRedirectPath);
 }
 
@@ -1040,7 +1042,7 @@ void Http::checkHost(HttpRequest& requestData, std::string& hostStr)
 		hostStr = "127.0.0.1";
 }
 
-void	Http::validateRequestBufferSelectServer(HttpRequest& requestData, const Socket& clientSocket,const std::string& authStr)
+void	Http::validateRequestBufferSelectServer(HttpRequest& requestData,const std::string& authStr)
 {
 	if (requestData.getProcessStatus() != VALIDATING_REQUEST)
 		return ;
@@ -1076,9 +1078,9 @@ void	Http::validateRequestBufferSelectServer(HttpRequest& requestData, const Soc
 		// the connection it was coming through
 		// we can give 403 Forbidden because we are not
 		// Proxy server
-		if (portNum != clientSocket.getServerListenPort())
+		if (portNum != _clientSocketPtr->getServerListenPort())
 		{
-			std::string msg = "Invalid::URI Authority::Port mismatch request_target:" + toString(portNum) + " server_port:" + toString(clientSocket.getServerListenPort());
+			std::string msg = "Invalid::URI Authority::Port mismatch request_target:" + toString(portNum) + " server_port:" + toString(_clientSocketPtr->getServerListenPort());
 			generate4xx5xxErrorReponse(requestData, 403, false, msg);
 		}
 
@@ -1151,7 +1153,7 @@ void	Http::validateRequestBufferSelectServer(HttpRequest& requestData, const Soc
 			{
 				const ServerConfig* fallback_server = NULL;
 
-				const std::vector<ServerConfig>* ptr = clientSocket.getServersConfigPtr();
+				const std::vector<ServerConfig>* ptr = _clientSocketPtr->getServersConfigPtr();
 				std::vector<ServerConfig>::const_iterator serverVecIt = ptr->begin();
 				const std::set<in_addr_t>* sethostipptr = NULL;
 
@@ -1182,7 +1184,7 @@ void	Http::validateRequestBufferSelectServer(HttpRequest& requestData, const Soc
 						requestData.serverData.targetServerPtr = fallback_server;
 					else
 					{
-						std::string msg = "Need fixing::Invalid::URI Authority::IP mismatch:: server_ip:" + in_addr_t_to_string(clientSocket._client_addr_in) + " request_target:" + in_addr_t_to_string(tempAddr);
+						std::string msg = "Need fixing::Invalid::URI Authority::IP mismatch:: server_ip:" + in_addr_t_to_string(_clientSocketPtr->_client_addr_in) + " request_target:" + in_addr_t_to_string(tempAddr);
 						generate4xx5xxErrorReponse(requestData, 403, false, msg);
 					}
 				}
@@ -1251,7 +1253,7 @@ void	Http::validateRequestBufferSelectServer(HttpRequest& requestData, const Soc
 			// but check first if contain any invalid host field of http
 
 			const ServerConfig* fallback_server = NULL;
-			const std::vector<ServerConfig>* ptr = clientSocket.getServersConfigPtr();
+			const std::vector<ServerConfig>* ptr = _clientSocketPtr->getServersConfigPtr();
 			std::vector<ServerConfig>::const_iterator serverVecIt = ptr->begin();
 			std::vector<std::string>::const_iterator tempNameVecIt;
 
@@ -1284,7 +1286,7 @@ void	Http::validateRequestBufferSelectServer(HttpRequest& requestData, const Soc
 				if (fallback_server)
 					requestData.serverData.targetServerPtr = fallback_server;
 				else
-					requestData.serverData.targetServerPtr = &((*clientSocket.getServersConfigPtr())[0]);
+					requestData.serverData.targetServerPtr = &((*(_clientSocketPtr->getServersConfigPtr()))[0]);
 			}
 
 			requestData.serverData.serverName = host;
@@ -1337,7 +1339,7 @@ void Http::requestLineCheckProtocolVersion(HttpRequest& requestData)
 
 }
 
-void	Http::requestLineCheckRequestTargetAbsolute(HttpRequest& requestData, const Socket& clientSocket)
+void	Http::requestLineCheckRequestTargetAbsolute(HttpRequest& requestData)
 {
 	//this request targen legth if in absolute form must
 	// longer than  characters
@@ -1364,7 +1366,7 @@ void	Http::requestLineCheckRequestTargetAbsolute(HttpRequest& requestData, const
 		if (authStr.empty())
 			generate4xx5xxErrorReponse(requestData, 400, false, "Invalid::URI Scheme::");
 
-		validateRequestBufferSelectServer(requestData, clientSocket, authStr);
+		validateRequestBufferSelectServer(requestData, authStr);
 
 		// now for authority part we check both host and ip
 		// so now we can recreate _requestTarget string
@@ -1472,7 +1474,7 @@ void	Http::requestLineCheckRequestTargetPathCheck(HttpRequest& requestData)
 
 }
 
-void	Http::requestLineCheckRequestTarget(HttpRequest& requestData, const Socket& clientSocket)
+void	Http::requestLineCheckRequestTarget(HttpRequest& requestData)
 {
 	// check the first character to see if it is
 	// origin form or absolute form
@@ -1481,7 +1483,7 @@ void	Http::requestLineCheckRequestTarget(HttpRequest& requestData, const Socket&
 		// then it might be absolute form
 		// we need to check that scheme
 		if (requestData.requestData.requestTarget[0] != '/')
-			requestLineCheckRequestTargetAbsolute(requestData, clientSocket);
+			requestLineCheckRequestTargetAbsolute(requestData);
 		else
 		{
 		/*
@@ -1495,7 +1497,7 @@ void	Http::requestLineCheckRequestTarget(HttpRequest& requestData, const Socket&
 			if (httpFieldNormalSingletonTrim(requestData.requestData.headerField.find("host")->second, fieldValue) == false)
 				generate4xx5xxErrorReponse(requestData, 400, false, "Http:Invalid field value: host is invalid");
 
-			validateRequestBufferSelectServer(requestData, clientSocket, fieldValue);
+			validateRequestBufferSelectServer(requestData, fieldValue);
 		}
 
 	}
@@ -1520,17 +1522,14 @@ void	Http::requestLineCheckRequestTarget(HttpRequest& requestData, const Socket&
 	// path process done, now 
 }
 
-void	Http::requestLineCheck(HttpRequest& requestData, const Socket& clientSocket)
+void	Http::requestLineCheck(HttpRequest& requestData)
 {
 	// rough check for method first
 	/* method wrong should response 400 first */
-	if (requestData.requestData.method != "GET" && requestData.requestData.method != "POST" && requestData.requestData.method != "DELETE")
-	{
-		if (requestData.requestData.method == "HEAD")
-			generate4xx5xxErrorReponse(requestData, 405, false, "Http::Method not implemented: " + requestData.requestData.method);
 
+	requestData.methodExecuteFuncPtr = Http::getHttpMethodFunc(requestData.requestData.method);
+	if (!requestData.methodExecuteFuncPtr)
 		generate4xx5xxErrorReponse(requestData, 501, false, "Http::Method not implemented: " + requestData.requestData.method);
-	}
 
 	// before anything, we check the protocol version first
 	requestLineCheckProtocolVersion(requestData);
@@ -1545,8 +1544,7 @@ void	Http::requestLineCheck(HttpRequest& requestData, const Socket& clientSocket
 
 	// we need to check the 'request target' first
 	// this is the tedious process
-	requestLineCheckRequestTarget(requestData, clientSocket);
-
+	requestLineCheckRequestTarget(requestData);
 }
 
 void	Http::targetLocationBlockGet(HttpRequest& requestData)
@@ -1711,8 +1709,8 @@ void	Http::checkRequestBodyType(HttpRequest& requestData)
 		requestData.bodyData.readBody = true;
 	}
 
-	if (requestData.requestData.method != "POST")
-		generate4xx5xxErrorReponse(requestData, 400, false, "Bad request:: DELETE or GET method must not contain body");
+	//if (requestData.requestData.method != "POST")
+	//	generate4xx5xxErrorReponse(requestData, 400, false, "Bad request:: DELETE or GET method must not contain body");
 
 	// check the client_max_body_size of the server block if exist first
 	const std::vector<std::string>* client_max_body_size_ptr = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "client_max_body_size");
@@ -1890,7 +1888,7 @@ void	Http::checkCgiPath(HttpRequest& requestData)
 
 					requestData.cgiData.cgiPath = target[0];
 					requestData.cgiData.cgiScriptPath = tempPath;
-					Logger::log(LC_RES_NOK_LOG, "cgiScriptPath = %s", tempPath.c_str());
+					//Logger::log(LC_RES_NOK_LOG, "cgiScriptPath = %s", tempPath.c_str());
 					requestData.cgiData.cgiVirtualPath = tempTofil;
 					break ;
 				}
@@ -1944,73 +1942,139 @@ void	Http::checkCgiPath(HttpRequest& requestData)
 			generate4xx5xxErrorReponse(requestData, 403, true, ErrMsg);
 		generate4xx5xxErrorReponse(requestData, 404, true, ErrMsg);
 	}
+
+	requestData.methodExecuteFuncPtr = getHttpCGIFunc();
 }
 
-void Http::createSystemPath(HttpRequest& requestData, std::string& systemPath)
+void Http::createSystemPathAddPWD(std::string& systemPath)
 {
-	if (requestData.requestData.method == "POST" && requestData.cgiData.cgiPath.empty() && requestData.bodyData.discardBody == false)
-	{
-
-		// should use 'upload_store' may be we can give this as a must in configuration file ??
-		// try with this method first
-		const std::vector<std::string>* foundUploadStore = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "upload_store");
-
-		/*
-		i'm not sure but now i'm assume that if you upload a file 
-		via post method, you must explicitly define 'upload_store' in that location
-		block in configuration file	
-		*/
-		if (foundUploadStore == NULL)
-			generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::using POST to upload file to server requires \'upload_store\' to be defined in configuration file");
-
-		// just for sure checking
-		if (foundUploadStore->size() != 1 || (*foundUploadStore)[0].empty())
-		{
-			generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::invalid \'root\' value");
-		}
-
-		requestData.targetData.uploadStorePath = (*foundUploadStore)[0];
-		systemPath = (*foundUploadStore)[0];
-	}
-	else // GET or DELETE will use root always
-	{
-
-		// take 'root' as main path
-
-		const std::vector<std::string>* foundRoot = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "root");
-
-		// it should not be null but if so then treat as internal error
-		if (foundRoot == NULL)
-		{
-			generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::require 'root' in this location block");
-		}
-
-		// just for sure checking
-		if (foundRoot->size() != 1 || (*foundRoot)[0].empty())
-		{
-			generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::invalid \'root\' value");
-		}
-
-		systemPath = (*foundRoot)[0];
-	}
-
 	/* here if the systempath is relative path, we need to append it with the
 	this program current directory to make it absolute path */
+	/* if it doesn't start with '/' then it is relative path */
+	if (systemPath[0] != '/')
 	{
-		/* if it doesn't start with '/' then it is relative path */
-		if (systemPath[0] != '/')
+		/* append it with PWD environment variable */
+
+		std::string pwdString = envData().findValue("PWD");
+
+		if (!pwdString.empty())
 		{
-			/* append it with PWD environment variable */
-
-			std::string pwdString = envData().findValue("PWD");
-
-			if (!pwdString.empty())
-			{
-				systemPath = pwdString + '/' + systemPath;
-			}
+			systemPath = pwdString + '/' + systemPath;
 		}
 	}
 }
+
+void Http::createSystemPathRoot(HttpRequest& requestData)
+{
+	const std::vector<std::string>* foundRoot = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "root");
+
+	// it should not be null but if so then treat as internal error
+	if (foundRoot == NULL)
+	{
+		generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::require 'root' in this location block");
+	}
+
+	// just for sure checking
+	if (foundRoot->size() != 1 || (*foundRoot)[0].empty())
+	{
+		generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::invalid \'root\' value");
+	}
+
+	requestData.targetData.systemPath = (*foundRoot)[0];
+	createSystemPathAddPWD(requestData.targetData.systemPath);
+}
+
+void Http::createSystemPathUploadStore(HttpRequest& requestData)
+{
+
+	// should use 'upload_store' may be we can give this as a must in configuration file ??
+	// try with this method first
+	const std::vector<std::string>* foundUploadStore = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "upload_store");
+
+	/*
+	i'm not sure but now i'm assume that if you upload a file 
+	via post method, you must explicitly define 'upload_store' in that location
+	block in configuration file	
+	*/
+	if (foundUploadStore == NULL)
+		generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::using POST to upload file to server requires \'upload_store\' to be defined in configuration file");
+
+	// just for sure checking
+	if (foundUploadStore->size() != 1 || (*foundUploadStore)[0].empty())
+	{
+		generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::invalid \'root\' value");
+	}
+
+	requestData.targetData.uploadStorePath = (*foundUploadStore)[0];
+	requestData.targetData.systemPath = (*foundUploadStore)[0];
+	createSystemPathAddPWD(requestData.targetData.systemPath);
+}
+
+//void Http::createSystemPath(HttpRequest& requestData, std::string& systemPath)
+//{
+//	if (requestData.requestData.method == "POST" && requestData.cgiData.cgiPath.empty() && requestData.bodyData.discardBody == false)
+//	{
+
+//		// should use 'upload_store' may be we can give this as a must in configuration file ??
+//		// try with this method first
+//		const std::vector<std::string>* foundUploadStore = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "upload_store");
+
+//		/*
+//		i'm not sure but now i'm assume that if you upload a file 
+//		via post method, you must explicitly define 'upload_store' in that location
+//		block in configuration file	
+//		*/
+//		if (foundUploadStore == NULL)
+//			generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::using POST to upload file to server requires \'upload_store\' to be defined in configuration file");
+
+//		// just for sure checking
+//		if (foundUploadStore->size() != 1 || (*foundUploadStore)[0].empty())
+//		{
+//			generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::invalid \'root\' value");
+//		}
+
+//		requestData.targetData.uploadStorePath = (*foundUploadStore)[0];
+//		systemPath = (*foundUploadStore)[0];
+//	}
+//	else // GET or DELETE will use root always
+//	{
+
+//		// take 'root' as main path
+
+//		const std::vector<std::string>* foundRoot = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "root");
+
+//		// it should not be null but if so then treat as internal error
+//		if (foundRoot == NULL)
+//		{
+//			generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::require 'root' in this location block");
+//		}
+
+//		// just for sure checking
+//		if (foundRoot->size() != 1 || (*foundRoot)[0].empty())
+//		{
+//			generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::invalid \'root\' value");
+//		}
+
+//		systemPath = (*foundRoot)[0];
+//	}
+
+//	/* here if the systempath is relative path, we need to append it with the
+//	this program current directory to make it absolute path */
+//	{
+//		/* if it doesn't start with '/' then it is relative path */
+//		if (systemPath[0] != '/')
+//		{
+//			/* append it with PWD environment variable */
+
+//			std::string pwdString = envData().findValue("PWD");
+
+//			if (!pwdString.empty())
+//			{
+//				systemPath = pwdString + '/' + systemPath;
+//			}
+//		}
+//	}
+//}
 
 void Http::handleDeleteRequest(HttpRequest& requestData)
 {
@@ -2046,351 +2110,351 @@ void Http::handleDeleteRequest(HttpRequest& requestData)
 			targetResponse.statusLine->second = "No Content";
 
 			targetResponse.generateResponse();
-			requestData.setProcessStatus(FINISHED_READ_BODY);
+			requestData.clear();
 			return ;
 		}
 	}
 }
 
-void	Http::handleGetRequest(HttpRequest& requestData, bool isEndWithSlash, const Socket& clientSocket, std::map<int, Socket>& socketMap)
-{
+//void	Http::handleGetRequest(HttpRequest& requestData, bool isEndWithSlash, const Socket& clientSocket, std::map<int, Socket>& socketMap)
+//{
 
-	/*
-	GET	method need to check if the path
-	i wants is exist and whether it is
-	a directory or not
-	*/
-	struct stat fileStat;
-	std::memset(&fileStat, 0, sizeof(fileStat));
-	if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) != 0)
-	{
-		std::string ErrMsg = "Http::stat()::target_path " + requestData.targetData.targetPath + "::";
-		ErrMsg += strerror(errno);
-		if (errno == EACCES)
-			generate4xx5xxErrorReponse(requestData, 403, true, ErrMsg);
-		generate4xx5xxErrorReponse(requestData, 404, true, ErrMsg);
-	}
+//	/*
+//	GET	method need to check if the path
+//	i wants is exist and whether it is
+//	a directory or not
+//	*/
+//	struct stat fileStat;
+//	std::memset(&fileStat, 0, sizeof(fileStat));
+//	if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) != 0)
+//	{
+//		std::string ErrMsg = "Http::stat()::target_path " + requestData.targetData.targetPath + "::";
+//		ErrMsg += strerror(errno);
+//		if (errno == EACCES)
+//			generate4xx5xxErrorReponse(requestData, 403, true, ErrMsg);
+//		generate4xx5xxErrorReponse(requestData, 404, true, ErrMsg);
+//	}
 
-	if (S_ISDIR(fileStat.st_mode))
-	{
-		// check if it target ends with '/' or not
-		if (isEndWithSlash == true)
-		{
-			// check
-			// check for directory listing (auto index)
+//	if (S_ISDIR(fileStat.st_mode))
+//	{
+//		// check if it target ends with '/' or not
+//		if (isEndWithSlash == true)
+//		{
+//			// check
+//			// check for directory listing (auto index)
 
-			const std::vector<std::string>* foundAutoIndex = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "autoindex");
+//			const std::vector<std::string>* foundAutoIndex = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "autoindex");
 
-			// if not found then should return 403 forbidden or not found
-			if (foundAutoIndex == NULL)
-				generate4xx5xxErrorReponse(requestData, 403, true, "Http::\"autoindex\" is not found in this block.");
+//			// if not found then should return 403 forbidden or not found
+//			if (foundAutoIndex == NULL)
+//				generate4xx5xxErrorReponse(requestData, 403, true, "Http::\"autoindex\" is not found in this block.");
 
-			if (foundAutoIndex->size() != 1)
-				generate4xx5xxErrorReponse(requestData, 403, true, "Http::\"autoindex\" invalid value");
+//			if (foundAutoIndex->size() != 1)
+//				generate4xx5xxErrorReponse(requestData, 403, true, "Http::\"autoindex\" invalid value");
 
-			if ((*foundAutoIndex)[0] == "on")
-			{
-				{
+//			if ((*foundAutoIndex)[0] == "on")
+//			{
+//				{
 
-					DIR *dirPtr = opendir(requestData.targetData.combinedPath.c_str());
+//					DIR *dirPtr = opendir(requestData.targetData.combinedPath.c_str());
 
-					if (dirPtr == NULL)
-					{
-						if (errno == EACCES)
-							generate4xx5xxErrorReponse(requestData, 403, true, "Http::autoindex::opendir()::" + std::string(std::strerror(errno)));
-						if (errno == ENOENT)
-							generate4xx5xxErrorReponse(requestData, 404, true, "Http::autoindex::opendir()::" + std::string(std::strerror(errno)));
-						else
-							generate4xx5xxErrorReponse(requestData, 500, true, "Http::autoindex::opendir()::" + std::string(std::strerror(errno)));
-					}
+//					if (dirPtr == NULL)
+//					{
+//						if (errno == EACCES)
+//							generate4xx5xxErrorReponse(requestData, 403, true, "Http::autoindex::opendir()::" + std::string(std::strerror(errno)));
+//						if (errno == ENOENT)
+//							generate4xx5xxErrorReponse(requestData, 404, true, "Http::autoindex::opendir()::" + std::string(std::strerror(errno)));
+//						else
+//							generate4xx5xxErrorReponse(requestData, 500, true, "Http::autoindex::opendir()::" + std::string(std::strerror(errno)));
+//					}
 
-					/* bool is that it is a directory or not, second is the path */
-					std::list<std::string> directoryNameList;
-					dirent *tempDirStructPtr = readdir(dirPtr);
-					while (tempDirStructPtr != NULL)
-					{
-						std::string tempFileName(tempDirStructPtr->d_name);
+//					/* bool is that it is a directory or not, second is the path */
+//					std::list<std::string> directoryNameList;
+//					dirent *tempDirStructPtr = readdir(dirPtr);
+//					while (tempDirStructPtr != NULL)
+//					{
+//						std::string tempFileName(tempDirStructPtr->d_name);
 
-						if (tempFileName != ".")
-						{
-							struct stat fileStat;
-							std::memset(&fileStat, 0, sizeof(fileStat));
-							if (stat(tempFileName.c_str(), &fileStat) == 0)
-							{
-								if (S_ISDIR(fileStat.st_mode))
-									tempFileName += '/';
-							}
+//						if (tempFileName != ".")
+//						{
+//							struct stat fileStat;
+//							std::memset(&fileStat, 0, sizeof(fileStat));
+//							if (stat(tempFileName.c_str(), &fileStat) == 0)
+//							{
+//								if (S_ISDIR(fileStat.st_mode))
+//									tempFileName += '/';
+//							}
 
-							directoryNameList.push_back(tempFileName);
-						}
-						tempDirStructPtr = readdir(dirPtr);
-					}
+//							directoryNameList.push_back(tempFileName);
+//						}
+//						tempDirStructPtr = readdir(dirPtr);
+//					}
 
-					/* we finish doing with directory */
-					closedir(dirPtr);
+//					/* we finish doing with directory */
+//					closedir(dirPtr);
 
 
-					/* now we create the html file */
-					std::string tempBodyString;
-					{
-						tempBodyString = "<!DOCTYPE html>\r\n"
-						"<html>\r\n"
-						"<head>\r\n"
-						"<style>\r\n"
-						"h1{text-align: center;}\r\n"
-						"body{margin: 0; background-color: #0d1117; display: flex; color: #c9d1d9; align-items: center; justify-content: center; margin-top: 10px}\r\n"
-						"div{background-color: #21262d; border: 1px solid #4ab9e9; border-top: 4px solid #4ab9e9; border-radius: 12px; padding: 30px 40px;"
-        				"width: 100%; max-width: 600px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);}\r\n"
-						"a{text-decoration: none; text-align: center; color: inherit; box-sizing: border-box;}\r\n"
-						"</style>\r\n"
-						"<body>\r\n"
-						"<div><title>Index of ";
-						tempBodyString += requestData.targetData.targetPath;
-						tempBodyString += "</title>\r\n"
-						"</head>\r\n"
-						"<h1>";
-						tempBodyString += requestData.targetData.targetPath;
-						tempBodyString += " folder</h1>\r\n";
+//					/* now we create the html file */
+//					std::string tempBodyString;
+//					{
+//						tempBodyString = "<!DOCTYPE html>\r\n"
+//						"<html>\r\n"
+//						"<head>\r\n"
+//						"<style>\r\n"
+//						"h1{text-align: center;}\r\n"
+//						"body{margin: 0; background-color: #0d1117; display: flex; color: #c9d1d9; align-items: center; justify-content: center; margin-top: 10px}\r\n"
+//						"div{background-color: #21262d; border: 1px solid #4ab9e9; border-top: 4px solid #4ab9e9; border-radius: 12px; padding: 30px 40px;"
+//        				"width: 100%; max-width: 600px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);}\r\n"
+//						"a{text-decoration: none; text-align: center; color: inherit; box-sizing: border-box;}\r\n"
+//						"</style>\r\n"
+//						"<body>\r\n"
+//						"<div><title>Index of ";
+//						tempBodyString += requestData.targetData.targetPath;
+//						tempBodyString += "</title>\r\n"
+//						"</head>\r\n"
+//						"<h1>";
+//						tempBodyString += requestData.targetData.targetPath;
+//						tempBodyString += " folder</h1>\r\n";
 
-						if (directoryNameList.empty())
-						{
-							tempBodyString += "<h2>No file in this directory</h2>\r\n";
-						}
-						else
-						{
-							tempBodyString += 
-							"<ul>\r\n";
+//						if (directoryNameList.empty())
+//						{
+//							tempBodyString += "<h2>No file in this directory</h2>\r\n";
+//						}
+//						else
+//						{
+//							tempBodyString += 
+//							"<ul>\r\n";
 
-							std::list<std::string>::const_iterator listIt = directoryNameList.begin();
-							while (listIt != directoryNameList.end())
-							{
-								tempBodyString += "<li><a href=\"";
-								tempBodyString += *listIt;
-								tempBodyString += "\">";
-								tempBodyString += *listIt;
-								tempBodyString += "</a></li>\r\n";
+//							std::list<std::string>::const_iterator listIt = directoryNameList.begin();
+//							while (listIt != directoryNameList.end())
+//							{
+//								tempBodyString += "<li><a href=\"";
+//								tempBodyString += *listIt;
+//								tempBodyString += "\">";
+//								tempBodyString += *listIt;
+//								tempBodyString += "</a></li>\r\n";
 
-								++listIt;
-							}
+//								++listIt;
+//							}
 
-							tempBodyString += "</ul>\r\n"
-							"</div></hr>\r\n";
-						}
+//							tempBodyString += "</ul>\r\n"
+//							"</div></hr>\r\n";
+//						}
 
-						tempBodyString += "</body>\r\n</html>\r\n";
-					}
+//						tempBodyString += "</body>\r\n</html>\r\n";
+//					}
 
-					HttpResponse& targetResponse = *requestData.responseTargetPtr;
+//					HttpResponse& targetResponse = *requestData.responseTargetPtr;
 
-					targetResponse.statusLine->first = 200;
-					targetResponse.statusLine->second = "OK";
-					targetResponse.contentType = "text/html";
-					targetResponse.responseBodyType = HTTP_RESPONSE_BODY_FIXED_STR;
-					targetResponse.fixedBodyStr = tempBodyString;
+//					targetResponse.statusLine->first = 200;
+//					targetResponse.statusLine->second = "OK";
+//					targetResponse.contentType = "text/html";
+//					targetResponse.responseBodyType = HTTP_RESPONSE_BODY_FIXED_STR;
+//					targetResponse.fixedBodyStr = tempBodyString;
 
-					requestData.setProcessStatus(FINISHED_READ_BODY);
-					targetResponse.generateResponse();
-					return ;
-				}
+//					requestData.setProcessStatus(FINISHED_READ_BODY);
+//					targetResponse.generateResponse();
+//					return ;
+//				}
 
-				// generate auto indexing 
-				generate4xx5xxErrorReponse(requestData, 500, true, "Http::autoindex is allowed but Not implemented yet");
-			}
-			else
-				generate4xx5xxErrorReponse(requestData, 403, true, "Http::\"autoindex\" is not on for directory listing");
+//				// generate auto indexing 
+//				generate4xx5xxErrorReponse(requestData, 500, true, "Http::autoindex is allowed but Not implemented yet");
+//			}
+//			else
+//				generate4xx5xxErrorReponse(requestData, 403, true, "Http::\"autoindex\" is not on for directory listing");
 		
-		}
-		else
-		{
-			// make redirections
-			requestData.targetData.redirectPath = requestData.targetData.targetPath + '/';
-			generate3xxRedirectResponse(requestData, 301);
-			return ;
+//		}
+//		else
+//		{
+//			// make redirections
+//			requestData.targetData.redirectPath = requestData.targetData.targetPath + '/';
+//			generate3xxRedirectResponse(requestData, 301);
+//			return ;
 
-		}
-	}
+//		}
+//	}
 
-	// check if the file is regular file. must 
-	// be regular file, right ?
-	if (S_ISREG(fileStat.st_mode))
-	{
-		// GET will not have body because i want it that way
+//	// check if the file is regular file. must 
+//	// be regular file, right ?
+//	if (S_ISREG(fileStat.st_mode))
+//	{
+//		// GET will not have body because i want it that way
 		
-		// check if it is CGI or not
-		if (requestData.cgiData.cgiPath.empty())
-		{
+//		// check if it is CGI or not
+//		if (requestData.cgiData.cgiPath.empty())
+//		{
 
-			// try to open the targeted file
-			//int fd = open(requestData.targetData.combinedPath.c_str(), O_RDONLY);
+//			// try to open the targeted file
+//			//int fd = open(requestData.targetData.combinedPath.c_str(), O_RDONLY);
 
-			Shared<std::ifstream> targetFile;
+//			Shared<std::ifstream> targetFile;
 
-			while (true)
-			{
-				targetFile->open(requestData.targetData.combinedPath.c_str());
+//			while (true)
+//			{
+//				targetFile->open(requestData.targetData.combinedPath.c_str());
 
-				if (targetFile->is_open())
-					break ;
+//				if (targetFile->is_open())
+//					break ;
 				
-				if (errno == EINTR)
-				{
-					targetFile->clear();
-					continue;
-				}
-				else
-					break;
-			}
+//				if (errno == EINTR)
+//				{
+//					targetFile->clear();
+//					continue;
+//				}
+//				else
+//					break;
+//			}
 
 
-			// if failed should response accordingly
-			if (targetFile->is_open() == false)
-			{
-				if (errno == EACCES)
-					generate4xx5xxErrorReponse(requestData, 403, false, "Http::GET to regular file failed::open() failed");
+//			// if failed should response accordingly
+//			if (targetFile->is_open() == false)
+//			{
+//				if (errno == EACCES)
+//					generate4xx5xxErrorReponse(requestData, 403, false, "Http::GET to regular file failed::open() failed");
 
-				else if (errno == EMFILE || errno == ENFILE)
-				{
-					generate4xx5xxErrorReponse(requestData, 500, false, "Http:: GET to regular file:: fd limit is reached");
-				}
-				else if (errno == ENOENT)
-				{
-					generate4xx5xxErrorReponse(requestData, 404, false, "Http:: Get to regular file:: file is missing");
-				}
-				// some unknown error
-				else
-					generate4xx5xxErrorReponse(requestData, 500, false, "Http:: Get to regular file::Internal Unknown Error");
-			}
+//				else if (errno == EMFILE || errno == ENFILE)
+//				{
+//					generate4xx5xxErrorReponse(requestData, 500, false, "Http:: GET to regular file:: fd limit is reached");
+//				}
+//				else if (errno == ENOENT)
+//				{
+//					generate4xx5xxErrorReponse(requestData, 404, false, "Http:: Get to regular file:: file is missing");
+//				}
+//				// some unknown error
+//				else
+//					generate4xx5xxErrorReponse(requestData, 500, false, "Http:: Get to regular file::Internal Unknown Error");
+//			}
 
-			//FileDescriptor tempFd = fd;
+//			//FileDescriptor tempFd = fd;
 
-			HttpResponse& targetResponse = *requestData.responseTargetPtr;
+//			HttpResponse& targetResponse = *requestData.responseTargetPtr;
 
-			// set Last-Modified
-			{
-				// the st_mtim is time_t
+//			// set Last-Modified
+//			{
+//				// the st_mtim is time_t
 
-				tm * timeGmt = std::gmtime(&fileStat.st_mtim.tv_sec);
+//				tm * timeGmt = std::gmtime(&fileStat.st_mtim.tv_sec);
 
-				std::vector<char> tempTimeBuffer(100);
+//				std::vector<char> tempTimeBuffer(100);
 
-				std::strftime(&tempTimeBuffer[0], tempTimeBuffer.size(), "%a, %d %b %Y %H:%M:%S GMT", timeGmt);
+//				std::strftime(&tempTimeBuffer[0], tempTimeBuffer.size(), "%a, %d %b %Y %H:%M:%S GMT", timeGmt);
 
-				std::string tempModTime(tempTimeBuffer.data());
+//				std::string tempModTime(tempTimeBuffer.data());
 
-				targetResponse.addHeader("Last-Modified", tempModTime);
-			}
+//				targetResponse.addHeader("Last-Modified", tempModTime);
+//			}
 
-			targetResponse.contentType = contentTypeTable().extensionToContentType(requestData.targetData.combinedPath);
-			targetResponse.responseBodyType = HTTP_RESPONSE_BODY_FILE;
-			targetResponse.fileBody = targetFile;
-			targetResponse.fileSize = fileStat.st_size;
-			//targetResponse.keepAfterResponse = true;
-			targetResponse.statusLine->first = 200;
-			targetResponse.statusLine->second = "OK";
+//			targetResponse.contentType = contentTypeTable().extensionToContentType(requestData.targetData.combinedPath);
+//			targetResponse.responseBodyType = HTTP_RESPONSE_BODY_FILE;
+//			targetResponse.fileBody = targetFile;
+//			targetResponse.fileSize = fileStat.st_size;
+//			//targetResponse.keepAfterResponse = true;
+//			targetResponse.statusLine->first = 200;
+//			targetResponse.statusLine->second = "OK";
 
-			requestData.setProcessStatus(FINISHED_READ_BODY);
-			targetResponse.generateResponse();
+//			requestData.setProcessStatus(FINISHED_READ_BODY);
+//			targetResponse.generateResponse();
 
-			return ;
-		}
-		else
-		{
-			// pipe that let cgi write down and us to readstd::map<int, Socket>& socketMap
-			int pipe_out[2];
+//			return ;
+//		}
+//		else
+//		{
+//			// pipe that let cgi write down and us to readstd::map<int, Socket>& socketMap
+//			int pipe_out[2];
 
-			if (pipe(pipe_out) != 0)
-				generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI:: pipe() failed::" + std::string(std::strerror(errno)));
+//			if (pipe(pipe_out) != 0)
+//				generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI:: pipe() failed::" + std::string(std::strerror(errno)));
 
-			pid_t	pid = fork();
+//			pid_t	pid = fork();
 
-			if (pid < 0)
-			{
-				close(pipe_out[0]);
-				close(pipe_out[1]);
-				generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI:: fork() failed::" + std::string(std::strerror(errno)));
-			}
+//			if (pid < 0)
+//			{
+//				close(pipe_out[0]);
+//				close(pipe_out[1]);
+//				generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI:: fork() failed::" + std::string(std::strerror(errno)));
+//			}
 
-			// child proc
-			else if (pid == 0)
-			{
-				cgiChildProcessNoRequestBody(requestData, pipe_out);
-			}
-			else
-			{
-				close(pipe_out[1]);
-				/*
-
-
-				*/
-
-				if (fcntl(pipe_out[0], F_SETFL, O_NONBLOCK) != 0)
-				{
-					// stop the process immediately
-					kill(pid, SIGTERM);
-					waitpid(pid, NULL, 0);
-					close(pipe_out[0]);
-					generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI::fcntl() error to set O_NONBLOCK");
-				}
-
-				// clear
-				try
-				{
-					HttpResponse& targetResponse = *requestData.responseTargetPtr;
+//			// child proc
+//			else if (pid == 0)
+//			{
+//				cgiChildProcessNoRequestBody(requestData, pipe_out);
+//			}
+//			else
+//			{
+//				close(pipe_out[1]);
+//				/*
 
 
-					Shared<HttpCgi> tempSharedHttpCgi;
+//				*/
 
-					socketMap.insert(std::make_pair(pipe_out[0], Socket(pipe_out[0])));
-					socketMap[pipe_out[0]].setupCGIOUTSocket(clientSocket.getServersConfigPtr(),
-					clientSocket.getEventContoller(), &socketMap, tempSharedHttpCgi);
+//				if (fcntl(pipe_out[0], F_SETFL, O_NONBLOCK) != 0)
+//				{
+//					// stop the process immediately
+//					kill(pid, SIGTERM);
+//					waitpid(pid, NULL, 0);
+//					close(pipe_out[0]);
+//					generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI::fcntl() error to set O_NONBLOCK");
+//				}
 
-					Shared<CgiProcess> tempCgiProcess;
-
-					tempCgiProcess->cgiPid = pid;
-					tempCgiProcess->status = CGI_PROCESS_RUNNING;
-					//tempCgiProcess->cgiOutSocketPtr = &socketMap[pipe_out[0]];
-					tempCgiProcess->clientSocketPtr = _clientSocketPtr;
-					tempCgiProcess->socketMapPtr = &socketMap;
-
-					tempSharedHttpCgi->setHttpCgiNoCgiIn(&_httpResponseList,
-						httpRequest.responseTargetPtr,
-						&(socketMap[pipe_out[0]]),
-						tempCgiProcess);
+//				// clear
+//				try
+//				{
+//					HttpResponse& targetResponse = *requestData.responseTargetPtr;
 
 
-					targetResponse.cgiProcessData = tempCgiProcess;
-					targetResponse.socketMapPtr = &socketMap;
-					targetResponse.targetServer = requestData.serverData.targetServerPtr;
-					targetResponse.targetLocationBlock = requestData.serverData.targetLocationBlockPtr;
+//					Shared<HttpCgi> tempSharedHttpCgi;
 
-					targetResponse.httpRequestData = requestData;
+//					socketMap.insert(std::make_pair(pipe_out[0], Socket(pipe_out[0])));
+//					socketMap[pipe_out[0]].setupCGIOUTSocket(clientSocket.getServersConfigPtr(),
+//					clientSocket.getEventContoller(), &socketMap, tempSharedHttpCgi);
 
-				}
-				catch (...)
-				{
-					close(pipe_out[0]);
-					throw;
-				}
+//					Shared<CgiProcess> tempCgiProcess;
 
-				// _isCgiOutSocketAlive = true;
-				// _cgiOutSocket = pipe_out[0];
-				// _isCgiProcessOpen = true;
-				// _cgiProcessPid = pid;
+//					tempCgiProcess->cgiPid = pid;
+//					tempCgiProcess->status = CGI_PROCESS_RUNNING;
+//					//tempCgiProcess->cgiOutSocketPtr = &socketMap[pipe_out[0]];
+//					tempCgiProcess->clientSocketPtr = _clientSocketPtr;
+//					tempCgiProcess->socketMapPtr = &socketMap;
 
-			}
+//					tempSharedHttpCgi->setHttpCgiNoCgiIn(&_httpResponseList,
+//						httpRequest.responseTargetPtr,
+//						&(socketMap[pipe_out[0]]),
+//						tempCgiProcess);
 
-			requestData.setProcessStatus(FINISHED_READ_BODY);
-			return ;
 
-			// GET to CGI didn't build yet so
-			//generate4xx5xxErrorReponse(500, false, "Not CGI yet");
-		}
-	}
-	else 
-	{
-		generate4xx5xxErrorReponse(requestData, 403, false, "target is not directory or regular file");
-	}
-}
+//					targetResponse.cgiProcessData = tempCgiProcess;
+//					targetResponse.socketMapPtr = &socketMap;
+//					targetResponse.targetServer = requestData.serverData.targetServerPtr;
+//					targetResponse.targetLocationBlock = requestData.serverData.targetLocationBlockPtr;
+
+//					targetResponse.httpRequestData = requestData;
+
+//				}
+//				catch (...)
+//				{
+//					close(pipe_out[0]);
+//					throw;
+//				}
+
+//				// _isCgiOutSocketAlive = true;
+//				// _cgiOutSocket = pipe_out[0];
+//				// _isCgiProcessOpen = true;
+//				// _cgiProcessPid = pid;
+
+//			}
+
+//			requestData.setProcessStatus(FINISHED_READ_BODY);
+//			return ;
+
+//			// GET to CGI didn't build yet so
+//			//generate4xx5xxErrorReponse(500, false, "Not CGI yet");
+//		}
+//	}
+//	else 
+//	{
+//		generate4xx5xxErrorReponse(requestData, 403, false, "target is not directory or regular file");
+//	}
+//}
 
 void	Http::checkConnectionHeader(HttpRequest& requestData)
 {
@@ -2418,16 +2482,26 @@ void	Http::checkConnectionHeader(HttpRequest& requestData)
 	}
 }
 
-void	Http::appendTargetPath(HttpRequest& requestData, bool isEndWithSlash)
+void	Http::appendTargetPath(HttpRequest& requestData)
 {
-	if (requestData.requestData.method != "DELETE")
+	//if (requestData.requestData.method != "DELETE")
 	{
 
 		// should not delete file with 'index' seems to make sense to me
-		if (isEndWithSlash == true)
+		if (requestData.targetData.isEndWithSlash == true)
 		{
 			// if the path end with slash
 			// try to find the 'index' in that location block
+
+			// will append only if targetpath is matched with the location
+			//{
+			//	const std::vector<std::string>* foundlocation = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "location_name");
+			//	if (!foundlocation)
+			//		return ;
+				
+			//	if (requestData.targetData.targetPath != (*foundlocation)[0])
+			//		return ;
+			//}
 			
 			const std::vector<std::string>* foundIndex = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "index");
 
@@ -2440,60 +2514,91 @@ void	Http::appendTargetPath(HttpRequest& requestData, bool isEndWithSlash)
 				}
 
 				requestData.targetData.targetPath += (*foundIndex)[0];
-				isEndWithSlash = false;
+				requestData.targetData.isEndWithSlash = false;
+				requestData.targetData.isUseIndex = true;
 			}
 		}
 
 	}
 }
 
-void	Http::buildCombinedPath(HttpRequest& requestData)
+void	Http::buildCombinedPathNormal(HttpRequest& requestData)
 {
-	// we need to get the system path first
-	std::string systemPath;
-	/*
-		The reason to have this section is we need to know
-		whether we want to pick 'root' or 'upload_store'
+	const std::vector<std::string>* foundLocationName = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "location_name");
 
-		- the GET method always need 'root'
-		- the POST method depends if the target is CGI or not
-			if CGI then use 'root' if not then 'upload store'
-			but if not found 'root' then just take 'upload_store'
-		- the DELETE also 
-	*/
-	createSystemPath(requestData, systemPath);
+	requestData.targetData.cutPath = requestData.targetData.targetPath.substr((*foundLocationName)[0].size() > requestData.targetData.targetPath.size() ? requestData.targetData.targetPath.size() : (*foundLocationName)[0].size());
+	if (requestData.targetData.cutPath.empty() || requestData.targetData.cutPath[0] != '/')
+		requestData.targetData.cutPath.insert(requestData.targetData.cutPath.begin(), '/');
 
-	// we need to combine root of location block
-	// with the URI that we resolved
-	{
-		const std::vector<std::string>* foundLocationName = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "location_name");
-
-		if (!requestData.cgiData.cgiPath.empty())
-		{
-			requestData.targetData.cutPath = requestData.cgiData.cgiScriptPath.substr((*foundLocationName)[0].size() > requestData.cgiData.cgiScriptPath.size() ? requestData.cgiData.cgiScriptPath.size() : (*foundLocationName)[0].size());
-			if (requestData.targetData.cutPath.empty() || requestData.targetData.cutPath[0] != '/')
-				requestData.targetData.cutPath.insert(requestData.targetData.cutPath.begin(), '/');
-
-			if (!requestData.cgiData.cgiVirtualPath.empty())
-				requestData.cgiData.cgiPathTranslated = systemPath + requestData.cgiData.cgiVirtualPath;
-			requestData.targetData.combinedPath = systemPath + requestData.targetData.cutPath;
-			//std::cout << "cgi path: " << requestData.cgiData.cgiPath << std::endl;
-			//std::cout << "cgiVirtualPath: " << requestData.cgiData.cgiVirtualPath << std::endl;
-			//std::cout << "cgiScriptPath: " << requestData.cgiData.cgiScriptPath << std::endl;
-			//std::cout << "cgiPathTranslated: " << requestData.cgiData.cgiPathTranslated << std::endl;
-		}
-		else
-		{
-			requestData.targetData.cutPath = requestData.targetData.targetPath.substr((*foundLocationName)[0].size() > requestData.targetData.targetPath.size() ? requestData.targetData.targetPath.size() : (*foundLocationName)[0].size());
-			if (requestData.targetData.cutPath.empty() || requestData.targetData.cutPath[0] != '/')
-				requestData.targetData.cutPath.insert(requestData.targetData.cutPath.begin(), '/');
-
-			requestData.targetData.combinedPath = systemPath + requestData.targetData.cutPath;
-		}
-
-	}
-	//std::cout << "combined path: \"" << requestData.targetData.combinedPath << '\"' << std::endl;
+	requestData.targetData.combinedPath = requestData.targetData.systemPath + requestData.targetData.cutPath;
 }
+
+void	Http::buildCombinedPathCgi(HttpRequest& requestData)
+{
+	const std::vector<std::string>* foundLocationName = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "location_name");
+
+	{
+		requestData.targetData.cutPath = requestData.cgiData.cgiScriptPath.substr((*foundLocationName)[0].size() > requestData.cgiData.cgiScriptPath.size() ? requestData.cgiData.cgiScriptPath.size() : (*foundLocationName)[0].size());
+		if (requestData.targetData.cutPath.empty() || requestData.targetData.cutPath[0] != '/')
+			requestData.targetData.cutPath.insert(requestData.targetData.cutPath.begin(), '/');
+
+		if (!requestData.cgiData.cgiVirtualPath.empty())
+			requestData.cgiData.cgiPathTranslated = requestData.targetData.systemPath + requestData.cgiData.cgiVirtualPath;
+		requestData.targetData.combinedPath = requestData.targetData.systemPath + requestData.targetData.cutPath;
+		//std::cout << "cgi path: " << requestData.cgiData.cgiPath << std::endl;
+		//std::cout << "cgiVirtualPath: " << requestData.cgiData.cgiVirtualPath << std::endl;
+		//std::cout << "cgiScriptPath: " << requestData.cgiData.cgiScriptPath << std::endl;
+		//std::cout << "cgiPathTranslated: " << requestData.cgiData.cgiPathTranslated << std::endl;
+	}
+
+}
+
+//void	Http::buildCombinedPath(HttpRequest& requestData)
+//{
+//	// we need to get the system path first
+//	std::string systemPath;
+//	/*
+//		The reason to have this section is we need to know
+//		whether we want to pick 'root' or 'upload_store'
+
+//		- the GET method always need 'root'
+//		- the POST method depends if the target is CGI or not
+//			if CGI then use 'root' if not then 'upload store'
+//			but if not found 'root' then just take 'upload_store'
+//		- the DELETE also 
+//	*/
+
+//	// we need to combine root of location block
+//	// with the URI that we resolved
+//	{
+//		const std::vector<std::string>* foundLocationName = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "location_name");
+
+//		if (!requestData.cgiData.cgiPath.empty())
+//		{
+//			requestData.targetData.cutPath = requestData.cgiData.cgiScriptPath.substr((*foundLocationName)[0].size() > requestData.cgiData.cgiScriptPath.size() ? requestData.cgiData.cgiScriptPath.size() : (*foundLocationName)[0].size());
+//			if (requestData.targetData.cutPath.empty() || requestData.targetData.cutPath[0] != '/')
+//				requestData.targetData.cutPath.insert(requestData.targetData.cutPath.begin(), '/');
+
+//			if (!requestData.cgiData.cgiVirtualPath.empty())
+//				requestData.cgiData.cgiPathTranslated = systemPath + requestData.cgiData.cgiVirtualPath;
+//			requestData.targetData.combinedPath = systemPath + requestData.targetData.cutPath;
+//			//std::cout << "cgi path: " << requestData.cgiData.cgiPath << std::endl;
+//			//std::cout << "cgiVirtualPath: " << requestData.cgiData.cgiVirtualPath << std::endl;
+//			//std::cout << "cgiScriptPath: " << requestData.cgiData.cgiScriptPath << std::endl;
+//			//std::cout << "cgiPathTranslated: " << requestData.cgiData.cgiPathTranslated << std::endl;
+//		}
+//		else
+//		{
+//			requestData.targetData.cutPath = requestData.targetData.targetPath.substr((*foundLocationName)[0].size() > requestData.targetData.targetPath.size() ? requestData.targetData.targetPath.size() : (*foundLocationName)[0].size());
+//			if (requestData.targetData.cutPath.empty() || requestData.targetData.cutPath[0] != '/')
+//				requestData.targetData.cutPath.insert(requestData.targetData.cutPath.begin(), '/');
+
+//			requestData.targetData.combinedPath = systemPath + requestData.targetData.cutPath;
+//		}
+
+//	}
+//	//std::cout << "combined path: \"" << requestData.targetData.combinedPath << '\"' << std::endl;
+//}
 
 void Http::handleRequestMultipart(HttpRequest& requestData, std::pair<std::string, std::vector<std::pair<std::string, std::string> > >& outPair)
 {
@@ -3025,8 +3130,155 @@ void Http::handleUploadPostRequest(HttpRequest& requestData)
 	// 	handleUploadFoundType(requestData, outPair);
 
 	// requestData.setProcessStatus(READ_BODY);
-	return ;
+}
 
+void Http::validateDeleteRequest(HttpRequest& requestData)
+{
+	/* i want DELETE request to contain no body at all */
+	if (requestData.bodyData.readingRequestBodyPtr)
+		generate4xx5xxErrorReponse(requestData, 400, false, "Http::DELETE must not contain any body");
+
+	/* if the request target append with 'index' should remove that first */
+	if (requestData.targetData.isUseIndex)
+	{
+		const std::vector<std::string>* foundindex = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "index");
+		requestData.targetData.targetPath = requestData.targetData.targetPath.substr(0, requestData.targetData.targetPath.find((*foundindex)[0]));
+	}
+
+	createSystemPathRoot(requestData);
+	buildCombinedPathNormal(requestData);
+
+	requestData.setProcessStatus(FINISHED_READ_BODY);
+	return;
+}
+
+void Http::validatePostRequest(HttpRequest& requestData)
+{
+	createSystemPathUploadStore(requestData);
+	buildCombinedPathNormal(requestData);
+	/* would need content type therefore if the content-type is not exist we can*/
+
+	// need to check content type
+	// get the _bodyContentType
+	std::map<std::string, std::string>::const_iterator foundContentTypeElement = requestData.requestData.headerField.find("content-type");
+
+	if (foundContentTypeElement == requestData.requestData.headerField.end())
+	{
+		requestData.requestData.headerField.insert(std::make_pair("content-type", "application/octet-stream"));
+		// generate4xx5xxErrorReponse(requestData, 400, false, "The request contains body, but no Content-Type found in the request header");
+	}
+
+	foundContentTypeElement = requestData.requestData.headerField.find("content-type");
+
+	const std::string& contentTypeString = foundContentTypeElement->second;
+
+	// we need to extract the string
+	std::pair<std::string, std::vector<std::pair<std::string, std::string> > > outPair;
+	if (httpFieldContentTypeExtract(contentTypeString, outPair) == false)
+		generate4xx5xxErrorReponse(requestData, 400, false, "Content-Type::invalid value");
+
+	// struct stat fileStat;
+	// std::memset(&fileStat, 0, sizeof(fileStat));
+	// if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) == 0)
+	// 	generate4xx5xxErrorReponse(requestData, 403, true, "Forbidden::stat()::the file already exists!");
+
+	if (outPair.first == "multipart/form-data")
+		handleRequestMultipart(requestData, outPair);
+	else
+		handleNormalUpload(requestData, outPair);
+	// else if (outPair.first == "application/octet-stream")
+	// 	handleUploadOctetStream(requestData);
+	// else
+	// 	handleUploadFoundType(requestData, outPair);
+
+	// requestData.setProcessStatus(READ_BODY);
+	return ;
+}
+
+void Http::validateHeadRequest(HttpRequest& requestData)
+{
+	createSystemPathRoot(requestData);
+	buildCombinedPathNormal(requestData);
+
+	if (requestData.bodyData.readingRequestBodyPtr)
+		generate4xx5xxErrorReponse(requestData, 400, false, "HTTP::HEAD request must not contain body");
+
+	requestData.setProcessStatus(FINISHED_READ_BODY);
+}
+
+void Http::validateGetRequest(HttpRequest& requestData)
+{
+	createSystemPathRoot(requestData);
+	buildCombinedPathNormal(requestData);
+
+	/* assumed get must not contain body */
+	if (requestData.bodyData.readingRequestBodyPtr)
+		generate4xx5xxErrorReponse(requestData, 400, false, "HTTP::GET request must not contain body");
+
+	requestData.setProcessStatus(FINISHED_READ_BODY);
+}
+
+void Http::validateCgiRequest(HttpRequest& requestData)
+{
+	createSystemPathRoot(requestData);
+	buildCombinedPathCgi(requestData);
+
+	if (requestData.bodyData.readingRequestBodyPtr == NULL)
+	{
+		requestData.setProcessStatus(FINISHED_READ_BODY);
+		return ;
+	}
+
+	requestData.bodyData.tempRequestBodyFileNum = tempFileManager().generateNewTempFile();
+
+	// open the file for writing now
+	{
+		std::string tempFilePath = TEMP_FILE_DIR + toString(requestData.bodyData.tempRequestBodyFileNum);
+
+		//int fd = open(tempFilePath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+		int fd;
+		while (true)
+		{
+			fd = open(tempFilePath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+
+			if (fd >= 0)
+				break ;
+			if (errno == EINTR)
+				continue ;
+			break;
+		}
+
+		if (fd < 0)
+		{
+			generate4xx5xxErrorReponse(requestData, 500, false, "HTTP::validating::POST method to non-cgi with Content-Type: multipart/form-data::open() error::" + std::string(std::strerror(errno)));
+		}
+
+		FileDescriptor tempFd(fd);
+
+		//requestData.bodyData.bodyFd.push_back(fd);
+		requestData.bodyData.writeBodyFile = tempFd;
+	}
+
+	requestData.bodyData.isUseTempFile = true;
+	requestData.bodyData.readBody = true;
+	requestData.bodyData.discardBody = false;
+
+	if (requestData.bodyData.checkExpectBody == true)
+	{
+		HttpResponse& target = *requestData.responseTargetPtr;
+
+		s_response_buff	tempBuff;
+
+		std::string expectResponse = "HTTP/1.1 100 Continue\r\n\r\n";
+
+		tempBuff.currentIndex = 0;
+		tempBuff.buffer.insert(tempBuff.buffer.end(), expectResponse.begin(), expectResponse.end());
+
+		target.pushNewResponseBuff(tempBuff);
+	}
+
+	requestData.setProcessStatus(READ_BODY);
+	return ;
 }
 
 void Http::handlePostCgiRequest(HttpRequest& requestData)
@@ -3070,11 +3322,11 @@ void Http::handlePostCgiRequest(HttpRequest& requestData)
 	//}
 
 	/* now we can do the thing*/
-	std::map<std::string, std::string>::iterator content_type = requestData.requestData.headerField.find("content-type");
-	if (content_type == requestData.requestData.headerField.end())
-	{
-		requestData.requestData.headerField["content-type"] = "application/octet-stream";
-	}
+	//std::map<std::string, std::string>::iterator content_type = requestData.requestData.headerField.find("content-type");
+	//if (content_type == requestData.requestData.headerField.end())
+	//{
+	//	requestData.requestData.headerField["content-type"] = "application/octet-stream";
+	//}
 
 	requestData.bodyData.tempRequestBodyFileNum = tempFileManager().generateNewTempFile();
 
@@ -3130,15 +3382,58 @@ void Http::handlePostCgiRequest(HttpRequest& requestData)
 	generate4xx5xxErrorReponse(requestData, 500, false, "Post to CGI didn't finished yet");
 }
 
-void Http::handlePostRequest(HttpRequest& requestData)
+//void Http::handlePostRequest(HttpRequest& requestData)
+//{
+//	if (requestData.cgiData.cgiPath.empty())
+//		handleUploadPostRequest(requestData);
+//	else
+//		handlePostCgiRequest(requestData);
+//}
+
+std::map<std::string, std::pair<void (Http::*)(HttpRequest&), void (Http::*)(HttpRequest &)> > Http::buildHttpMethodMap()
 {
-	if (requestData.cgiData.cgiPath.empty())
-		handleUploadPostRequest(requestData);
-	else
-		handlePostCgiRequest(requestData);
+	std::map<std::string, std::pair<void (Http::*)(HttpRequest&), void (Http::*)(HttpRequest &)> > tempMap;
+
+	tempMap["GET"] = std::make_pair(&Http::validateGetRequest, &Http::handleGetRequest);
+	tempMap["POST"] = std::make_pair(&Http::validatePostRequest, &Http::handlePostRequest);
+	tempMap["DELETE"] = std::make_pair(&Http::validateDeleteRequest, &Http::handleDeleteRequest);
+	tempMap["HEAD"] = std::make_pair(&Http::validateHeadRequest, &Http::handleHeadRequest);
+	//tempMap["PUT"] = NULL;
+
+	return (tempMap);
 }
 
-void	Http::validateRequestData(HttpRequest& requestData, const Socket& clientSocket, std::map<int, Socket>& socketMap)
+const std::pair<void (Http::*)(HttpRequest&), void (Http::*)(HttpRequest &)> *Http::getHttpCGIFunc()
+{
+	static std::pair<void (Http::*)(HttpRequest&), void (Http::*)(HttpRequest &)> cgiPairFunc(&Http::validateCgiRequest, &Http::handleCGIrequest);
+
+	return (&cgiPairFunc);
+}
+
+const std::pair<void (Http::*)(HttpRequest&), void (Http::*)(HttpRequest &)> *Http::getHttpRedirectFunc()
+{
+	static std::pair<void (Http::*)(HttpRequest&), void (Http::*)(HttpRequest &)> cgiPairFunc(NULL, &Http::handleRedirectRequest);
+
+	return (&cgiPairFunc);
+}
+
+const std::pair<void (Http::*)(HttpRequest&), void (Http::*)(HttpRequest &)> *Http::getHttpMethodFunc(const std::string& methodStr)
+{
+	static const std::map<std::string, std::pair<void (Http::*)(HttpRequest&), void (Http::*)(HttpRequest &)> > map = buildHttpMethodMap();
+
+	if (methodStr.empty())
+		return (NULL);
+
+	std::map<std::string, std::pair<void (Http::*)(HttpRequest&), void (Http::*)(HttpRequest &)> >::const_iterator found = map.find(methodStr);
+
+	if (found == map.end())
+		return (NULL);
+	else
+		return (&found->second);
+}
+
+
+void	Http::validateRequestData(HttpRequest& requestData)
 {
 
 	if (requestData.getProcessStatus() != VALIDATING_REQUEST)
@@ -3147,7 +3442,9 @@ void	Http::validateRequestData(HttpRequest& requestData, const Socket& clientSoc
 	// checking the request line
 	try
 	{
-		requestLineCheck(requestData, clientSocket);
+		//printHeaderField(requestData);
+
+		requestLineCheck(requestData);
 		// get the targeted location block
 		targetLocationBlockGet(requestData);
 
@@ -3173,43 +3470,18 @@ void	Http::validateRequestData(HttpRequest& requestData, const Socket& clientSoc
 		// return 405 if method is not allowed
 		checkMethod(requestData);
 
-		bool isEndWithSlash = requestData.targetData.targetPath[requestData.targetData.targetPath.size() - 1] == '/' ? true : false;
-		appendTargetPath(requestData, isEndWithSlash);
+		requestData.targetData.isEndWithSlash = requestData.targetData.targetPath[requestData.targetData.targetPath.size() - 1] == '/' ? true : false;
+		appendTargetPath(requestData);
 
 		// need to check first if this location block
 		// has the cgi_pass
 		checkCgiPath(requestData);
 
+		/* Perform each method's different procedure */
 		// now we can check the file existence
-		{
 
-			buildCombinedPath(requestData);
-
-			//check for DELETE method first
-			/*
-				my implement is whether the file 
-				is a directory or regular file
-				the DELETE just
-				called std::remove()
-				and return value would work
-				the same and don't need those
-				CGI and any other process to work	
-			*/
-
-			if (requestData.requestData.method == "DELETE")
-			{
-				handleDeleteRequest(requestData);
-				return ;
-			}
-			else if (requestData.requestData.method == "GET")
-			{
-				handleGetRequest(requestData, isEndWithSlash, clientSocket, socketMap);
-				return ;
-			}
-			// for POST method just leave it as error for now
-			else
-				handlePostRequest(requestData);
-		}
+		if(requestData.methodExecuteFuncPtr)
+			(this->*requestData.methodExecuteFuncPtr->first)(requestData);
 
 	}
 	catch (const HttpThrowStatus &e)
@@ -3783,474 +4055,991 @@ void Http::readingRequestBody(HttpRequest& requestData)
 	// }
 }
 
-void Http::processingRequestBody(HttpRequest& requestData, const Socket& clientSocket, std::map<int, Socket>& socketMap)
+void Http::handleCGIrequest(HttpRequest &requestData)
 {
-	if (requestData.getProcessStatus() == FINISHED_READ_BODY)
+	//std::cout << "Total Size: " << requestData.bodyData.body_size << '\n';
+	//std::cout << "ptr = " << (requestData.bodyData.readingRequestBodyPtr == NULL ? "NULL" : "has PTR") << "\n";
+
+	/* CGI forked process will use chdir() that will change to target directory of the script if even exist
+		the script might exists or not but the directo that it will chdir() to must exist before anything */
+	size_t lastScriptpos = requestData.targetData.combinedPath.find_last_of('/');
+	std::string scriptPathDir = requestData.targetData.combinedPath.substr(0, lastScriptpos == std::string::npos ? requestData.targetData.combinedPath.size() : lastScriptpos + 1);
+
 	{
-		if (!requestData.targetData.redirectPath.empty())
+		struct stat fileStat;
+		std::memset(&fileStat, 0, sizeof(fileStat));
+		if (stat(scriptPathDir.c_str(), &fileStat) != 0)
 		{
-			requestData.responseTargetPtr->generateResponse();
-			requestData.clear();
+			std::string ErrMsg = "Http::stat()::target_path " + requestData.targetData.targetPath + "::";
+			ErrMsg += strerror(errno);
+			if (errno == EACCES)
+				generate4xx5xxErrorReponse(requestData, 403, true, ErrMsg);
+			generate4xx5xxErrorReponse(requestData, 404, true, ErrMsg);
+		}
+		else if (!S_ISDIR(fileStat.st_mode))
+		{
+			generate4xx5xxErrorReponse(requestData, 404, true, "Http::stat()::target_path " + requestData.targetData.targetPath + ":: must be direcotry");
+		}
+	}
+
+
+
+	//std::cout << "Spawning CGI!\n";
+	//int fd = 0;
+	Shared<std::ifstream> tempfileshare;
+	/* we need to re open this temporary file so we can send it so cgi*/			
+	if (requestData.bodyData.readingRequestBodyPtr)
+	{
+		requestData.bodyData.writeBodyFile.clear();
+		std::string tempFilePath = TEMP_FILE_DIR + toString(requestData.bodyData.tempRequestBodyFileNum);
+
+		//fd = open(tempFilePath.c_str(), O_RDONLY);
+		tempfileshare->open(tempFilePath.c_str());
+
+		/* if failed to open the file with any reason, just delete the temporary file */
+		if (!tempfileshare->is_open())
+		{
+			tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+			generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error: POST to CGIL::failed to open() the temporary file::" + std::string(std::strerror(errno)));
 			return ;
 		}
-		else if (requestData.requestData.method == "GET" || requestData.requestData.method == "DELETE")
+
+	}
+
+	//FileDescriptor fdFile;
+
+	int pipe_in[2];
+	int pipe_out[2];
+
+	if (requestData.bodyData.readingRequestBodyPtr)
+	{
+		if (pipe(pipe_in) != 0)
 		{
-			requestData.clear();
-			return ;
+			tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+			generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI:: pipe() failed::" + std::string(std::strerror(errno)));
 		}
-		else // must be post right??
+	}
+	if (pipe(pipe_out) != 0)
+	{
+		if (requestData.bodyData.readingRequestBodyPtr)
 		{
-			// then if POST is to CGI or not
-			if (requestData.cgiData.cgiPath.empty())
+			close(pipe_in[0]);
+			close(pipe_in[1]);
+		}
+		tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+		generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI:: pipe() failed::" + std::string(std::strerror(errno)));
+	}
+
+	pid_t pid = fork();
+
+	if (pid < 0)
+	{
+		if (requestData.bodyData.readingRequestBodyPtr)
+		{
+			close(pipe_in[0]);
+			close(pipe_in[1]);
+		}
+		close(pipe_out[0]);
+		close(pipe_out[1]);
+		tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+		generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI:: fork() failed::" + std::string(std::strerror(errno)));
+	}
+
+	else if (pid == 0)
+	{
+		try
+		{
+			TempFileManager().setIsChild(true);
+		
+			if (dup2(pipe_out[1], STDOUT_FILENO) == -1)
 			{
-				// no cgi means to upload normally
-				// but we need to handle the multipart form data here
-				if (requestData.bodyData.multiformData.hasData())
+				for (int i = 3; i < MAX_FD; i++)
+					close(i);
+			
+				throw(42);
+			}
+		
+			if (requestData.bodyData.readingRequestBodyPtr)
+			{
+				if (dup2(pipe_in[0], STDIN_FILENO) == -1)
 				{
-					// i don't know how to deal with multipart / form-data yet so,
-					requestData.bodyData.writeBodyFile.clear();
+					for (int i = 3; i < MAX_FD; i++)
+						close(i);
+			
+					generate4xx5xxErrorReponseChildProcess(requestData, 500, false, "Internal Error:: dup2 to stdin failed");
+				}
+			}
+		
+			for (int i = 3; i < MAX_FD; i++)
+				close(i);
+		
+			{
+				/* prepare before execve() */
 
-					processMultiFormData(requestData);
+				// chdir() to change directory
+				{
+					//size_t pos = requestData.targetData.combinedPath.find_last_of('/');
+					//std::string scriptPathDir = requestData.targetData.combinedPath.substr(0, pos == std::string::npos ? requestData.targetData.combinedPath.size() : pos + 1);
 
-					tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+					if (chdir(scriptPathDir.c_str()) != 0)
+						generate4xx5xxErrorReponseChildProcess(requestData, 500, false, "Internal Error::CGI chdir() failed");
+					
+					envData().assignEnv("OLDPWD", envData().findValue("PWD"));
+					envData().assignEnv("PWD", scriptPathDir);
+				}
 
-					HttpResponse& targetResponse = *requestData.responseTargetPtr;
+				/* The GATEWAY_INTERFACE variable MUST be set to the dialect of CGI being used by the server
+				to communicate with the script. */
+				envData().assignEnv("GATEWAY_INTERFACE", "CGI/1.1");
 
-					//targetResponse.keepAfterResponse = true;
-					targetResponse.statusLine->first = 201;
-					targetResponse.statusLine->second = "Created";
-					targetResponse.contentType = "text/plain";
-					targetResponse.responseBodyType = HTTP_RESPONSE_BODY_FIXED_STR;
+				{
+					std::string tempString = in_addr_t_to_string(_clientSocketPtr->_client_addr_in);
+				
+					/* the REMOTE_ADDR variable MUST be set to the network address of the client sending the
+					request to the server.*/
+					envData().assignEnv("REMOTE_ADDR", tempString);
+				
+					/* For the REMOTE_HOST we need to reverse DNS lookup by using the addr of the client
+					and get its actual domain name which ofc we cann't use those functions in this project
+					however, the document state that we can just do the same value as REMOTE_ADDR */
+					envData().assignEnv("REMOTE_HOST", tempString);
+				}
 
-					targetResponse.fixedBodyStr = "Files successfully uploaded and created.";
-					targetResponse.addHeader("Location", requestData.targetData.targetPath);
+				envData().assignEnv("REQUEST_METHOD", requestData.requestData.method);
+				envData().assignEnv("QUERY_STRING", requestData.targetData.queryString);
 
-					targetResponse.generateResponse();
+				/* here for post to CGI will be different from GET because it has body */
 
-					requestData.clear();
+				if (requestData.bodyData.readingRequestBodyPtr)
+					envData().assignEnv("CONTENT_LENGTH", toString(requestData.bodyData.body_size));
 
-					//generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::I don't know what to do with multipart-formdata");
+				/* for the Content-Type, we can just trim the whitespaces*/
+				if (requestData.bodyData.readingRequestBodyPtr)
+				{
+					std::string temp;
+					std::map<std::string, std::string>::iterator content_type = requestData.requestData.headerField.find("content-type");
+					if (content_type != requestData.requestData.headerField.end())
+					{
+						if (httpFieldNormalSingletonTrim(requestData.requestData.headerField.find("content-type")->second, temp) == false)
+						{
+							generate4xx5xxErrorReponseChildProcess(requestData, 500, false, "Internal Error:: Post to CGI:: error occured when building env");
+						}
+						envData().assignEnv("CONTENT_TYPE", temp);
+					}
+				}
+
+				envData().assignEnv("SCRIPT_NAME", requestData.cgiData.cgiScriptPath);
+
+				envData().assignEnv("REQUEST_URI", requestData.requestData.requestTarget);
+
+				if (requestData.cgiData.cgiVirtualPath.empty())
+				{
+					//envData().assignEnv("PATH_INFO", requestData.cgiData.cgiVirtualPath);
+					//envData().assignEnv("PATH_TRANSLATED", requestData.cgiData.cgiPathTranslated);
+					envData().assignEnv("PATH_INFO", requestData.cgiData.cgiScriptPath);
+					envData().assignEnv("PATH_TRANSLATED", requestData.targetData.combinedPath);
 				}
 				else
 				{
-					requestData.bodyData.writeBodyFile.clear();
-					if (requestData.bodyData.isUseTempFile)
+					std::string vPath = requestData.cgiData.cgiVirtualPath;
+					if (vPath[0] != '/')
+						vPath = "/" + vPath;
+					envData().assignEnv("PATH_INFO", vPath);
+					envData().assignEnv("PATH_TRANSLATED", requestData.cgiData.cgiPathTranslated);
+				}
+
+				/* SERVER_NAME just take the host part in Host: from header field, i don't know
+				if it is correct but the CGI documentation also state that we can use this so..*/
+				envData().assignEnv("SERVER_NAME", requestData.serverData.serverName);
+
+				/* SERVER_PORT is just put the port from URI Authority part here, which
+				i already stored it*/
+				envData().assignEnv("SERVER_PORT", requestData.serverData.portName);
+
+				/* SERVER_PROTOCOL because we based from RFC9112 which is HTTP1.1 */
+				envData().assignEnv("SERVER_PROTOCOL", "HTTP/1.1");
+
+				/* SERVER_SOFTWARE is just our program which mean like webserv/1.0 looks good */
+				envData().assignEnv("SERVER_SOFTWARE", "webserv/1.0");
+
+				envData().assignEnv("REDIRECT_STATUS", "200");
+
+				envData().assignEnv("SCRIPT_FILENAME", requestData.targetData.combinedPath);
+
+				/* now we can convert http header to env */
+				{
+					std::map<std::string, std::string>::const_iterator headerIt = requestData.requestData.headerField.begin();
+					std::string headerConvertedStr;
+
+					while (headerIt != requestData.requestData.headerField.end())
 					{
-						tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+						// skip these header
+						if (headerIt->first != "content-length"
+						&& headerIt->first != "content-type"
+						&& headerIt->first != "transfer-encoding"
+						&& headerIt->first != "connection"
+						&& headerIt->first != "trailer")
+						{
+							headerConvertedStr = "HTTP_" + headerIt->first;
+
+							// convert to all capital letters and '-' to '_'
+							for (size_t i = 0; i < headerConvertedStr.size(); i++)
+							{
+								if (headerConvertedStr[i] == '-')
+									headerConvertedStr[i] = '_';
+								else
+								{
+									headerConvertedStr[i] = static_cast<unsigned char>(std::toupper(headerConvertedStr[i]));
+								}
+							}
+
+							// lastly assign it to env
+							envData().assignEnv(headerConvertedStr, headerIt->second);
+						}
+
+						++headerIt;
 					}
 
-					/* didn't use the temp file and i think it's complete, and it is normal download. so */
-					HttpResponse& targetResponse = *requestData.responseTargetPtr;
-
-					//targetResponse.keepAfterResponse = true;
-					targetResponse.statusLine->first = 201;
-					targetResponse.statusLine->second = "Created";
-					targetResponse.contentType = "text/plain";
-					targetResponse.responseBodyType = HTTP_RESPONSE_BODY_FIXED_STR;
-
-					targetResponse.fixedBodyStr = "File successfully uploaded and created.";
-					targetResponse.addHeader("Location", requestData.targetData.targetPath);
-
-					targetResponse.generateResponse();
-
-					requestData.clear();
-					return ;
 				}
+
+				/* now we can execve */
+
+				char* argv[3];
+				argv[2] = NULL;
+				argv[0] = const_cast<char *>(requestData.cgiData.cgiPath.c_str());
+				argv[1] = const_cast<char *>(requestData.targetData.combinedPath.c_str());
+
+				//char* argv[2];
+				//argv[0] = const_cast<char *>(requestData.cgiData.cgiPath.c_str());
+				//argv[1] = NULL;
+
+				for (int i = 3; i < MAX_FD; i++)
+					close(i);
+
+				signal(SIGINT, SIG_DFL);
+			    signal(SIGQUIT, SIG_DFL);
+			    signal(SIGTERM, SIG_DFL);
+			    signal(SIGPIPE, SIG_DFL);
+
+				if (execve(argv[0], argv, envData().getEnvp()) == -1)
+				{
+					signal(SIGINT, serverStopHandler);
+				    signal(SIGQUIT, serverStopHandler);
+				    signal(SIGTERM, serverStopHandler);
+				    signal(SIGPIPE, SIG_IGN);
+
+					generate4xx5xxErrorReponseChildProcess(requestData, 500, false, "Internal Error:: Post to CGI:: failed execve()");
+				}
+
+			}
+		}
+		catch (HttpThrowStatus &e)
+		{
+			// should generate response on the list
+			HttpResponse& target = *httpRequest.responseTargetPtr;
+
+			// here print all of that to STDOUT
+			target.forcePrintAllResponse();
+			close(STDOUT_FILENO);
+			httpRequest.clear();
+		}
+		catch (int &e)
+		{
+			throw ;
+		}
+		catch (...)
+		{
+			try 
+			{
+				generate4xx5xxErrorReponseChildProcess(requestData, 500, false, "Internal Error::Unknown Error Occurred");
+			}
+			catch (HttpThrowStatus &e)
+			{
+				HttpResponse& target = *httpRequest.responseTargetPtr;
+			
+				target.forcePrintAllResponse();
+				close(STDOUT_FILENO);
+				httpRequest.clear();
+			}
+		}
+
+		throw int(1);
+	}
+
+	else
+	{
+		/* close unused end pipe */
+		close(pipe_out[1]);
+		if (requestData.bodyData.readingRequestBodyPtr)
+			close(pipe_in[0]);
+
+		/* fcntl to both pipe to set to nonblock stream */
+
+		if (fcntl(pipe_out[0], F_SETFL, O_NONBLOCK) != 0)
+		{
+			tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+			kill(pid, SIGTERM);
+			waitpid(pid, NULL, 0);
+			close(pipe_out[0]);
+			if (requestData.bodyData.readingRequestBodyPtr)
+				close(pipe_in[1]);
+			generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI::fcntl() error to set O_NONBLOCK");
+		}
+
+		if (requestData.bodyData.readingRequestBodyPtr)
+		{
+			if (fcntl(pipe_in[1], F_SETFL, O_NONBLOCK) != 0)
+			{
+				tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+				kill(pid, SIGTERM);
+				waitpid(pid, NULL, 0);
+				close(pipe_out[0]);
+				close(pipe_in[1]);
+				generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI::fcntl() error to set O_NONBLOCK");
+			}
+		}
+
+		try
+		{
+			HttpResponse& targetResponse = *requestData.responseTargetPtr;
+
+
+			Shared<HttpCgi> tempShareHttpCgi;
+
+			_socketMapPtr->insert(std::make_pair(pipe_out[0], Socket(pipe_out[0])));
+			(*_socketMapPtr)[pipe_out[0]].setupCGIOUTSocket(_clientSocketPtr->getServersConfigPtr(),
+			_clientSocketPtr->getEventContoller(), _socketMapPtr,
+			tempShareHttpCgi);
+
+			if (requestData.bodyData.readingRequestBodyPtr)
+			{
+				_socketMapPtr->insert(std::make_pair(pipe_in[1], Socket(pipe_in[1])));
+				(*_socketMapPtr)[pipe_in[1]].setupCGIINSocket(_clientSocketPtr->getServersConfigPtr(),
+				_clientSocketPtr->getEventContoller(), _socketMapPtr,
+				tempShareHttpCgi);
+			}
+
+			Shared<CgiProcess>	tempCgiData;
+
+			tempCgiData->cgiPid = pid;
+			tempCgiData->status = CGI_PROCESS_RUNNING;
+			//tempCgiData->cgiOutSocketPtr = &socketMap[pipe_out[0]];
+			//tempCgiData->cgiInSocketPtr = &socketMap[pipe_in[1]];
+			tempCgiData->socketMapPtr = _socketMapPtr;
+			tempCgiData->clientSocketPtr = _clientSocketPtr;
+
+			if (requestData.bodyData.readingRequestBodyPtr)
+			{
+				s_http_cgi_temp_file_data tempFileData;
+
+				//fdFile = fd;
+				tempFileData.tempReadFile = tempfileshare;
+				tempFileData.tempFileNum = requestData.bodyData.tempRequestBodyFileNum;
+				tempFileData.isReachEOF = false;
+			
+				tempShareHttpCgi->setHttpCgiHasCgiIn(&_httpResponseList,
+					httpRequest.responseTargetPtr,
+					&((*_socketMapPtr)[pipe_out[0]]),
+					&((*_socketMapPtr)[pipe_in[1]]),
+					tempFileData, tempCgiData);
 			}
 			else
 			{
-				//std::cout << "Total Size: " << requestData.bodyData.body_size << '\n';
-				//std::cout << "ptr = " << (requestData.bodyData.readingRequestBodyPtr == NULL ? "NULL" : "has PTR") << "\n";
+				tempShareHttpCgi->setHttpCgiNoCgiIn(&_httpResponseList,
+					httpRequest.responseTargetPtr,
+					&((*_socketMapPtr)[pipe_out[0]]),
+					tempCgiData);
+			}
 
-				//std::cout << "Spawning CGI!\n";
-				int fd = 0;
-				/* we need to re open this temporary file so we can send it so cgi*/			
-				if (requestData.bodyData.readingRequestBodyPtr)
+			targetResponse.cgiProcessData = tempCgiData;
+			targetResponse.socketMapPtr = _socketMapPtr;
+			targetResponse.targetServer = requestData.serverData.targetServerPtr;
+			targetResponse.targetLocationBlock = requestData.serverData.targetLocationBlockPtr;
+
+			targetResponse.httpRequestData = requestData;
+
+		}
+		catch (...)
+		{
+			tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+			if (requestData.bodyData.readingRequestBodyPtr)
+				close(pipe_in[1]);
+			close(pipe_out[0]);
+			
+			throw;
+		}
+
+	}
+
+	requestData.clear();
+	return ;
+}
+
+void Http::handleRedirectRequest(HttpRequest& requestData)
+{
+	requestData.responseTargetPtr->generateResponse();
+	requestData.clear();
+	return ;
+}
+
+void Http::handleHeadRequest(HttpRequest& requestData)
+{
+	struct stat fileStat;
+	std::memset(&fileStat, 0, sizeof(fileStat));
+	if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) != 0)
+	{
+		std::string ErrMsg = "Http::stat()::target_path " + requestData.targetData.targetPath + "::";
+		ErrMsg += strerror(errno);
+		if (errno == EACCES)
+			generate4xx5xxErrorReponse(requestData, 403, true, ErrMsg);
+		generate4xx5xxErrorReponse(requestData, 404, true, ErrMsg);
+	}
+
+	if (S_ISDIR(fileStat.st_mode))
+	{
+		// check if it target ends with '/' or not
+		if (requestData.targetData.isEndWithSlash == true)
+		{
+			// check
+			// check for directory listing (auto index)
+
+			const std::vector<std::string>* foundAutoIndex = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "autoindex");
+
+			// if not found then should return 403 forbidden or not found
+			if (foundAutoIndex == NULL)
+				generate4xx5xxErrorReponse(requestData, 403, true, "Http::\"autoindex\" is not found in this block.");
+
+			if (foundAutoIndex->size() != 1)
+				generate4xx5xxErrorReponse(requestData, 403, true, "Http::\"autoindex\" invalid value");
+
+			if ((*foundAutoIndex)[0] == "on")
+			{
 				{
-					requestData.bodyData.writeBodyFile.clear();
-					std::string tempFilePath = TEMP_FILE_DIR + toString(requestData.bodyData.tempRequestBodyFileNum);
 
-					fd = open(tempFilePath.c_str(), O_RDONLY);
+					DIR *dirPtr = opendir(requestData.targetData.combinedPath.c_str());
 
-					/* if failed to open the file with any reason, just delete the temporary file */
-					if (fd < 0)
+					if (dirPtr == NULL)
 					{
-						tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
-						generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error: POST to CGIL::failed to open() the temporary file::" + std::string(std::strerror(errno)));
-						return ;
+						if (errno == EACCES)
+							generate4xx5xxErrorReponse(requestData, 403, true, "Http::autoindex::opendir()::" + std::string(std::strerror(errno)));
+						if (errno == ENOENT)
+							generate4xx5xxErrorReponse(requestData, 404, true, "Http::autoindex::opendir()::" + std::string(std::strerror(errno)));
+						else
+							generate4xx5xxErrorReponse(requestData, 500, true, "Http::autoindex::opendir()::" + std::string(std::strerror(errno)));
 					}
 
-				}
-
-				FileDescriptor fdFile;
-
-				int pipe_in[2];
-				int pipe_out[2];
-
-				if (requestData.bodyData.readingRequestBodyPtr)
-				{
-					if (pipe(pipe_in) != 0)
+					/* bool is that it is a directory or not, second is the path */
+					std::list<std::string> directoryNameList;
+					dirent *tempDirStructPtr = readdir(dirPtr);
+					while (tempDirStructPtr != NULL)
 					{
-						tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
-						generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI:: pipe() failed::" + std::string(std::strerror(errno)));
-					}
-				}
-				if (pipe(pipe_out) != 0)
-				{
-					if (requestData.bodyData.readingRequestBodyPtr)
-					{
-						close(pipe_in[0]);
-						close(pipe_in[1]);
-					}
-					tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
-					generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI:: pipe() failed::" + std::string(std::strerror(errno)));
-				}
+						std::string tempFileName(tempDirStructPtr->d_name);
 
-				pid_t pid = fork();
-
-				if (pid < 0)
-				{
-					if (requestData.bodyData.readingRequestBodyPtr)
-					{
-						close(pipe_in[0]);
-						close(pipe_in[1]);
-					}
-					close(pipe_out[0]);
-					close(pipe_out[1]);
-					tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
-					generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI:: fork() failed::" + std::string(std::strerror(errno)));
-				}
-
-				else if (pid == 0)
-				{
-					try
-					{
-						TempFileManager().setIsChild(true);
-					
-						if (dup2(pipe_out[1], STDOUT_FILENO) == -1)
+						if (tempFileName != ".")
 						{
-							for (int i = 3; i < MAX_FD; i++)
-								close(i);
-						
-							throw(42);
+							struct stat fileStat;
+							std::memset(&fileStat, 0, sizeof(fileStat));
+							if (stat(tempFileName.c_str(), &fileStat) == 0)
+							{
+								if (S_ISDIR(fileStat.st_mode))
+									tempFileName += '/';
+							}
+
+							directoryNameList.push_back(tempFileName);
 						}
-					
-						if (requestData.bodyData.readingRequestBodyPtr)
-						{
-							if (dup2(pipe_in[0], STDIN_FILENO) == -1)
-							{
-								for (int i = 3; i < MAX_FD; i++)
-									close(i);
-						
-								generate4xx5xxErrorReponseChildProcess(requestData, 500, false, "Internal Error:: dup2 to stdin failed");
-							}
-						}
-					
-						for (int i = 3; i < MAX_FD; i++)
-							close(i);
-					
-						{
-							/* prepare before execve() */
-
-							// chdir() to change directory
-							{
-								size_t pos = requestData.targetData.combinedPath.find_last_of('/');
-								std::string scriptPathDir = requestData.targetData.combinedPath.substr(0, pos == std::string::npos ? requestData.targetData.combinedPath.size() : pos + 1);
-
-								if (chdir(scriptPathDir.c_str()) != 0)
-									generate4xx5xxErrorReponseChildProcess(requestData, 500, false, "Internal Error::CGI chdir() failed");
-								
-								envData().assignEnv("OLDPWD", envData().findValue("PWD"));
-								envData().assignEnv("PWD", scriptPathDir);
-							}
-
-							/* The GATEWAY_INTERFACE variable MUST be set to the dialect of CGI being used by the server
-							to communicate with the script. */
-							envData().assignEnv("GATEWAY_INTERFACE", "CGI/1.1");
-
-							{
-								std::string tempString = in_addr_t_to_string(_clientSocketPtr->_client_addr_in);
-							
-								/* the REMOTE_ADDR variable MUST be set to the network address of the client sending the
-								request to the server.*/
-								envData().assignEnv("REMOTE_ADDR", tempString);
-							
-								/* For the REMOTE_HOST we need to reverse DNS lookup by using the addr of the client
-								and get its actual domain name which ofc we cann't use those functions in this project
-								however, the document state that we can just do the same value as REMOTE_ADDR */
-								envData().assignEnv("REMOTE_HOST", tempString);
-							}
-
-							envData().assignEnv("REQUEST_METHOD", requestData.requestData.method);
-							envData().assignEnv("QUERY_STRING", requestData.targetData.queryString);
-
-							/* here for post to CGI will be different from GET because it has body */
-
-							if (requestData.bodyData.readingRequestBodyPtr)
-								envData().assignEnv("CONTENT_LENGTH", toString(requestData.bodyData.body_size));
-
-							/* for the Content-Type, we can just trim the whitespaces*/
-							if (requestData.bodyData.readingRequestBodyPtr)
-							{
-								std::string temp;
-								std::map<std::string, std::string>::iterator content_type = requestData.requestData.headerField.find("content-type");
-								if (content_type != requestData.requestData.headerField.end())
-								{
-									if (httpFieldNormalSingletonTrim(requestData.requestData.headerField.find("content-type")->second, temp) == false)
-									{
-										generate4xx5xxErrorReponseChildProcess(requestData, 500, false, "Internal Error:: Post to CGI:: error occured when building env");
-									}
-									envData().assignEnv("CONTENT_TYPE", temp);
-								}
-							}
-
-							envData().assignEnv("SCRIPT_NAME", requestData.cgiData.cgiScriptPath);
-
-							envData().assignEnv("REQUEST_URI", requestData.requestData.requestTarget);
-
-							if (requestData.cgiData.cgiVirtualPath.empty())
-							{
-								//envData().assignEnv("PATH_INFO", requestData.cgiData.cgiVirtualPath);
-								//envData().assignEnv("PATH_TRANSLATED", requestData.cgiData.cgiPathTranslated);
-								envData().assignEnv("PATH_INFO", requestData.cgiData.cgiScriptPath);
-								envData().assignEnv("PATH_TRANSLATED", requestData.targetData.combinedPath);
-							}
-							else
-							{
-								std::string vPath = requestData.cgiData.cgiVirtualPath;
-								if (vPath[0] != '/')
-									vPath = "/" + vPath;
-								envData().assignEnv("PATH_INFO", vPath);
-								envData().assignEnv("PATH_TRANSLATED", requestData.cgiData.cgiPathTranslated);
-							}
-
-							/* SERVER_NAME just take the host part in Host: from header field, i don't know
-							if it is correct but the CGI documentation also state that we can use this so..*/
-							envData().assignEnv("SERVER_NAME", requestData.serverData.serverName);
-
-							/* SERVER_PORT is just put the port from URI Authority part here, which
-							i already stored it*/
-							envData().assignEnv("SERVER_PORT", requestData.serverData.portName);
-
-							/* SERVER_PROTOCOL because we based from RFC9112 which is HTTP1.1 */
-							envData().assignEnv("SERVER_PROTOCOL", "HTTP/1.1");
-
-							/* SERVER_SOFTWARE is just our program which mean like webserv/1.0 looks good */
-							envData().assignEnv("SERVER_SOFTWARE", "webserv/1.0");
-
-							envData().assignEnv("REDIRECT_STATUS", "200");
-
-							envData().assignEnv("SCRIPT_FILENAME", requestData.targetData.combinedPath);
-
-							/* now we can convert http header to env */
-							{
-								std::map<std::string, std::string>::const_iterator headerIt = requestData.requestData.headerField.begin();
-								std::string headerConvertedStr;
-
-								while (headerIt != requestData.requestData.headerField.end())
-								{
-									// skip these header
-									if (headerIt->first != "content-length"
-									&& headerIt->first != "content-type"
-									&& headerIt->first != "transfer-encoding"
-									&& headerIt->first != "connection"
-									&& headerIt->first != "trailer")
-									{
-										headerConvertedStr = "HTTP_" + headerIt->first;
-
-										// convert to all capital letters and '-' to '_'
-										for (size_t i = 0; i < headerConvertedStr.size(); i++)
-										{
-											if (headerConvertedStr[i] == '-')
-												headerConvertedStr[i] = '_';
-											else
-											{
-												headerConvertedStr[i] = static_cast<unsigned char>(std::toupper(headerConvertedStr[i]));
-											}
-										}
-
-										// lastly assign it to env
-										envData().assignEnv(headerConvertedStr, headerIt->second);
-									}
-
-									++headerIt;
-								}
-
-							}
-
-							/* now we can execve */
-
-							char* argv[3];
-							argv[2] = NULL;
-							argv[0] = const_cast<char *>(requestData.cgiData.cgiPath.c_str());
-							argv[1] = const_cast<char *>(requestData.targetData.combinedPath.c_str());
-
-							//char* argv[2];
-							//argv[0] = const_cast<char *>(requestData.cgiData.cgiPath.c_str());
-							//argv[1] = NULL;
-
-							for (int i = 3; i < MAX_FD; i++)
-								close(i);
-
-							signal(SIGINT, SIG_DFL);
-						    signal(SIGQUIT, SIG_DFL);
-						    signal(SIGTERM, SIG_DFL);
-						    signal(SIGPIPE, SIG_DFL);
-
-							if (execve(argv[0], argv, envData().getEnvp()) == -1)
-							{
-								signal(SIGINT, serverStopHandler);
-							    signal(SIGQUIT, serverStopHandler);
-							    signal(SIGTERM, serverStopHandler);
-							    signal(SIGPIPE, SIG_IGN);
-
-								generate4xx5xxErrorReponseChildProcess(requestData, 500, false, "Internal Error:: Post to CGI:: failed execve()");
-							}
-
-						}
-					}
-					catch (HttpThrowStatus &e)
-					{
-						// should generate response on the list
-						HttpResponse& target = *httpRequest.responseTargetPtr;
-
-						// here print all of that to STDOUT
-						target.forcePrintAllResponse();
-						close(STDOUT_FILENO);
-						httpRequest.clear();
-					}
-					catch (int &e)
-					{
-						throw ;
-					}
-					catch (...)
-					{
-						try 
-						{
-							generate4xx5xxErrorReponseChildProcess(requestData, 500, false, "Internal Error::Unknown Error Occurred");
-						}
-						catch (HttpThrowStatus &e)
-						{
-							HttpResponse& target = *httpRequest.responseTargetPtr;
-						
-							target.forcePrintAllResponse();
-							close(STDOUT_FILENO);
-							httpRequest.clear();
-						}
+						tempDirStructPtr = readdir(dirPtr);
 					}
 
-					throw int(1);
-				}
+					/* we finish doing with directory */
+					closedir(dirPtr);
 
-				else
-				{
-					/* close unused end pipe */
-					close(pipe_out[1]);
-					if (requestData.bodyData.readingRequestBodyPtr)
-						close(pipe_in[0]);
 
-					/* fcntl to both pipe to set to nonblock stream */
-
-					if (fcntl(pipe_out[0], F_SETFL, O_NONBLOCK) != 0)
+					/* now we create the html file */
+					std::string tempBodyString;
 					{
-						tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
-						kill(pid, SIGTERM);
-						waitpid(pid, NULL, 0);
-						close(pipe_out[0]);
-						if (requestData.bodyData.readingRequestBodyPtr)
-							close(pipe_in[1]);
-						generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI::fcntl() error to set O_NONBLOCK");
-					}
+						tempBodyString = "<!DOCTYPE html>\r\n"
+						"<html>\r\n"
+						"<head>\r\n"
+						"<style>\r\n"
+						"h1{text-align: center;}\r\n"
+						"body{margin: 0; background-color: #0d1117; display: flex; color: #c9d1d9; align-items: center; justify-content: center; margin-top: 10px}\r\n"
+						"div{background-color: #21262d; border: 1px solid #4ab9e9; border-top: 4px solid #4ab9e9; border-radius: 12px; padding: 30px 40px;"
+        				"width: 100%; max-width: 600px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);}\r\n"
+						"a{text-decoration: none; text-align: center; color: inherit; box-sizing: border-box;}\r\n"
+						"</style>\r\n"
+						"<body>\r\n"
+						"<div><title>Index of ";
+						tempBodyString += requestData.targetData.targetPath;
+						tempBodyString += "</title>\r\n"
+						"</head>\r\n"
+						"<h1>";
+						tempBodyString += requestData.targetData.targetPath;
+						tempBodyString += " folder</h1>\r\n";
 
-					if (requestData.bodyData.readingRequestBodyPtr)
-					{
-						if (fcntl(pipe_in[1], F_SETFL, O_NONBLOCK) != 0)
+						if (directoryNameList.empty())
 						{
-							tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
-							kill(pid, SIGTERM);
-							waitpid(pid, NULL, 0);
-							close(pipe_out[0]);
-							close(pipe_in[1]);
-							generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::CGI::fcntl() error to set O_NONBLOCK");
-						}
-					}
-
-					try
-					{
-						HttpResponse& targetResponse = *requestData.responseTargetPtr;
-
-
-						Shared<HttpCgi> tempShareHttpCgi;
-
-						socketMap.insert(std::make_pair(pipe_out[0], Socket(pipe_out[0])));
-						socketMap[pipe_out[0]].setupCGIOUTSocket(clientSocket.getServersConfigPtr(),
-						clientSocket.getEventContoller(), &socketMap,
-						tempShareHttpCgi);
-
-						if (requestData.bodyData.readingRequestBodyPtr)
-						{
-							socketMap.insert(std::make_pair(pipe_in[1], Socket(pipe_in[1])));
-							socketMap[pipe_in[1]].setupCGIINSocket(clientSocket.getServersConfigPtr(),
-							clientSocket.getEventContoller(), &socketMap,
-							tempShareHttpCgi);
-						}
-
-						Shared<CgiProcess>	tempCgiData;
-
-						tempCgiData->cgiPid = pid;
-						tempCgiData->status = CGI_PROCESS_RUNNING;
-						//tempCgiData->cgiOutSocketPtr = &socketMap[pipe_out[0]];
-						//tempCgiData->cgiInSocketPtr = &socketMap[pipe_in[1]];
-						tempCgiData->socketMapPtr = &socketMap;
-						tempCgiData->clientSocketPtr = _clientSocketPtr;
-
-						if (requestData.bodyData.readingRequestBodyPtr)
-						{
-							s_http_cgi_temp_file_data tempFileData;
-
-							fdFile = fd;
-							tempFileData.tempReadFileFd = fdFile;
-							tempFileData.tempFileNum = requestData.bodyData.tempRequestBodyFileNum;
-							tempFileData.isReachEOF = false;
-						
-							tempShareHttpCgi->setHttpCgiHasCgiIn(&_httpResponseList,
-								httpRequest.responseTargetPtr,
-								&(socketMap[pipe_out[0]]),
-								&(socketMap[pipe_in[1]]),
-								tempFileData, tempCgiData);
+							tempBodyString += "<h2>No file in this directory</h2>\r\n";
 						}
 						else
 						{
-							tempShareHttpCgi->setHttpCgiNoCgiIn(&_httpResponseList,
-								httpRequest.responseTargetPtr,
-								&(socketMap[pipe_out[0]]),
-								tempCgiData);
+							tempBodyString += 
+							"<ul>\r\n";
+
+							std::list<std::string>::const_iterator listIt = directoryNameList.begin();
+							while (listIt != directoryNameList.end())
+							{
+								tempBodyString += "<li><a href=\"";
+								tempBodyString += *listIt;
+								tempBodyString += "\">";
+								tempBodyString += *listIt;
+								tempBodyString += "</a></li>\r\n";
+
+								++listIt;
+							}
+
+							tempBodyString += "</ul>\r\n"
+							"</div></hr>\r\n";
 						}
 
-						targetResponse.cgiProcessData = tempCgiData;
-						targetResponse.socketMapPtr = &socketMap;
-						targetResponse.targetServer = requestData.serverData.targetServerPtr;
-						targetResponse.targetLocationBlock = requestData.serverData.targetLocationBlockPtr;
-
-						targetResponse.httpRequestData = requestData;
-
-					}
-					catch (...)
-					{
-						tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
-						if (requestData.bodyData.readingRequestBodyPtr)
-							close(pipe_in[1]);
-						close(pipe_out[0]);
-						
-						throw;
+						tempBodyString += "</body>\r\n</html>\r\n";
 					}
 
+					HttpResponse& targetResponse = *requestData.responseTargetPtr;
+
+					targetResponse.statusLine->first = 200;
+					targetResponse.statusLine->second = "OK";
+					targetResponse.contentType = "text/html";
+					targetResponse.addHeader("Content-Length", toString(tempBodyString.size()));
+
+					targetResponse.responseBodyType = HTTP_RESPONSE_NOBODY;
+					//targetResponse.fixedBodyStr = tempBodyString;
+					targetResponse.generateResponse();
+					requestData.clear();
+					return ;
 				}
-			}
 
+				// generate auto indexing 
+				generate4xx5xxErrorReponse(requestData, 500, true, "Http::autoindex is allowed but Not implemented yet");
+			}
+			else
+				generate4xx5xxErrorReponse(requestData, 403, true, "Http::\"autoindex\" is not on for directory listing");
+		
+		}
+		else
+		{
+			// make redirections
+			requestData.targetData.redirectPath = requestData.targetData.targetPath + '/';
+			try
+			{
+				generate3xxRedirectResponse(requestData, 301);
+			}
+			catch(const HttpThrowStatus &e)
+			{
+				if (requestData.methodExecuteFuncPtr)
+					(this->*requestData.methodExecuteFuncPtr->second)(requestData);
+				return ;
+			}
 			requestData.clear();
 			return ;
 		}
+	}
+
+
+	if (S_ISREG(fileStat.st_mode))
+	{
+		// try to open the targeted file
+		//int fd = open(requestData.targetData.combinedPath.c_str(), O_RDONLY);
+
+		Shared<std::ifstream> targetFile;
+
+		while (true)
+		{
+			targetFile->open(requestData.targetData.combinedPath.c_str());
+
+			if (targetFile->is_open())
+				break ;
+			
+			if (errno == EINTR)
+			{
+				targetFile->clear();
+				continue;
+			}
+			else
+				break;
+		}
+
+
+		// if failed should response accordingly
+		if (targetFile->is_open() == false)
+		{
+			if (errno == EACCES)
+				generate4xx5xxErrorReponse(requestData, 403, false, "Http::GET to regular file failed::open() failed");
+
+			else if (errno == EMFILE || errno == ENFILE)
+			{
+				generate4xx5xxErrorReponse(requestData, 500, false, "Http:: GET to regular file:: fd limit is reached");
+			}
+			else if (errno == ENOENT)
+			{
+				generate4xx5xxErrorReponse(requestData, 404, false, "Http:: Get to regular file:: file is missing");
+			}
+			// some unknown error
+			else
+				generate4xx5xxErrorReponse(requestData, 500, false, "Http:: Get to regular file::Internal Unknown Error");
+		}
+
+		//FileDescriptor tempFd = fd;
+
+		HttpResponse& targetResponse = *requestData.responseTargetPtr;
+
+		// set Last-Modified
+		{
+			// the st_mtim is time_t
+
+			tm * timeGmt = std::gmtime(&fileStat.st_mtim.tv_sec);
+
+			std::vector<char> tempTimeBuffer(100);
+
+			std::strftime(&tempTimeBuffer[0], tempTimeBuffer.size(), "%a, %d %b %Y %H:%M:%S GMT", timeGmt);
+
+			std::string tempModTime(tempTimeBuffer.data());
+
+			targetResponse.addHeader("Last-Modified", tempModTime);
+		}
+
+		targetResponse.contentType = contentTypeTable().extensionToContentType(requestData.targetData.combinedPath);
+		targetResponse.responseBodyType = HTTP_RESPONSE_NOBODY;
+		targetResponse.statusLine->first = 200;
+		targetResponse.statusLine->second = "OK";
+		targetResponse.addHeader("Content-Length", toString(fileStat.st_size));
+
+		//targetResponse.responseBodyType = HTTP_RESPONSE_BODY_FILE;
+		//targetResponse.fileBody = targetFile;
+		//targetResponse.fileSize = fileStat.st_size;
+		////targetResponse.keepAfterResponse = true;
+		//targetResponse.statusLine->first = 200;
+		//targetResponse.statusLine->second = "OK";
+
+		targetResponse.generateResponse();
+		requestData.clear();
+		return ;
+	}
+	else 
+	{
+		generate4xx5xxErrorReponse(requestData, 403, false, "target is not directory or regular file");
+	}
+	requestData.clear();
+	return ;
+
+}
+
+void Http::handleGetRequest(HttpRequest& requestData)
+{
+	struct stat fileStat;
+	std::memset(&fileStat, 0, sizeof(fileStat));
+	if (stat(requestData.targetData.combinedPath.c_str(), &fileStat) != 0)
+	{
+		std::string ErrMsg = "Http::stat()::target_path " + requestData.targetData.targetPath + "::";
+		ErrMsg += strerror(errno);
+		if (errno == EACCES)
+			generate4xx5xxErrorReponse(requestData, 403, true, ErrMsg);
+		generate4xx5xxErrorReponse(requestData, 404, true, ErrMsg);
+	}
+
+	if (S_ISDIR(fileStat.st_mode))
+	{
+		// check if it target ends with '/' or not
+		if (requestData.targetData.isEndWithSlash == true)
+		{
+			// check
+			// check for directory listing (auto index)
+
+			const std::vector<std::string>* foundAutoIndex = requestData.serverData.targetServerPtr->getLocationData(requestData.serverData.targetLocationBlockPtr, "autoindex");
+
+			// if not found then should return 403 forbidden or not found
+			if (foundAutoIndex == NULL)
+				generate4xx5xxErrorReponse(requestData, 404, true, "Http::\"autoindex\" is not found in this block.");
+
+			if (foundAutoIndex->size() != 1)
+				generate4xx5xxErrorReponse(requestData, 403, true, "Http::\"autoindex\" invalid value");
+
+			if ((*foundAutoIndex)[0] == "on")
+			{
+				{
+
+					DIR *dirPtr = opendir(requestData.targetData.combinedPath.c_str());
+
+					if (dirPtr == NULL)
+					{
+						if (errno == EACCES)
+							generate4xx5xxErrorReponse(requestData, 403, true, "Http::autoindex::opendir()::" + std::string(std::strerror(errno)));
+						if (errno == ENOENT)
+							generate4xx5xxErrorReponse(requestData, 404, true, "Http::autoindex::opendir()::" + std::string(std::strerror(errno)));
+						else
+							generate4xx5xxErrorReponse(requestData, 500, true, "Http::autoindex::opendir()::" + std::string(std::strerror(errno)));
+					}
+
+					/* bool is that it is a directory or not, second is the path */
+					std::list<std::string> directoryNameList;
+					dirent *tempDirStructPtr = readdir(dirPtr);
+					while (tempDirStructPtr != NULL)
+					{
+						std::string tempFileName(tempDirStructPtr->d_name);
+
+						if (tempFileName != ".")
+						{
+							struct stat fileStat;
+							std::memset(&fileStat, 0, sizeof(fileStat));
+							if (stat(tempFileName.c_str(), &fileStat) == 0)
+							{
+								if (S_ISDIR(fileStat.st_mode))
+									tempFileName += '/';
+							}
+
+							directoryNameList.push_back(tempFileName);
+						}
+						tempDirStructPtr = readdir(dirPtr);
+					}
+
+					/* we finish doing with directory */
+					closedir(dirPtr);
+
+
+					/* now we create the html file */
+					std::string tempBodyString;
+					{
+						tempBodyString = "<!DOCTYPE html>\r\n"
+						"<html>\r\n"
+						"<head>\r\n"
+						"<style>\r\n"
+						"h1{text-align: center;}\r\n"
+						"body{margin: 0; background-color: #0d1117; display: flex; color: #c9d1d9; align-items: center; justify-content: center; margin-top: 10px}\r\n"
+						"div{background-color: #21262d; border: 1px solid #4ab9e9; border-top: 4px solid #4ab9e9; border-radius: 12px; padding: 30px 40px;"
+        				"width: 100%; max-width: 600px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);}\r\n"
+						"a{text-decoration: none; text-align: center; color: inherit; box-sizing: border-box;}\r\n"
+						"</style>\r\n"
+						"<body>\r\n"
+						"<div><title>Index of ";
+						tempBodyString += requestData.targetData.targetPath;
+						tempBodyString += "</title>\r\n"
+						"</head>\r\n"
+						"<h1>";
+						tempBodyString += requestData.targetData.targetPath;
+						tempBodyString += " folder</h1>\r\n";
+
+						if (directoryNameList.empty())
+						{
+							tempBodyString += "<h2>No file in this directory</h2>\r\n";
+						}
+						else
+						{
+							tempBodyString += 
+							"<ul>\r\n";
+
+							std::list<std::string>::const_iterator listIt = directoryNameList.begin();
+							while (listIt != directoryNameList.end())
+							{
+								tempBodyString += "<li><a href=\"";
+								tempBodyString += *listIt;
+								tempBodyString += "\">";
+								tempBodyString += *listIt;
+								tempBodyString += "</a></li>\r\n";
+
+								++listIt;
+							}
+
+							tempBodyString += "</ul>\r\n"
+							"</div></hr>\r\n";
+						}
+
+						tempBodyString += "</body>\r\n</html>\r\n";
+					}
+
+					HttpResponse& targetResponse = *requestData.responseTargetPtr;
+
+					targetResponse.statusLine->first = 200;
+					targetResponse.statusLine->second = "OK";
+					targetResponse.contentType = "text/html";
+					targetResponse.responseBodyType = HTTP_RESPONSE_BODY_FIXED_STR;
+					targetResponse.fixedBodyStr = tempBodyString;
+
+					targetResponse.generateResponse();
+					requestData.clear();
+					return ;
+				}
+
+				// generate auto indexing 
+				generate4xx5xxErrorReponse(requestData, 500, true, "Http::autoindex is allowed but Not implemented yet");
+			}
+			else
+				generate4xx5xxErrorReponse(requestData, 403, true, "Http::\"autoindex\" is not on for directory listing");
+		
+		}
+		else
+		{
+			// make redirections
+			requestData.targetData.redirectPath = requestData.targetData.targetPath + '/';
+			try
+			{
+				generate3xxRedirectResponse(requestData, 301);
+			}
+			catch(const HttpThrowStatus &e)
+			{
+				if (requestData.methodExecuteFuncPtr)
+					(this->*requestData.methodExecuteFuncPtr->second)(requestData);
+				return ;
+			}
+			requestData.clear();
+			return ;
+		}
+	}
+
+
+	if (S_ISREG(fileStat.st_mode))
+	{
+		// try to open the targeted file
+		//int fd = open(requestData.targetData.combinedPath.c_str(), O_RDONLY);
+
+		Shared<std::ifstream> targetFile;
+
+		while (true)
+		{
+			targetFile->open(requestData.targetData.combinedPath.c_str());
+
+			if (targetFile->is_open())
+				break ;
+			
+			if (errno == EINTR)
+			{
+				targetFile->clear();
+				continue;
+			}
+			else
+				break;
+		}
+
+
+		// if failed should response accordingly
+		if (targetFile->is_open() == false)
+		{
+			if (errno == EACCES)
+				generate4xx5xxErrorReponse(requestData, 403, false, "Http::GET to regular file failed::open() failed");
+
+			else if (errno == EMFILE || errno == ENFILE)
+			{
+				generate4xx5xxErrorReponse(requestData, 500, false, "Http:: GET to regular file:: fd limit is reached");
+			}
+			else if (errno == ENOENT)
+			{
+				generate4xx5xxErrorReponse(requestData, 404, false, "Http:: Get to regular file:: file is missing");
+			}
+			// some unknown error
+			else
+				generate4xx5xxErrorReponse(requestData, 500, false, "Http:: Get to regular file::Internal Unknown Error");
+		}
+
+		//FileDescriptor tempFd = fd;
+
+		HttpResponse& targetResponse = *requestData.responseTargetPtr;
+
+		// set Last-Modified
+		{
+			// the st_mtim is time_t
+
+			tm * timeGmt = std::gmtime(&fileStat.st_mtim.tv_sec);
+
+			std::vector<char> tempTimeBuffer(100);
+
+			std::strftime(&tempTimeBuffer[0], tempTimeBuffer.size(), "%a, %d %b %Y %H:%M:%S GMT", timeGmt);
+
+			std::string tempModTime(tempTimeBuffer.data());
+
+			targetResponse.addHeader("Last-Modified", tempModTime);
+		}
+
+		targetResponse.contentType = contentTypeTable().extensionToContentType(requestData.targetData.combinedPath);
+		targetResponse.responseBodyType = HTTP_RESPONSE_BODY_FILE;
+		targetResponse.fileBody = targetFile;
+		targetResponse.fileSize = fileStat.st_size;
+		//targetResponse.keepAfterResponse = true;
+		targetResponse.statusLine->first = 200;
+		targetResponse.statusLine->second = "OK";
+
+		targetResponse.generateResponse();
+		requestData.clear();
+		return ;
+	}
+	else 
+	{
+		generate4xx5xxErrorReponse(requestData, 403, false, "target is not directory or regular file");
+	}
+	requestData.clear();
+	return ;
+}
+
+void Http::handlePostRequest(HttpRequest& requestData)
+{
+	// no cgi means to upload normally
+	// but we need to handle the multipart form data here
+	if (requestData.bodyData.multiformData.hasData())
+	{
+		// i don't know how to deal with multipart / form-data yet so,
+		requestData.bodyData.writeBodyFile.clear();
+
+		processMultiFormData(requestData);
+
+		tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+
+		HttpResponse& targetResponse = *requestData.responseTargetPtr;
+
+		//targetResponse.keepAfterResponse = true;
+		targetResponse.statusLine->first = 201;
+		targetResponse.statusLine->second = "Created";
+		targetResponse.contentType = "text/plain";
+		targetResponse.responseBodyType = HTTP_RESPONSE_BODY_FIXED_STR;
+
+		targetResponse.fixedBodyStr = "Files successfully uploaded and created.";
+		targetResponse.addHeader("Location", requestData.targetData.targetPath);
+
+		targetResponse.generateResponse();
+
+		requestData.clear();
+
+		//generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error::I don't know what to do with multipart-formdata");
+	}
+	else
+	{
+		requestData.bodyData.writeBodyFile.clear();
+		if (requestData.bodyData.isUseTempFile)
+		{
+			tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
+		}
+
+		/* didn't use the temp file and i think it's complete, and it is normal download. so */
+		HttpResponse& targetResponse = *requestData.responseTargetPtr;
+
+		//targetResponse.keepAfterResponse = true;
+		targetResponse.statusLine->first = 201;
+		targetResponse.statusLine->second = "Created";
+		targetResponse.contentType = "text/plain";
+		targetResponse.responseBodyType = HTTP_RESPONSE_BODY_FIXED_STR;
+
+		targetResponse.fixedBodyStr = "File successfully uploaded and created.";
+		targetResponse.addHeader("Location", requestData.targetData.targetPath);
+
+		targetResponse.generateResponse();
+
+		requestData.clear();
+	}
+
+	return ;
+}
+
+void Http::processingRequest(HttpRequest& requestData)
+{
+	if (requestData.getProcessStatus() == FINISHED_READ_BODY)
+	{
+		(this->*requestData.methodExecuteFuncPtr->second)(requestData);
 	}
 }
 
@@ -4889,7 +5678,7 @@ void Http::multiformDataProcessBuffer(HttpRequest& requestData, std::string& mul
 }
 
 // use the _requestBuffer
-void	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Socket>& socketMap)
+void	Http::processingRequestBuffer()
 {
 	try
 	{
@@ -4909,10 +5698,10 @@ void	Http::processingRequestBuffer(const Socket& clientSocket, std::map<int, Soc
 			parsingHttpRequestLine(currIndex, reqBuffSize);
 			parsingHttpHeader(currIndex, reqBuffSize);
 
-			validateRequestData(httpRequest, clientSocket, socketMap);
+			validateRequestData(httpRequest);
 			readingRequestBody(httpRequest);
 
-			processingRequestBody(httpRequest, clientSocket, socketMap);
+			processingRequest(httpRequest);
 
 			if (httpRequest.getProcessStatus() == NO_STATUS && _keepConnection == true)
 				continue ;
@@ -4986,13 +5775,13 @@ void Http::directRequestProcess(HttpRequest requestData)
 		}
 		requestData.localRedirectCount += 1;
 
-		validateRequestData(requestData, *_clientSocketPtr, *_socketMapPtr);
+		validateRequestData(requestData);
 
 		/* skip the reading body */
 		if (requestData.getProcessStatus() == READ_BODY)
 			requestData.setProcessStatus(FINISHED_READ_BODY);
 
-		processingRequestBody(requestData, *_clientSocketPtr, *_socketMapPtr);
+		processingRequest(requestData);
 	}
 	catch (int &e)
 	{
@@ -5070,10 +5859,10 @@ void Http::readFromClient()
 	}
 	else if (readAmount < 0)
 	{
-		_keepConnection = false;
-		std::cout << "reach here" << std::endl;
-		std::cout << "fd to recv: " << _clientSocketPtr->getSocketFD().getFd() << std::endl;
-		std::cout << "is keep connection: " << _keepConnection << std::endl;
+		//_keepConnection = false;
+		//std::cout << "reach here" << std::endl;
+		//std::cout << "fd to recv: " << _clientSocketPtr->getSocketFD().getFd() << std::endl;
+		//std::cout << "is keep connection: " << _keepConnection << std::endl;
 		return ;
 	}
 	else 
@@ -5081,7 +5870,7 @@ void Http::readFromClient()
 		_requestBuffer.append(_recvBuffer.data(), readAmount);
 		try
 		{
-			processingRequestBuffer(*_clientSocketPtr, *_socketMapPtr);
+			processingRequestBuffer();
 		}
 		catch (HttpThrowStatus &status)
 		{
@@ -5132,7 +5921,7 @@ void	Http::writeToClient()
 
 	if (sendReturn < 0)
 	{
-		Logger::log(LC_DEBUG, "WHATTT2");
+		//Logger::log(LC_DEBUG, "WHATTT2");
 		_keepConnection = false;
 		return ;
 	}

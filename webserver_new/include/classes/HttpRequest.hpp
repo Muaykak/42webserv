@@ -102,12 +102,16 @@ struct s_http_request_target_data
 {
 		std::string cutPath;
 		std::string targetPath;
+		bool		isEndWithSlash;
+		bool		isUseIndex;
 		std::string combinedPath;
 		std::string queryString;
 
 		std::string uploadStorePath;
 		std::string authorityPart;
 		std::string redirectPath;
+
+		std::string systemPath;
 };
 
 class HttpRequest
@@ -129,6 +133,8 @@ class HttpRequest
 		s_http_request_target_data	targetData;
 		s_http_request_cgi_data cgiData;
 		s_http_request_body_data bodyData;
+
+		const std::pair<void (Http::*)(HttpRequest&), void (Http::*)(HttpRequest&)> *methodExecuteFuncPtr;
 
 		int localRedirectCount;
 

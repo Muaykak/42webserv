@@ -27,7 +27,7 @@ struct s_http_cgi_response_body_data
 struct s_http_cgi_temp_file_data
 {
 	bool isReachEOF;
-	FileDescriptor tempReadFileFd;
+	Shared<std::ifstream> tempReadFile;
 	unsigned int tempFileNum;
 };
 

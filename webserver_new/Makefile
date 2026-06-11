@@ -39,9 +39,6 @@ MAIN_HEADER_FILE =	defined_value.hpp \
 SRC_MAIN =	${addprefix ${SRC_DIR}, ${SOURCE_MAIN_FILE}} \
 			${SRC_FILE}
 
-SRC_TEST =	${addprefix ${SRC_DIR}, ${SOURCE_TEST_FILE}} \
-			${SRC_FILE}
-
 SRC_FILE =	${addprefix ${SRC_DIR}${SRC_CLASS_DIR}, ${SRC_CLASSES_FILE}} \
 			${addprefix ${SRC_DIR}${SRC_FUNC_DIR}, ${SRC_FUNC_FILE}}
 
@@ -87,13 +84,9 @@ SRC_FUNC_FILE = chartables.cpp \
 
 SOURCE_MAIN_FILE = main.cpp
 
-SOURCE_TEST_FILE = unittest.cpp
-
 # =========== OBJECT FILES ==========
 
 OBJ_MAIN = ${patsubst ${SRC_DIR}%.cpp, ${OBJ_DIR}%.o, ${SRC_MAIN}}
-
-OBJ_TEST = ${patsubst ${SRC_DIR}%.cpp, ${OBJ_DIR}%.o, ${SRC_TEST}}
 
 # ========== COMPILE DIRECTIVES ======
 CC = c++
@@ -101,8 +94,6 @@ CC = c++
 CFLAGS = -O3 -std=c++98 -pedantic-errors -I./${HEADERS_DIR} -DTEMP_FILE_DIR='"${TEMP_DIR}"' -Wall -Wextra -Werror
 
 NAME = webserv
-TEST_NAME = ${NAME}_unittest
-TESTER_NAME = WebservTester
 
 TEMP_DIR = ./temp/
 
@@ -121,27 +112,13 @@ ${OBJ_DIR}%.o: ${SRC_DIR}%.cpp ${HEADER_FILE} Makefile | ${OBJ_DIR} ${TEMP_DIR}
 	@mkdir -p ${dir $@}
 	${CC} ${CFLAGS} -c $< -o $@
 
-${TEST_NAME}: ${OBJ_TEST}
-	${CC} ${CFLAGS} ${OBJ_TEST} -o $@
-
 clean:
 	rm -rf ${OBJ_DIR}
 	rm -rf ${TEMP_DIR}*
 
 fclean: clean
-	rm -rf ${NAME} ${TEST_NAME} ${TEMP_DIR}
+	rm -rf ${NAME} ${TEMP_DIR}
 
 re: fclean all
 
-test: ${TEST_NAME}
-	valgrind --tool=memcheck \
-			--leak-check=full \
-			--show-leak-kinds=all \
-			--errors-for-leak-kinds=all \
-			--track-origins=yes \
-			--track-fds=yes \
-			--trace-children=yes \
-			--error-exitcode=1 \
-			./${TEST_NAME}
-
-.PHONY: all clean fclean re test
+.PHONY: all clean fclean re

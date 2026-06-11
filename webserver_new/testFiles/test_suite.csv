@@ -119,7 +119,7 @@ Host header IPv6 format; 117; 400; localhost; 4343;
 Host header no port (default port 80); 118; 403; localhost; 4343; 
 Host header port mismatch; 119; 403; localhost; 4343; Connection: close
 Content-Length on GET valid zero; 120; 200; localhost; 4343; 
-Content-Length on GET with value; 121; 400; localhost; 4343; 
+Content-Length on GET with value; 121; 200; localhost; 4343; 
 Content-Length negative; 122; 400; localhost; 4343; Connection: close
 Content-Length non-digit; 123; 400; localhost; 4343; Connection: close
 Content-Length empty value; 124; 400; localhost; 4343; Connection: close

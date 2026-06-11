@@ -466,6 +466,9 @@ void HttpCgi::validateCGIOUTresponse()
 				/* what i need to change here */
 				newRequestData.setProcessStatus(VALIDATING_REQUEST);
 
+				newRequestData.bodyData.readingRequestBodyPtr = NULL;
+				newRequestData.methodExecuteFuncPtr = NULL;
+
 				/* change the request target to new ?*/
 				newRequestData.requestData.requestTarget = string;
 
@@ -1033,7 +1036,7 @@ void HttpCgi::readFromCGI(Socket* currentSocket, const epoll_event& epollEvent)
 
 				//_keepConnection = false;
 				//// something here that would remove this socket cleanly
-				//return ;
+				return ;
 			}
 			else
 			{
@@ -1140,23 +1143,11 @@ void HttpCgi::sendToCGI(Socket* currentSocket, const epoll_event& epollEvent)
 
 			while (needToAppendSize > 0)
 			{
-				ssize_t readAmount = read(_tempFileData->tempReadFileFd.getFd(), &temp[0], HTTP_WRITE_TO_CGI_BUFFER_SIZE);
+				_tempFileData->tempReadFile->read(&temp[0], HTTP_WRITE_TO_CGI_BUFFER_SIZE);
+				//ssize_t readAmount = read(_tempFileData->tempReadFileFd.getFd(), &temp[0], HTTP_WRITE_TO_CGI_BUFFER_SIZE);
+				ssize_t readAmount = _tempFileData->tempReadFile->gcount();
 
-				if (readAmount < 0)
-				{
-					if (errno == EINTR)
-						continue;
-
-					/* fatal error here */
-					generate5xxCGIOUTresponseError(500, "Internal Error::CGI_IN::sendToCgi()::read from TempFile failed::" + std::string(std::strerror(errno)));
-					break ;
-				}
-				else if (readAmount == 0)
-				{
-					_tempFileData->isReachEOF = true;
-					break ;
-				}
-				else
+				if (readAmount > 0)
 				{
 					/* */
 					_writeCgiBuffer.insert(_writeCgiBuffer.end(), temp.begin(), temp.begin() + readAmount);
@@ -1169,6 +1160,27 @@ void HttpCgi::sendToCGI(Socket* currentSocket, const epoll_event& epollEvent)
 						needToAppendSize = needToAppendSize - readAmount;
 					}
 				}
+
+				if (_tempFileData->tempReadFile->fail())
+				{
+					if (_tempFileData->tempReadFile->eof())
+					{
+						_tempFileData->isReachEOF = true;
+						break ;
+					}
+					else if (_tempFileData->tempReadFile->bad() || errno != EINTR)
+					{
+						generate5xxCGIOUTresponseError(500, "Internal Error::CGI_IN::sendToCgi()::read from TempFile failed::" + std::string(std::strerror(errno)));
+						break ;
+					}
+					else
+					{
+						_tempFileData->tempReadFile->clear();
+						continue;
+					}
+				}
+	
+
 			}
 		}
 

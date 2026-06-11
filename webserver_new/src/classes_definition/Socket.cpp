@@ -428,9 +428,9 @@ bool Socket::handleServerSocketEvent(const s_webserv_event &event)
 						close(client_socket);
 						continue;
 					}
-					Logger::log(LC_CONN_LOG, "Connection from %s", in_addr_t_to_string(client_address.sin_addr.s_addr).c_str());
+					//Logger::log(LC_CONN_LOG, "Connection from %s", in_addr_t_to_string(client_address.sin_addr.s_addr).c_str());
 
-					Logger::log(LC_CONN_LOG, "Port %d Establishing connection from client#%d", _server_listen_port, client_socket);
+					//Logger::log(LC_CONN_LOG, "Port %d Establishing connection from client#%d", _server_listen_port, client_socket);
 
 					// set up client Socket
 					_socketMap->insert(std::make_pair(client_socket, Socket(client_socket)));
@@ -440,27 +440,29 @@ bool Socket::handleServerSocketEvent(const s_webserv_event &event)
 
 					continue;
 				}
-				if (errno == EAGAIN || errno == EWOULDBLOCK)
-				{
-					return (true);
-				}
-				else if (errno == EMFILE || errno == ENFILE)
-				{
-					Logger::log(LC_RED, "ERROR::ServerSocker#%d::fd limit reached!", static_cast<int>(_eventController.epollFD.getFd()));
-					return (true);
-				}
-				else if (errno == EINTR || errno == ECONNABORTED || errno == EPROTO 
-				|| errno == ENETDOWN || errno == EHOSTDOWN || errno == ENONET
-				|| errno == EHOSTUNREACH || errno == EOPNOTSUPP)
-				{
-					continue;
-				}
 				else
-				{
-					std::string errorMsg = "ServerSocket#" + toString(_socketFD.getFd()) + "::Fatal Error::";
-					errorMsg += std::strerror(errno);
-					throw(WebservException(errorMsg));
-				}
+					break ;
+				//if (errno == EAGAIN || errno == EWOULDBLOCK)
+				//{
+				//	return (true);
+				//}
+				//else if (errno == EMFILE || errno == ENFILE)
+				//{
+				//	Logger::log(LC_RED, "ERROR::ServerSocker#%d::fd limit reached!", static_cast<int>(_eventController.epollFD.getFd()));
+				//	return (true);
+				//}
+				//else if (errno == EINTR || errno == ECONNABORTED || errno == EPROTO 
+				//|| errno == ENETDOWN || errno == EHOSTDOWN || errno == ENONET
+				//|| errno == EHOSTUNREACH || errno == EOPNOTSUPP)
+				//{
+				//	continue;
+				//}
+				//else
+				//{
+				//	std::string errorMsg = "ServerSocket#" + toString(_socketFD.getFd()) + "::Fatal Error::";
+				//	errorMsg += std::strerror(errno);
+				//	throw(WebservException(errorMsg));
+				//}
 			}
 		}
 		return (true);

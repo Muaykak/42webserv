@@ -44,39 +44,22 @@ class Http {
 
 		HttpRequest httpRequest;
 
-		/* small functions */
-		// void (Http::*readingRequestBodyPtr)(HttpRequest& requestData);
-
-		/*
-		return value:
-
-		0 = false, error occurred, usually define
-			the error code to _errorStatusCode (no error will default set to -1)
-			may skip to create response or just close connection.
-		
-		4 = false, error occured, but it is possible to response error and continue
-		to next request
-		
-
-		1 = success, can continue to next procedure
-
-		2 = need to wait for new buffer (wait for next EPOLLIN)
-
-		NOTE: return value = 0 usually means ready to
-			create response (whether it is fail or success)
-		*/
-
-		void	processingRequestBuffer(const Socket& clientSocket, std::map<int, Socket>& socketMap);
+		void	processingRequestBuffer();
 		void		parsingHttpRequestLine(size_t& currIndex, size_t& reqBuffSize);
 		void		parsingHttpHeader(size_t& currIndex, size_t& reqBuffSize);
 
-		void		validateRequestData(HttpRequest& requestData, const Socket& clientSocket, std::map<int, Socket>& socketMap);
-		void			validateRequestBufferSelectServer(HttpRequest& requestData, const Socket& clientSocket, const std::string& authStr);
+		static std::map<std::string, std::pair<void (Http::*)(HttpRequest&), void (Http::*)(HttpRequest &)> > buildHttpMethodMap();
+		static const std::pair<void (Http::*)(HttpRequest&), void (Http::*)(HttpRequest &)> *getHttpMethodFunc(const std::string& methodStr);
+		static const std::pair<void (Http::*)(HttpRequest&), void (Http::*)(HttpRequest &)> *getHttpCGIFunc();
+		static const std::pair<void (Http::*)(HttpRequest&), void (Http::*)(HttpRequest &)> *getHttpRedirectFunc();
+
+		void		validateRequestData(HttpRequest& requestData);
+		void			validateRequestBufferSelectServer(HttpRequest& requestData, const std::string& authStr);
 		void				checkHost(HttpRequest& requestData, std::string& hoststr);
-		void			requestLineCheck(HttpRequest& requestData, const Socket& clientSocket);
+		void			requestLineCheck(HttpRequest& requestData);
 		void				requestLineCheckProtocolVersion(HttpRequest& requestData);
-		void				requestLineCheckRequestTarget(HttpRequest& requestData, const Socket& clientSocket);
-		void					requestLineCheckRequestTargetAbsolute(HttpRequest& requestData, const Socket& clientSocket);
+		void				requestLineCheckRequestTarget(HttpRequest& requestData);
+		void					requestLineCheckRequestTargetAbsolute(HttpRequest& requestData);
 		void					requestLineCheckRequestTargetPathCheck(HttpRequest& requestData);
 		void			targetLocationBlockGet(HttpRequest& requestData);
 		void			checkRequestBodyType(HttpRequest& requestData);
@@ -84,26 +67,47 @@ class Http {
 		bool			checkRedirection(HttpRequest& requestData);
 		void			checkConnectionHeader(HttpRequest& requestData);
 		void			checkMethod(HttpRequest& requestData);
-		void			appendTargetPath(HttpRequest& requestData, bool isEndWithSlash);
+		void			appendTargetPath(HttpRequest& requestData);
 		void			checkCgiPath(HttpRequest& requestData);
-		void			buildCombinedPath(HttpRequest& requestData);
-		void			createSystemPath(HttpRequest& requestData, std::string& systemPath);
-		void			handleDeleteRequest(HttpRequest& requestData);
-		void			handleGetRequest(HttpRequest& requestData, bool isEndWithSlash, const Socket& clientSocket, std::map<int, Socket>& socketMap);
-		void			handlePostRequest(HttpRequest& requestData);
+
+			// will remove soon!!
+			//void			createSystemPath(HttpRequest& requestData, std::string& systemPath);
+
+		void				createSystemPathUploadStore(HttpRequest& requestData);
+		void				createSystemPathRoot(HttpRequest& requestData);
+		void					createSystemPathAddPWD(std::string& systemPath);
+
+		//void			buildCombinedPath(HttpRequest& requestData);
+		void			buildCombinedPathCgi(HttpRequest& requestData);
+		void			buildCombinedPathNormal(HttpRequest& requestData);
+
+		//void			handleGetRequest(HttpRequest& requestData, bool isEndWithSlash, const Socket& clientSocket, std::map<int, Socket>& socketMap);
+		//void			handlePostRequest(HttpRequest& requestData);
 		void				handleUploadPostRequest(HttpRequest& requestData);
 		void					handleRequestMultipart(HttpRequest& requestData, std::pair<std::string, std::vector<std::pair<std::string, std::string> > >& outPair);
 		// void					handleUploadOctetStream(HttpRequest& requestData);
 		// void					handleUploadFoundType(HttpRequest& requestData, std::pair<std::string, std::vector<std::pair<std::string, std::string> > >& outPair);
 		void					handleNormalUpload(HttpRequest &requestData, std::pair<std::string, std::vector<std::pair<std::string, std::string> > >& outPair);
 		void			handlePostCgiRequest(HttpRequest& requestData);
+		void			validateCgiRequest(HttpRequest& requestData);
+		void			validateHeadRequest(HttpRequest& requestData);
+		void			validateGetRequest(HttpRequest& requestData);
+		void			validatePostRequest(HttpRequest& requestData);
+		void			validateDeleteRequest(HttpRequest& requestData);
 
 		void		readingRequestBody(HttpRequest& requestData);
 		void			readingContentLengthBody(HttpRequest& requestData);
 		void			readingTranferEncodingBody(HttpRequest& requestData);
 		int				readTransferEncodingChunkFinished(HttpRequest& requestData, size_t& endLinePos);
 		int				readTransferEncodingChunk(HttpRequest& requestData, size_t& endLinePos);
-		void		processingRequestBody(HttpRequest& requestData, const Socket& clientSocket, std::map<int, Socket>& socketMap);
+		void		processingRequest(HttpRequest& requestData);
+		void			handleCGIrequest(HttpRequest& requestData);
+		void			handleRedirectRequest(HttpRequest& requestData);
+		void			handleGetRequest(HttpRequest& requestData);
+		void			handlePostRequest(HttpRequest& requestData);
+		void			handleDeleteRequest(HttpRequest& requestData);
+		void			handleHeadRequest(HttpRequest& requestData);
+
 		void			processMultiFormData(HttpRequest& requestData);
 		void				multiformDataProcessBuffer(HttpRequest& requestData, std::string& multipartBufferString);
 		void					multiformDataFindingBoundary(HttpRequest& requestData, std::string& multipartBufferString, size_t& currBufpos);
