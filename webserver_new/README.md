@@ -9,27 +9,27 @@
 	-config
 
 # How to test
-Basic test
-	GET 
-		Test GET method
+**Basic test**
+GET 
+Test GET method
 		```
 		curl localhost:4343/index.html
 		```
 
-	POST
-		Test POST method
+POST
+Test POST method
 		```
 		curl -X POST -H "Content-Type: plain/text" --data "this is new post" localhost:4343/upload/test.txt
 		```
 
-	DELETE
-		Test DELETE method
+DELETE
+Test DELETE method
 		```
 		curl -X DELETE localhost:4343/upload/uploads/test.txt
 		```
 
-	UNKNOWN
-		Test UNKNOWN method that not implemented
+UNKNOWN
+Test UNKNOWN method that not implemented
 		```
 		curl -X UNKNOWN localhost:4343
 		```
