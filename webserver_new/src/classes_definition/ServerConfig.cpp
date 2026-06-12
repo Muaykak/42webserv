@@ -539,7 +539,7 @@ void	ServerConfig::checkDirectiveRoot(std::vector<std::string>& valueVec, const 
 	if (valueVec.size() != 1)
 		throw WebservException("ServerConfig::\"root\" directive invalid value");
 
-	checkIfPathIsDirectory(valueVec[0], NULL);
+	//checkIfPathIsDirectory(valueVec[0], NULL);
 	(void)targetLocationBlock;
 }
 
@@ -574,7 +574,8 @@ void	ServerConfig::checkDirectiveIndex(std::vector<std::string>& valueVec, const
 	if (valueVec.size() != 1)
 		throw WebservException("ServerConfig::\"index\"::invalid value");
 
-	checkIfPathIsRegularReadable(valueVec[0], targetLocationBlock);
+	(void)targetLocationBlock;
+	//checkIfPathIsRegularReadable(valueVec[0], targetLocationBlock);
 }
 
 void	ServerConfig::checkDirectiveAllowedMethods(std::vector<std::string>& valueVec, const t_config_map *targetLocationBlock)
