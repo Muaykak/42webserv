@@ -12,26 +12,26 @@
 	- Basic test
 	
 	- GET 
-	```bash
-	#Test GET method
+	```
+	# Test GET method
 	curl localhost:4343/index.html
 	```
 
 	- POST
-	```bash
-	#Test POST method
+	```
+	# Test POST method
 	curl -X POST -H "Content-Type: plain/text" --data "this is new post" localhost:4343/upload/test.txt
 	```
 
 	- DELETE
-	```bash
-	#Test DELETE method
+	```
+	# Test DELETE method
 	curl -X DELETE localhost:4343/upload/uploads/test.txt
 	```
 
 	- UNKNOWN
-	```bash
-	#Test UNKNOWN method that not implemented
+	```
+	# Test UNKNOWN method that not implemented
 	curl -X UNKNOWN localhost:4343
 	```
 - Test with CGI
