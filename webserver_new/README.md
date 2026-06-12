@@ -12,21 +12,15 @@
 ## **Basic test**
 ### GET 
 Test GET method
-		```bash
 		curl localhost:4343/index.html
-		```
 
 ### POST
 Test POST method
-		```bash
 		curl -X POST -H "Content-Type: plain/text" --data "this is new post" localhost:4343/upload/test.txt
-		```
 
 ### DELETE
 Test DELETE method
-		```bash
 		curl -X DELETE localhost:4343/upload/uploads/test.txt
-		```
 
 ### UNKNOWN
 Test UNKNOWN method that not implemented
