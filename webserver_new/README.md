@@ -9,31 +9,30 @@
 	-config
 
 # How to test
-**Basic test**
-GET 
+## **Basic test**
+### GET 
 Test GET method
 		```
 		curl localhost:4343/index.html
 		```
 
-POST
+### POST
 Test POST method
 		```
 		curl -X POST -H "Content-Type: plain/text" --data "this is new post" localhost:4343/upload/test.txt
 		```
 
-DELETE
+### DELETE
 Test DELETE method
 		```
 		curl -X DELETE localhost:4343/upload/uploads/test.txt
 		```
 
-UNKNOWN
+### UNKNOWN
 Test UNKNOWN method that not implemented
+		```curl -X UNKNOWN localhost:4343
 		```
-		curl -X UNKNOWN localhost:4343
-		```
-Test with CGI
+## Test with CGI
 	- open your browser to http://localhost:4343
 # Resources
 	-RFC 9110, 9112, 3875{+request_uri ,redirect status}
