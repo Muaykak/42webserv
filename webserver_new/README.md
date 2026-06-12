@@ -7,8 +7,10 @@
 	-makefile
 	-usage
 	-config
-#How to test
--Basic test
+
+# How to test
+	- Basic test
+	
 	- GET 
 	```bash
 	#Test GET method
