@@ -10,25 +10,25 @@
 
 # How to test
 Basic test
-	- GET 
+	GET 
 		Test GET method
 		```
 		curl localhost:4343/index.html
 		```
 
-	- POST
+	POST
 		Test POST method
 		```
 		curl -X POST -H "Content-Type: plain/text" --data "this is new post" localhost:4343/upload/test.txt
 		```
 
-	- DELETE
+	DELETE
 		Test DELETE method
 		```
 		curl -X DELETE localhost:4343/upload/uploads/test.txt
 		```
 
-	- UNKNOWN
+	UNKNOWN
 		Test UNKNOWN method that not implemented
 		```
 		curl -X UNKNOWN localhost:4343
