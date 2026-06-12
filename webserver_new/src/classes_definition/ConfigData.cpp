@@ -194,6 +194,11 @@ ConfigData::ConfigData(const std::string &configPath)
 			++tokenI;
 		}
 
+		if (isInServerBlock || isInLocationBlock)
+			throw WebservException("ConfigData::Expecting '}'");
+		if (_serversConfigs.empty())
+			throw WebservException("ConfigData::must have atleast 1 server");
+
 		checkServersConfigDuplicate();
 	}
 

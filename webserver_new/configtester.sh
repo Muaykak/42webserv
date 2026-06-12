@@ -6,14 +6,14 @@
 # ==============================================================================
 
 # Path to your program executable
-PROGRAM_PATH="./Webserv"
+PROGRAM_PATH="./webserv"
 
 # Directory containing all the .conf files
 TEST_DIR="./testFiles/test_configs"
 
 # How long to wait (in seconds) for the program to parse the config.
 # If the program is still running after this time, we assume it parsed successfully.
-TIMEOUT_SECONDS=0.5
+TIMEOUT_SECONDS=0.1
 
 # The signal to send to the program to terminate it gracefully.
 # Common signals: SIGTERM (15), SIGINT (2)

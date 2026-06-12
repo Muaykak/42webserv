@@ -151,20 +151,32 @@ void	HttpResponse::generateResponse()
 
 		while (responseHeaderIt != responseHeader.end())
 		{
-			tempStr += responseHeaderIt->first;
-			tempStr += ": ";
-
-			responseHeaderFieldIt = responseHeaderIt->second.begin();
-			while (responseHeaderFieldIt != responseHeaderIt->second.end())
+			if (stringToLower(responseHeaderIt->first) == "set-cookie")
 			{
-				if (responseHeaderFieldIt != responseHeaderIt->second.begin())
-					tempStr += ", ";
-
-				tempStr += (*responseHeaderFieldIt);
-
-				++responseHeaderFieldIt;
+				responseHeaderFieldIt = responseHeaderIt->second.begin();
+				while (responseHeaderFieldIt != responseHeaderIt->second.end())
+				{
+					tempStr += "Set-Cookie: " + (*responseHeaderFieldIt) + "\r\n";
+					++responseHeaderFieldIt;
+				}
 			}
-			tempStr += "\r\n";
+			else
+			{
+				tempStr += responseHeaderIt->first;
+				tempStr += ": ";
+
+				responseHeaderFieldIt = responseHeaderIt->second.begin();
+				while (responseHeaderFieldIt != responseHeaderIt->second.end())
+				{
+					if (responseHeaderFieldIt != responseHeaderIt->second.begin())
+						tempStr += ", ";
+
+					tempStr += (*responseHeaderFieldIt);
+
+					++responseHeaderFieldIt;
+				}
+				tempStr += "\r\n";
+			}
 			++responseHeaderIt;
 		}
 	}
