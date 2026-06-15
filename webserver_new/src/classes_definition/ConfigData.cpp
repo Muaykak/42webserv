@@ -71,8 +71,8 @@ ConfigData::ConfigData(const std::string &configPath)
 		t_location_map	tempLocationMap;
 		t_config_map	tempLocationConfig;
 		std::string		tempLocationName;
-		CharTable	allowChar("0123456789:.", true);
-
+		CharTable	allowChar2("0123456789:.abcdefghijklmnopqrstuvwxyz", true);
+		CharTable	allowChar("0123456789.", true);
 		while (tokenI < tokenListSize){
 			if (tokenList[tokenI].token_type == OP_TOKEN){
 				if ((tokenList[tokenI].tokenString)[0] == '{'){
@@ -130,7 +130,7 @@ ConfigData::ConfigData(const std::string &configPath)
 							int		port;
 							while (i < it->second.size()){
 								std::string currStr = it->second[i];
-								if (allowChar.isMatch(currStr) == false){
+								if (allowChar2.isMatch(currStr) == false){
 									throw WebservException("ConfigData::\"listen\"::InvalidValue = \"" + currStr + "\"");
 									std::cout << "FALSE" << std::endl;
 								}
@@ -139,14 +139,24 @@ ConfigData::ConfigData(const std::string &configPath)
 								if (portPos == currStr.npos){
 									if (currStr.size() > 5)
 										throw WebservException("ConfigData::\"listen\"::InvalidValue = \"" + currStr + "\"");
-									port = std::atoi(currStr.c_str());
+									std::string temp = currStr.c_str();
+									if (digitChar().isMatch(temp) == false)
+										throw WebservException("ConfigData::\"listen\"::InvalidValue = \"" + currStr + "\"");
+									port = std::atoi(temp.c_str());
 								}
 								else {
-									if (++portPos >= currStr.size())
+									if (portPos + 1 >= currStr.size() || currStr.size() - (portPos + 1) > 5)
 										throw WebservException("ConfigData::\"listen\"::InvalidValue = \"" + currStr + "\"");
-									if (currStr.size() - portPos > 5)
+									/* store the front to process in host */
+									std::string temp = currStr.substr(portPos + 1);
+									if (digitChar().isMatch(temp) == false)
 										throw WebservException("ConfigData::\"listen\"::InvalidValue = \"" + currStr + "\"");
-									port = std::atoi(currStr.substr(portPos).c_str());
+									port = std::atoi(temp.c_str());
+									temp = currStr.substr(0, portPos);
+									if (allowChar.isMatch(temp) == false && temp != "localhost")
+										throw WebservException("ConfigData::\"listen\"::InvalidValue = \"" + currStr + "\"");
+
+									tempServerConfig["host"].push_back(currStr.substr(0, portPos));
 								}
 								if (port > 65535 || port < 0)
 									throw WebservException("ConfigData::\"listen\"::InvalidValue = \"" + currStr + "\"");

@@ -64,11 +64,35 @@ ServerConfig::ServerConfig(const t_config_map& serverConfig, const t_location_ma
 
 	checkConfigBlock(_serverConfig);
 
+
+	/* most not exist in location block*/
+	std::vector<std::string> forbiddenVec;
+	forbiddenVec.push_back("server_name");
+	forbiddenVec.push_back("listen");
+	forbiddenVec.push_back("host");
+
 	/* check all location map*/
 	t_location_map::iterator it = _locationsConfig.begin();
 	bool haveBaseLocation = false;
 	while (it != _locationsConfig.end())
 	{
+		try
+		{
+			checkMustNotExistDirective(forbiddenVec, it->second);
+		}
+		catch (const std::vector<std::string>& e)
+		{
+			std::string errmsg = "ServerConfig::Directives Not allowed In Location Block:: ";
+			for (size_t i = 0; i < e.size(); i++)
+			{
+				if (i != 0)
+					errmsg += ", ";
+				errmsg += "\"" + e[i] + "\"";
+			}
+
+			throw WebservException(errmsg);
+		}
+
 		//std::cout << "curr check block: \"" << it->first << "\"\n";
 		if (it->first == "/")
 			haveBaseLocation = true;
@@ -247,6 +271,20 @@ void	ServerConfig::checkMustExistDirective(const std::vector<std::string>& direc
 
 	if (notfoundDirectiveVec.size() != 0)
 		throw std::vector<std::string>(notfoundDirectiveVec);
+}
+
+void	ServerConfig::checkMustNotExistDirective(const std::vector<std::string>& directiveKeyVec, const t_config_map& mapToFind)
+{
+	std::vector<std::string> foundDirectiveVec;
+
+	for (size_t i = 0; i < directiveKeyVec.size(); i++)
+	{
+		if (mapToFind.find(directiveKeyVec[i]) != mapToFind.end())
+			foundDirectiveVec.push_back(directiveKeyVec[i]);
+	}
+
+	if (foundDirectiveVec.size() != 0)
+		throw std::vector<std::string>(foundDirectiveVec);
 }
 
 void ServerConfig::checkDirectiveHost(std::vector<std::string>& valueVec, const t_config_map* targetLocationBlock)
@@ -574,7 +612,8 @@ void	ServerConfig::checkDirectiveIndex(std::vector<std::string>& valueVec, const
 	if (valueVec.size() != 1)
 		throw WebservException("ServerConfig::\"index\"::invalid value");
 
-	checkIfPathIsRegularReadable(valueVec[0], targetLocationBlock);
+	(void)targetLocationBlock;
+	//checkIfPathIsRegularReadable(valueVec[0], targetLocationBlock);
 }
 
 void	ServerConfig::checkDirectiveAllowedMethods(std::vector<std::string>& valueVec, const t_config_map *targetLocationBlock)

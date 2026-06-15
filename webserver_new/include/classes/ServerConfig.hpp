@@ -34,6 +34,7 @@ private:
 	void	checkConfigBlock(t_config_map& configBlock);
 
 	void	checkMustExistDirective(const std::vector<std::string>& directiveKeyVec, const t_config_map& mapToFind);
+	void	checkMustNotExistDirective(const std::vector<std::string>& directiveKeyVec, const t_config_map& mapToFind);
 
 	std::map<std::string, void(ServerConfig::*)(std::vector<std::string>&, const t_config_map*)> buildConfigCheckMap();
 	void	(ServerConfig::*getDirectiveCheckFunction(const std::string& directiveKey))(std::vector<std::string>&, const t_config_map*);
