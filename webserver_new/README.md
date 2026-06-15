@@ -87,6 +87,22 @@ int main(int argc, char **argv, char** envp){
 
 ```
 
+## Nginx vs Apache Directives
+
+| Directive Type     | Nginx Syntax                                | Apache Syntax                  | What It Does |
+|--------------------|---------------------------------------------|--------------------------------|--------------|
+| **Domain Name**    | `server_name localhost test;`               | `ServerName localhost`<br>`ServerAlias test` | Defines which domain names the server responds to |
+| **Port**           | `listen 9081;`                              | `Listen 9081`<br>`<VirtualHost *:9081>` | Specifies the port the server listens on |
+| **Root Directory** | `root wwwroot/www2;`                        | `DocumentRoot /path/to/wwwroot/www2` | Sets the main folder containing website files |
+| **Default File**   | `index index.html;`                         | `DirectoryIndex index.html`     | Defines the first file served (e.g., homepage) |
+| **Error Pages**    | `error_page 404 wwwroot/www2/404.html;`<br>`error_page 500 wwwroot/www/error400.html;` | `ErrorDocument 404 /wwwroot/www2/404.html`<br>`ErrorDocument 500 /wwwroot/www/error400.html` | Specifies custom files to display when errors occur |
+| **Upload Store**   | `upload_store wwwroot/www2/uploads;`        | *(No direct equivalent — requires modules like mod_dav or custom scripts)* | Directory where uploaded files are stored |
+| **Allowed Methods**| `allowed_methods GET POST DELETE;`          | `<Limit GET POST DELETE> ... </Limit>` | Restricts which HTTP methods are permitted |
+| **Autoindex**      | `autoindex on;`                             | `Options +Indexes`              | Enables directory listing for browsing files |
+| **CGI Pass**       | `cgi_pass .php /usr/bin/php-cgi;`<br>`cgi_pass .py /usr/bin/python3;` | `ScriptAlias /cgi-bin/ /path/to/cgi-bin`<br>`AddHandler cgi-script .php .py` | Defines interpreters for PHP and Python scripts |
+| **Redirects**      | `return 302 /cgi-bin/;`<br>`return 302 /session/;`<br>`return 302 /;` | `Redirect 302 /cgi-bin/ /cgi-bin/`<br>`Redirect 302 /session/ /session/`<br>`Redirect 302 / /` | Redirects requests to another path |
+
+
 Let's go line by line i think it is easier for me to explain this way
 
 ---
