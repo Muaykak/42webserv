@@ -331,25 +331,8 @@ if ((*fileBody)->fail())
 	}
 }
 ```
-4: from `HttpResponse::forcePrintAllResponse` (line 400-413 HttpResponse.cpp)
-```cpp
-writeRet = write(STDOUT_FILENO, &writeBuff[0], writeBuff.size());
 
-if (writeRet < 0)
-{
-	if (errno == EINTR)
-		continue;
-	else
-	{
-		keepAfterResponse = false;
-		break ;
-	}
-}
-
-writeBuff.resize(writeBuff.size() - writeRet);
-```
-
-5: from `HttpResponse::forcePrintAllResponse` (line 416-442 HttpResponse.cpp)
+4: from `HttpResponse::forcePrintAllResponse` (line 416-442 HttpResponse.cpp)
 ```cpp
 if ((*fileBody)->fail() == true)
 {

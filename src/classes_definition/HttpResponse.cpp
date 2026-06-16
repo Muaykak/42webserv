@@ -401,13 +401,8 @@ void HttpResponse::forcePrintAllResponse()
 
 				if (writeRet < 0)
 				{
-					if (errno == EINTR)
-						continue;
-					else
-					{
-						keepAfterResponse = false;
-						break ;
-					}
+					keepAfterResponse = false;
+					break ;
 				}
 
 				writeBuff.resize(writeBuff.size() - writeRet);
