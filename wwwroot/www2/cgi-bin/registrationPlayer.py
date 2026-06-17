@@ -27,11 +27,11 @@ print("""
     <link rel="stylesheet" href="CGI-style.css">
 </head>
 <body>
-    <div class="success">
+    <div class="form-container">
         <h2>Registration Successful!</h2>
 """)
 print("<p>Welcome, " + playerName + "</p>")
-print('<div class="avatar-option">')
+print('<div class="pokemon-option">')
 print("<img src='assets/" + selectedAvatar + "' alt=" + selectedAvatar + "> </div>")
 print("""    </div>
 </body>

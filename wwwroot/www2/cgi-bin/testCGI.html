@@ -10,30 +10,30 @@
 <body>
     <div class="form-container">
         <h1>POST method</h1>
-        <h1>Player Registration</h1>
-        <form action="processPlayer.py" method="POST" enctype="multipart/form-data">
-            <label for="playerName">Player Name:</label>
+        <h1>Trainer Registration</h1>
+        <form action="registrationPlayer.py" method="POST" enctype="multipart/form-data">
+            <label for="playerName">Trainer Name:</label>
             <input type="text" id="playerName" name="playerName" required 
-                   placeholder="Enter your player name" minlength="2" maxlength="20">
+                   placeholder="Enter your name" minlength="2" maxlength="20">
 
-            <h3>Choose Your Avatar</h3>
-            <div class="avatar-options">
-                <div class="avatar-option">
-                    <input type="radio" id="avatar1" name="avatar" value="avatar1.jpg" checked>
+            <h3>Choose Your Pokemon</h3>
+            <div class="pokemon-options">
+                <div class="pokemon-option">
+                    <input type="radio" id="avatar1" name="avatar" value="evee.jpg" checked>
                     <label for="avatar1">
-                        <img src="assets/avatar1.jpg" alt="Avatar 1">
+                        <img src="assets/evee.jpg" alt="Avatar 1">
                     </label>
                 </div>
-                <div class="avatar-option">
-                    <input type="radio" id="avatar2" name="avatar" value="avatar2.jpg">
+                <div class="pokemon-option">
+                    <input type="radio" id="avatar2" name="avatar" value="pikachu.jpg">
                     <label for="avatar2">
-                        <img src="assets/avatar2.jpg" alt="Avatar 2">
+                        <img src="assets/pikachu.jpg" alt="Avatar 2">
                     </label>
                 </div>
-                <div class="avatar-option">
-                    <input type="radio" id="avatar3" name="avatar" value="avatar3.jpg">
+                <div class="pokemon-option">
+                    <input type="radio" id="avatar3" name="avatar" value="speed.jpg">
                     <label for="avatar3">
-                        <img src="assets/avatar3.jpg" alt="Avatar 3">
+                        <img src="assets/speed.jpg" alt="Avatar 3">
                     </label>
                 </div>
             </div>
