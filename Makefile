@@ -91,7 +91,7 @@ OBJ_MAIN = ${patsubst ${SRC_DIR}%.cpp, ${OBJ_DIR}%.o, ${SRC_MAIN}}
 # ========== COMPILE DIRECTIVES ======
 CC = c++
 
-CFLAGS = -O3 -std=c++98 -pedantic-errors -I./${HEADERS_DIR} -DTEMP_FILE_DIR='"${TEMP_DIR}"' -Wall -Wextra -Werror
+CFLAGS = -std=c++98 -pedantic-errors -I./${HEADERS_DIR} -DTEMP_FILE_DIR='"${TEMP_DIR}"' -Wall -Wextra -Werror
 
 NAME = webserv
 

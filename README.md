@@ -1,4 +1,4 @@
-*This project has been created as part of the 42 cirriculum by srussame*
+*This project has been created as part of the 42 cirriculum by srussame, paradari, kwangtip*
 
 # Description
 This project is about building a HTTP server in C++ and using only standard libraries from C and C++ only. This project aiming is to understand one of the most crucial procotol that underlies in our daily internet usage. This project will want you to have clear understanding of HTTP into basically byte by byte how it works, I/O multiplexing, sockets, connections, file managing are also the required knownledge to do this project.
