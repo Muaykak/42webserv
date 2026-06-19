@@ -154,7 +154,8 @@ void HttpCgi::generate5xxCGIOUTresponseError(unsigned int errorCode, const std::
 
 	// testing if the file is open and readable
 	//FileDescriptor errorFileFD;
-	Shared<std::ifstream> targetErrorFile;
+	// Shared<std::ifstream> targetErrorFile;
+	Shared<FileDescriptor> targetErrorFile;
 	size_t			fileSize = 0;
 
 	if (!errorPageFilePath.empty())
@@ -168,25 +169,23 @@ void HttpCgi::generate5xxCGIOUTresponseError(unsigned int errorCode, const std::
 		{
 			if (S_ISREG(fileStat.st_mode))
 			{
-				//int fd = open(errorPageFilePath.c_str(), O_RDONLY);
-				while (true)
+				int fd = open(errorPageFilePath.c_str(), O_RDONLY | O_CLOEXEC);
+				while (fd < 0)
 				{
-					targetErrorFile->open(errorPageFilePath.c_str());
-					if (targetErrorFile->is_open())
-						break ;
 					if (errno == EINTR)
 					{
-						targetErrorFile->clear();
-						continue ;
+						fd = open(errorPageFilePath.c_str(), O_RDONLY | O_CLOEXEC);
+						continue;
 					}
-					break ;
+					else
+						break;
 				}
-				
-				if (targetErrorFile->is_open() == false)
+				if (fd >= 0)
 				{
 					fileSize = fileStat.st_size;
 					//errorFileFD = fd;
 					hasDefaultErrorPageFile = true;
+					targetErrorFile = fd;
 				}
 			}
 		}
@@ -1143,10 +1142,12 @@ void HttpCgi::sendToCGI(Socket* currentSocket, const epoll_event& epollEvent)
 
 			while (needToAppendSize > 0)
 			{
-				_tempFileData->tempReadFile->read(&temp[0], HTTP_WRITE_TO_CGI_BUFFER_SIZE);
-				//ssize_t readAmount = read(_tempFileData->tempReadFileFd.getFd(), &temp[0], HTTP_WRITE_TO_CGI_BUFFER_SIZE);
-				ssize_t readAmount = _tempFileData->tempReadFile->gcount();
 
+				// _tempFileData->tempReadFile->read(&temp[0], HTTP_WRITE_TO_CGI_BUFFER_SIZE);
+				// //ssize_t readAmount = read(_tempFileData->tempReadFileFd.getFd(), &temp[0], HTTP_WRITE_TO_CGI_BUFFER_SIZE);
+				// ssize_t readAmount = _tempFileData->tempReadFile->gcount();
+
+				ssize_t readAmount = read(_tempFileData->tempReadFile->getFd(), &temp[0], HTTP_WRITE_TO_CGI_BUFFER_SIZE);
 				if (readAmount > 0)
 				{
 					/* */
@@ -1161,26 +1162,21 @@ void HttpCgi::sendToCGI(Socket* currentSocket, const epoll_event& epollEvent)
 					}
 				}
 
-				if (_tempFileData->tempReadFile->fail())
+				if (readAmount == 0)
 				{
-					if (_tempFileData->tempReadFile->eof())
-					{
-						_tempFileData->isReachEOF = true;
-						break ;
-					}
-					else if (_tempFileData->tempReadFile->bad() || errno != EINTR)
+					_tempFileData->isReachEOF = true;
+					break ;
+				}
+				if (readAmount < 0)
+				{
+					if (errno == EINTR)
+						continue;
+					else
 					{
 						generate5xxCGIOUTresponseError(500, "Internal Error::CGI_IN::sendToCgi()::read from TempFile failed::" + std::string(std::strerror(errno)));
 						break ;
 					}
-					else
-					{
-						_tempFileData->tempReadFile->clear();
-						continue;
-					}
 				}
-	
-
 			}
 		}
 

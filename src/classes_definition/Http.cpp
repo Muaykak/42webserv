@@ -716,7 +716,8 @@ void	Http::generate4xx5xxErrorReponseChildProcess(HttpRequest& requestData, unsi
 	// testing if the file is open and readable
 	//FileDescriptor errorFileFD;
 	size_t			fileSize = 0;
-	Shared<std::ifstream> targetErrorFile;
+	// Shared<std::ifstream> targetErrorFile;
+	Shared<FileDescriptor> targetErrorFile;
 
 	if (!errorPageFilePath.empty())
 	{
@@ -727,27 +728,24 @@ void	Http::generate4xx5xxErrorReponseChildProcess(HttpRequest& requestData, unsi
 		{
 			if (S_ISREG(fileStat.st_mode))
 			{
-				//int fd = open(errorPageFilePath.c_str(), O_RDONLY);
-				while (true)
-				{
-					targetErrorFile->open(errorPageFilePath.c_str());
 
-					if (targetErrorFile->is_open())
-						break ;
-					
+				int fd = open(errorPageFilePath.c_str(), O_RDONLY | O_CLOEXEC);
+				while (fd < 0)
+				{
 					if (errno == EINTR)
 					{
-						targetErrorFile->clear();
+						fd = open(errorPageFilePath.c_str(), O_RDONLY | O_CLOEXEC);
 						continue;
 					}
 					else
 						break;
 				}
-				if (targetErrorFile->is_open() == true)
+				if (fd >= 0)
 				{
 					fileSize = fileStat.st_size;
 					//errorFileFD = fd;
 					hasDefaultErrorPageFile = true;
+					targetErrorFile = fd;
 				}
 			}
 		}
@@ -871,7 +869,8 @@ void	Http::generate4xx5xxErrorReponse(HttpRequest& requestData, unsigned int err
 
 	// testing if the file is open and readable
 	//FileDescriptor errorFileFD;
-	Shared<std::ifstream> targetErrorFile;
+	// Shared<std::ifstream> targetErrorFile;
+	Shared<FileDescriptor> targetErrorFile;
 	size_t			fileSize = 0;
 
 	if (!errorPageFilePath.empty())
@@ -883,27 +882,23 @@ void	Http::generate4xx5xxErrorReponse(HttpRequest& requestData, unsigned int err
 		{
 			if (S_ISREG(fileStat.st_mode))
 			{
-				while (true)
+				int fd = open(errorPageFilePath.c_str(), O_RDONLY | O_CLOEXEC);
+				while (fd < 0)
 				{
-					targetErrorFile->open(errorPageFilePath.c_str());
-
-					if (targetErrorFile->is_open())
-						break ;
-					
 					if (errno == EINTR)
 					{
-						targetErrorFile->clear();
+						fd = open(errorPageFilePath.c_str(), O_RDONLY | O_CLOEXEC);
 						continue;
 					}
 					else
 						break;
 				}
-				//int fd = open(errorPageFilePath.c_str(), O_RDONLY);
-				if (targetErrorFile->is_open() == true)
+				if (fd >= 0)
 				{
 					fileSize = fileStat.st_size;
 					//errorFileFD = fd;
 					hasDefaultErrorPageFile = true;
+					targetErrorFile = fd;
 				}
 			}
 		}
@@ -2663,7 +2658,7 @@ void Http::handleRequestMultipart(HttpRequest& requestData, std::pair<std::strin
 		int fd;
 		while (true)
 		{
-			fd = open(tempFilePath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+			fd = open(tempFilePath.c_str(), O_CREAT | O_TRUNC | O_RDWR | O_CLOEXEC , 0644);
 
 			if (fd >= 0)
 				break ;
@@ -3050,7 +3045,7 @@ void Http::handleNormalUpload(HttpRequest &requestData, std::pair<std::string, s
 	int fd;
 	while (true)
 	{
-		fd = open(requestData.targetData.combinedPath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+		fd = open(requestData.targetData.combinedPath.c_str(), O_CREAT | O_TRUNC | O_RDWR | O_CLOEXEC, 0644);
 
 		if (fd >= 0)
 			break ;
@@ -3239,7 +3234,7 @@ void Http::validateCgiRequest(HttpRequest& requestData)
 		int fd;
 		while (true)
 		{
-			fd = open(tempFilePath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+			fd = open(tempFilePath.c_str(), O_CREAT | O_TRUNC | O_RDWR | O_CLOEXEC, 0644);
 
 			if (fd >= 0)
 				break ;
@@ -3338,7 +3333,7 @@ void Http::handlePostCgiRequest(HttpRequest& requestData)
 		int fd;
 		while (true)
 		{
-			fd = open(tempFilePath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+			fd = open(tempFilePath.c_str(), O_CREAT | O_TRUNC | O_RDWR | O_CLOEXEC, 0644);
 
 			if (fd >= 0)
 				break ;
@@ -4086,7 +4081,8 @@ void Http::handleCGIrequest(HttpRequest &requestData)
 
 	//std::cout << "Spawning CGI!\n";
 	//int fd = 0;
-	Shared<std::ifstream> tempfileshare;
+	// Shared<std::ifstream> tempfileshare;
+	Shared<FileDescriptor> tempfileshare;
 	/* we need to re open this temporary file so we can send it so cgi*/			
 	if (requestData.bodyData.readingRequestBodyPtr)
 	{
@@ -4094,16 +4090,29 @@ void Http::handleCGIrequest(HttpRequest &requestData)
 		std::string tempFilePath = TEMP_FILE_DIR + toString(requestData.bodyData.tempRequestBodyFileNum);
 
 		//fd = open(tempFilePath.c_str(), O_RDONLY);
-		tempfileshare->open(tempFilePath.c_str());
+
+		int fd = open(tempFilePath.c_str(), O_RDONLY | O_CLOEXEC);
+		while (fd < 0)
+		{
+			if (errno == EINTR)
+			{
+				fd = open(tempFilePath.c_str(), O_RDONLY | O_CLOEXEC);
+				continue;
+			}
+			else
+				break;
+		}
+
 
 		/* if failed to open the file with any reason, just delete the temporary file */
-		if (!tempfileshare->is_open())
+		if (fd < 0)
 		{
 			tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 			generate4xx5xxErrorReponse(requestData, 500, false, "Internal Error: POST to CGIL::failed to open() the temporary file::" + std::string(std::strerror(errno)));
 			return ;
 		}
 
+		tempfileshare = fd;
 	}
 
 	//FileDescriptor fdFile;
@@ -4153,9 +4162,11 @@ void Http::handleCGIrequest(HttpRequest &requestData)
 		
 			if (dup2(pipe_out[1], STDOUT_FILENO) == -1)
 			{
-				for (int i = 3; i < MAX_FD; i++)
-					close(i);
-			
+				close(pipe_out[0]);
+				close(pipe_out[1]);
+
+				// for (int i = 3; i < MAX_FD; i++)
+				// 	close(i);
 				throw(42);
 			}
 		
@@ -4163,15 +4174,28 @@ void Http::handleCGIrequest(HttpRequest &requestData)
 			{
 				if (dup2(pipe_in[0], STDIN_FILENO) == -1)
 				{
-					for (int i = 3; i < MAX_FD; i++)
-						close(i);
-			
+					// for (int i = 3; i < MAX_FD; i++)
+					// 	close(i);
+
+					close(pipe_out[0]);
+					close(pipe_out[1]);
+					close(pipe_in[0]);
+					close(pipe_in[1]);
 					generate4xx5xxErrorReponseChildProcess(requestData, 500, false, "Internal Error:: dup2 to stdin failed");
 				}
 			}
+
+			close(pipe_out[0]);
+			close(pipe_out[1]);
+			if (requestData.bodyData.readingRequestBodyPtr)
+			{
+					close(pipe_in[0]);
+					close(pipe_in[1]);
+			}
+
 		
-			for (int i = 3; i < MAX_FD; i++)
-				close(i);
+			// for (int i = 3; i < MAX_FD; i++)
+			// 	close(i);
 		
 			{
 				/* prepare before execve() */
@@ -4313,8 +4337,8 @@ void Http::handleCGIrequest(HttpRequest &requestData)
 				//argv[0] = const_cast<char *>(requestData.cgiData.cgiPath.c_str());
 				//argv[1] = NULL;
 
-				for (int i = 3; i < MAX_FD; i++)
-					close(i);
+				// for (int i = 3; i < MAX_FD; i++)
+				// 	close(i);
 
 				signal(SIGINT, SIG_DFL);
 			    signal(SIGQUIT, SIG_DFL);
@@ -4375,7 +4399,7 @@ void Http::handleCGIrequest(HttpRequest &requestData)
 
 		/* fcntl to both pipe to set to nonblock stream */
 
-		if (fcntl(pipe_out[0], F_SETFL, O_NONBLOCK) != 0)
+		if (fcntl(pipe_out[0], F_SETFL, O_NONBLOCK) != 0 || fcntl(pipe_out[0], F_SETFD, FD_CLOEXEC) != 0)
 		{
 			tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 			kill(pid, SIGTERM);
@@ -4388,7 +4412,7 @@ void Http::handleCGIrequest(HttpRequest &requestData)
 
 		if (requestData.bodyData.readingRequestBodyPtr)
 		{
-			if (fcntl(pipe_in[1], F_SETFL, O_NONBLOCK) != 0)
+			if (fcntl(pipe_in[1], F_SETFL, O_NONBLOCK) != 0 || fcntl(pipe_in[1], F_SETFD, FD_CLOEXEC) != 0)
 			{
 				tempFileManager().removeTempFile(requestData.bodyData.tempRequestBodyFileNum);
 				kill(pid, SIGTERM);
@@ -4900,42 +4924,39 @@ void Http::handleGetRequest(HttpRequest& requestData)
 		// try to open the targeted file
 		//int fd = open(requestData.targetData.combinedPath.c_str(), O_RDONLY);
 
-		Shared<std::ifstream> targetFile;
-
-		while (true)
+		// Shared<std::ifstream> targetFile;
+		Shared<FileDescriptor> targetFile;
 		{
-			targetFile->open(requestData.targetData.combinedPath.c_str());
-
-			if (targetFile->is_open())
+			int fd = open(requestData.targetData.combinedPath.c_str(), O_RDONLY | O_CLOEXEC);
+			while (fd < 0)
+			{
+				if (errno == EINTR)
+				{
+					fd = open(requestData.targetData.combinedPath.c_str(), O_RDONLY | O_CLOEXEC);
+					continue;
+				}
 				break ;
-			
-			if (errno == EINTR)
-			{
-				targetFile->clear();
-				continue;
 			}
-			else
-				break;
-		}
 
-
-		// if failed should response accordingly
-		if (targetFile->is_open() == false)
-		{
-			if (errno == EACCES)
-				generate4xx5xxErrorReponse(requestData, 403, false, "Http::GET to regular file failed::open() failed");
-
-			else if (errno == EMFILE || errno == ENFILE)
+			if (fd < 0)
 			{
-				generate4xx5xxErrorReponse(requestData, 500, false, "Http:: GET to regular file:: fd limit is reached");
+				if (errno == EACCES)
+					generate4xx5xxErrorReponse(requestData, 403, false, "Http::GET to regular file failed::open() failed");
+
+				else if (errno == EMFILE || errno == ENFILE)
+				{
+					generate4xx5xxErrorReponse(requestData, 500, false, "Http:: GET to regular file:: fd limit is reached");
+				}
+				else if (errno == ENOENT)
+				{
+					generate4xx5xxErrorReponse(requestData, 404, false, "Http:: Get to regular file:: file is missing");
+				}
+				// some unknown error
+				else
+					generate4xx5xxErrorReponse(requestData, 500, false, "Http:: Get to regular file::Internal Unknown Error");
 			}
-			else if (errno == ENOENT)
-			{
-				generate4xx5xxErrorReponse(requestData, 404, false, "Http:: Get to regular file:: file is missing");
-			}
-			// some unknown error
-			else
-				generate4xx5xxErrorReponse(requestData, 500, false, "Http:: Get to regular file::Internal Unknown Error");
+
+			targetFile = fd;
 		}
 
 		//FileDescriptor tempFd = fd;
@@ -5460,7 +5481,7 @@ void Http::multiformDataValidating(HttpRequest& requestData)
 			int fd;
 			while (true)
 			{
-				fd = open(multiFormData.combinedPathFileName->c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+				fd = open(multiFormData.combinedPathFileName->c_str(), O_CREAT | O_TRUNC | O_RDWR | O_CLOEXEC, 0644);
 				if (fd >= 0)
 					break ;
 				if (errno == EINTR)

@@ -239,34 +239,21 @@ ssize_t	HttpResponse::sendHttpResponse(const Socket& clientSocket)
 
 					std::streamsize readCount = 0;
 
-					if ((*fileBody)->good())
-					{
-						(*fileBody)->read(temp.data(), HTTP_SEND_BUFFER);
-					}
-
-					readCount = (*fileBody)->gcount();
+					readCount = read((*fileBody)->getFd(), temp.data(), HTTP_SEND_BUFFER);
 					if (readCount > 0)
 					{
 						targetResBuff.buffer.insert(targetResBuff.buffer.end(), temp.begin(), temp.begin() + readCount);
 					}
-
-					if ((*fileBody)->fail())
+					else if (readCount == 0)
 					{
-						/* if eof() then just normal end file */
-						if ((*fileBody)->eof())
-						{
-							isReachEOF = true;
-						}
-						else if ((*fileBody)->bad() || errno != EINTR)
-						{
-							/* here would mean fatal error */
-							return (-1);
-						}
-						else
-						{
-							(*fileBody)->clear();
+						isReachEOF = true;
+					}
+					else
+					{
+						if (errno == EINTR)
 							continue;
-						}
+						else
+							return (-1);
 					}
 
 					//// read to buffer
@@ -387,12 +374,16 @@ void HttpResponse::forcePrintAllResponse()
 		{
 			amountToRead = HTTP_SEND_BUFFER - writeBuff.size();
 			readAmount = 0;
-			if (amountToRead > 0 && (*fileBody)->good() == true)
+			if (amountToRead > 0)
 			{
-				(*fileBody)->read(&writeBuff[writeBuff.size() == 0 ? 0 : writeBuff.size() - 1], amountToRead);
-				readAmount = (*fileBody)->gcount();
+				readAmount = read((*fileBody)->getFd(), &writeBuff[writeBuff.size() == 0 ? 0 : writeBuff.size() - 1], amountToRead);
 				if (readAmount > 0)
 					writeBuff.resize(writeBuff.size() + readAmount);
+
+				// (*fileBody)->read(&writeBuff[writeBuff.size() == 0 ? 0 : writeBuff.size() - 1], amountToRead);
+				// readAmount = (*fileBody)->gcount();
+				// if (readAmount > 0)
+				// 	writeBuff.resize(writeBuff.size() + readAmount);
 			}
 
 			if (writeBuff.size() > 0)
@@ -408,34 +399,18 @@ void HttpResponse::forcePrintAllResponse()
 				writeBuff.resize(writeBuff.size() - writeRet);
 			}
 
-			if ((*fileBody)->fail() == true)
+			if (readAmount == 0)
+				break;
+			else if (readAmount < 0)
 			{
-				/* if it failed because reach the eof then it is clean*/
-				if ((*fileBody)->eof())
-					break ;
-				
-				/* bad() indicate the fatal error */
-				if ((*fileBody)->bad())
-				{
-					keepAfterResponse = false;
-					break ;
-				}
-
-				/* then check errno here */
 				if (errno == EINTR)
-				{
-					/* EINTR we can allow it to work on */
-					(*fileBody)->clear();
-					continue ;
-				}
+					continue;
 				else
 				{
-					/* else here are all unhandled errors */
 					keepAfterResponse = false;
 					break ;
 				}
 			}
-
 
 			//readAmount = read(fileFd->getFd(), &writeBuff[writeBuff.size() - 1], amountToRead);
 			//if (readAmount < 0 && writeBuff.size() == 0)

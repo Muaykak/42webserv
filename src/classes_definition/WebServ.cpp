@@ -6,6 +6,10 @@ WebServ::WebServ(const std::string &configPath) : _webservConfigPath(configPath)
 	// epoll creation
 	try {
 		_epollFD = epoll_create(1);
+		if (fcntl(_epollFD.getFd(), F_SETFD, FD_CLOEXEC) != 0)
+		{
+			throw WebservException("::epoll fcntl:: Error!");
+		}
 	} catch (std::exception &e){
 		std::string epoll_msg = e.what();
 		epoll_msg += "::epoll_create() failed";

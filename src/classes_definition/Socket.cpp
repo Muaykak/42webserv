@@ -247,7 +247,7 @@ bool Socket::setupServerSocket(const std::vector<ServerConfig> *serversConfig,
 		}
 	}
 
-	if (fcntl(_socketFD.getFd(), F_SETFL, O_NONBLOCK) != 0)
+	if (fcntl(_socketFD.getFd(), F_SETFL, O_NONBLOCK) != 0 || fcntl(_socketFD.getFd(), F_SETFD, FD_CLOEXEC) != 0)
 	{
 		std::string errorMsg = "Socket::fcntl() O_NONBLOCK Error::";
 		errorMsg += std::strerror(errno);
@@ -352,7 +352,7 @@ bool Socket::setupClientSocket(const std::vector<ServerConfig> *serversConfig,
 	_serversConfig = serversConfig;
 
 	_server_listen_port = (*_serversConfig)[0].getPort();
-	if (fcntl(_socketFD.getFd(), F_SETFL, O_NONBLOCK) != 0)
+	if (fcntl(_socketFD.getFd(), F_SETFL, O_NONBLOCK) != 0 || fcntl(_socketFD.getFd(), F_SETFD, FD_CLOEXEC) != 0)
 	{
 		std::string errorMsg = "Socket::fcntl() O_NONBLOCK Error::";
 		errorMsg += std::strerror(errno);

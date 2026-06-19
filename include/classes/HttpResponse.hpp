@@ -65,7 +65,8 @@ class HttpResponse {
 		OptionalData<std::pair<unsigned int, std::string> > statusLine;
 
 		std::string contentType;
-		OptionalData<Shared<std::ifstream> > fileBody;
+		// OptionalData<Shared<std::ifstream> > fileBody;
+		OptionalData<Shared<FileDescriptor> > fileBody;
 		//FileDescriptor cgiOutFd;
 		size_t	fileSize;
 
